@@ -54,6 +54,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .pass-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pass-detail{color:var(--dim);font-size:9px;margin-top:2px}
 .pass-empty{padding:8px 16px;font-size:9px;color:var(--dim)}
+.conj-header{padding:8px 16px;font-size:10px;color:var(--danger);letter-spacing:0.08em;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+#conjunctions{max-height:30vh;overflow-y:auto}
+.conj-item{padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:10px;cursor:pointer;transition:background 0.15s}
+.conj-item:hover{background:rgba(255,255,255,0.05)}
+.conj-item.critical{border-left:2px solid #ff5f63;background:rgba(255,95,99,0.1)}
+.conj-item.warning{border-left:2px solid #ff9800;background:rgba(255,152,0,0.07)}
+.conj-item.watch{border-left:2px solid #ffeb3b;background:rgba(255,235,59,0.05)}
+.conj-names{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conj-detail{color:var(--dim);font-size:9px;margin-top:2px}
 #map2d,#globe3d{position:absolute;top:0;left:0;width:100%;height:100%}
 #globe3d{visibility:hidden;pointer-events:none}
 #view-toggle{position:absolute;top:12px;right:12px;z-index:1000;display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer}
@@ -103,6 +112,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     </div>
     <div class="passes-header">UPCOMING PASSES (12H)</div>
     <div id="passes"><div class="pass-empty">Load satellites to see passes</div></div>
+    <div class="conj-header">CONJUNCTIONS (12H)</div>
+    <div id="conjunctions"><div class="pass-empty">Load satellites to check conjunctions</div></div>
     <div id="status">Ready. Click a category to load satellites.</div>
   </div>
   <div id="globe-container">
@@ -295,6 +306,7 @@ async function toggleCategory(catName) {
     btn.classList.toggle('active');
     updateGlobe();
     computePasses();
+    computeConjunctions();
     return;
   }
 
@@ -327,6 +339,7 @@ async function toggleCategory(catName) {
   computeTracksAndPositions(catName);
   updateGlobe();
   computePasses();
+  computeConjunctions();
 }
 
 // === Compute Tracks and Positions ===
@@ -578,6 +591,127 @@ function renderPasses(passes) {
     return `<div class="pass-item${oh ? ' overhead' : ''}">
       <div class="pass-name" style="color:${p.color}">${p.name || 'Unknown'}</div>
       <div class="pass-detail">${d} ${t} · El ${p.maxEl.toFixed(0)}° · ${p.bearing} (${p.azimuth.toFixed(0)}°)${oh ? ' · OVERHEAD' : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+// === Conjunction Predictions ===
+let allConjunctions = [];
+
+function propagateECI(satrec, time) {
+  const posVel = satellite.propagate(satrec, time);
+  if (!posVel.position || typeof posVel.position === 'boolean') return null;
+  return posVel.position; // { x, y, z } in km ECI
+}
+
+function eciDistance(a, b) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
+}
+
+function computeConjunctions() {
+  // Collect all visible satrecs into flat array
+  const sats = [];
+  for (const [catName, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible || !catData.satrecs) continue;
+    for (const { satrec, tle } of catData.satrecs) {
+      sats.push({ satrec, tle, category: catName });
+    }
+  }
+
+  if (sats.length < 2) {
+    allConjunctions = [];
+    renderConjunctions([]);
+    return;
+  }
+
+  setStatus(`Computing conjunctions for ${sats.length} satellites...`);
+
+  const now = new Date();
+  const stepSec = 120; // 2-minute intervals
+  const hoursAhead = 12;
+  const thresholdKm = 50;
+
+  // Track closest approach per pair: key = "i-j", value = { minDist, time, ... }
+  const pairMap = new Map();
+
+  for (let t = 0; t <= hoursAhead * 3600; t += stepSec) {
+    const time = new Date(now.getTime() + t * 1000);
+
+    // Propagate all satellites to ECI at this timestep
+    const positions = [];
+    for (let i = 0; i < sats.length; i++) {
+      positions.push(propagateECI(sats[i].satrec, time));
+    }
+
+    // Compare all pairs
+    for (let i = 0; i < sats.length; i++) {
+      if (!positions[i]) continue;
+      for (let j = i + 1; j < sats.length; j++) {
+        if (!positions[j]) continue;
+        const dist = eciDistance(positions[i], positions[j]);
+        if (dist < thresholdKm) {
+          const key = `${i}-${j}`;
+          const existing = pairMap.get(key);
+          if (!existing || dist < existing.minDist) {
+            pairMap.set(key, { i, j, minDist: dist, time });
+          }
+        }
+      }
+    }
+  }
+
+  // Build conjunction list with geodetic positions at closest approach
+  const conjunctions = [];
+  for (const [, entry] of pairMap) {
+    const posA = propagatePosition(sats[entry.i].satrec, entry.time);
+    const posB = propagatePosition(sats[entry.j].satrec, entry.time);
+    if (!posA || !posB) continue;
+
+    // Midpoint for map display
+    const midLat = (posA.lat + posB.lat) / 2;
+    const midLng = (posA.lng + posB.lng) / 2;
+
+    let severity, severityClass;
+    if (entry.minDist < 10) { severity = 'CRITICAL'; severityClass = 'critical'; }
+    else if (entry.minDist < 25) { severity = 'WARNING'; severityClass = 'warning'; }
+    else { severity = 'WATCH'; severityClass = 'watch'; }
+
+    conjunctions.push({
+      nameA: sats[entry.i].tle.name || 'Unknown',
+      nameB: sats[entry.j].tle.name || 'Unknown',
+      minDist: entry.minDist,
+      time: entry.time,
+      altA: posA.alt,
+      altB: posB.alt,
+      latA: posA.lat, lngA: posA.lng,
+      latB: posB.lat, lngB: posB.lng,
+      midLat, midLng,
+      severity, severityClass,
+    });
+  }
+
+  conjunctions.sort((a, b) => a.minDist - b.minDist);
+  allConjunctions = conjunctions;
+  renderConjunctions(conjunctions);
+  setStatus(conjunctions.length > 0
+    ? `Found ${conjunctions.length} conjunction(s) within 50km`
+    : `No conjunctions found. ${sats.length} satellites checked.`);
+}
+
+function renderConjunctions(conjunctions) {
+  const el = document.getElementById('conjunctions');
+  if (conjunctions.length === 0) {
+    el.innerHTML = '<div class="pass-empty">No close approaches predicted in next 12h</div>';
+    return;
+  }
+  el.innerHTML = conjunctions.slice(0, 20).map((c, idx) => {
+    const t = c.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const d = c.time.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const distColor = c.severityClass === 'critical' ? '#ff5f63' : c.severityClass === 'warning' ? '#ff9800' : '#ffeb3b';
+    return `<div class="conj-item ${c.severityClass}" data-conj-idx="${idx}">
+      <div class="conj-names" style="color:${distColor}">${c.nameA} / ${c.nameB}</div>
+      <div class="conj-detail">${d} ${t} · ${c.minDist.toFixed(1)} km · ${c.severity}</div>
+      <div class="conj-detail">Alt: ${c.altA.toFixed(0)} km / ${c.altB.toFixed(0)} km</div>
     </div>`;
   }).join('');
 }
