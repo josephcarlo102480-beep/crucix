@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
-<script src="https://unpkg.com/globe.gl@2.35.2"></script>
+<script src="https://unpkg.com/globe.gl@2.33.0"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -798,6 +798,10 @@ function init3DGlobe() {
     .pathStroke(d => d.stroke3d)
     .pathTransitionDuration(0);
 
+  // Auto-rotate so globe spins on load
+  globe3d.controls().autoRotate = true;
+  globe3d.controls().autoRotateSpeed = 1.2;
+
   // Observer point — add a custom ring
   globe3d.ringsData([{ lat: OBSERVER.lat, lng: OBSERVER.lng }])
     .ringLat('lat').ringLng('lng')
@@ -890,6 +894,9 @@ document.addEventListener('DOMContentLoaded', () => {
       globe3d.height(rect.height);
     }
   });
+
+  // Default to 3D globe view
+  setViewMode('3d');
 
   setStatus('Ready. Click a category to load satellites.');
 });
