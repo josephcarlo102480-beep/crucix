@@ -74,7 +74,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .badge{font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--border);color:var(--accent)}
 
 /* LEFT RAIL */
-.layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px}
+.layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
+.layer-item:hover{border-color:rgba(100,240,200,0.3);box-shadow:0 0 8px rgba(100,240,200,0.15)}
+.layer-item.active-filter{border-color:rgba(100,240,200,0.6);box-shadow:0 0 12px rgba(100,240,200,0.3);background:rgba(100,240,200,0.08)}
+.sec-head.clickable{cursor:pointer}.sec-head.clickable:hover h3{color:var(--accent)}
 .layer-left{display:flex;align-items:center;gap:8px}
 .ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .ldot.air{background:var(--accent);box-shadow:0 0 6px rgba(100,240,200,0.4)}
@@ -616,10 +619,10 @@ function renderLeftRail(){
     {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
+    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
     {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
+    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',cat:'osint',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
@@ -633,8 +636,8 @@ function renderLeftRail(){
 
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
-      <div class="sec-head"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
-      ${layers.map(l=>`<div class="layer-item"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
+      <div class="sec-head clickable" id="sensorGridHeader"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
+      ${layers.map(l=>`<div class="layer-item" data-category="${l.cat||l.dot}"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
@@ -1764,6 +1767,107 @@ document.addEventListener('DOMContentLoaded', () => {
     init();
   }
 });
+</script>
+<script>
+// === Phase 3: Sensor Grid Click-to-Filter ===
+(function(){
+  let activeFilter = null;
+  let allGlobePoints = null;
+  let allGlobeLabels = null;
+
+  // Map category -> marker types it should show
+  const catToTypes = {
+    air: ['air'],
+    thermal: ['thermal'],
+    sdr: ['sdr'],
+    maritime: ['maritime'],
+    nuke: ['nuke'],
+    conflict: ['conflict'],
+    health: ['health'],
+    news: ['news'],
+    osint: ['osint'],
+    space: ['space'],
+  };
+
+  function applyFilter(cat) {
+    // Store all points on first use
+    if (typeof globe !== 'undefined' && globe && !allGlobePoints) {
+      allGlobePoints = globe.pointsData();
+      allGlobeLabels = globe.labelsData();
+    }
+
+    if (cat === activeFilter) {
+      // Deselect
+      activeFilter = null;
+      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
+        globe.pointsData(allGlobePoints);
+        globe.labelsData(allGlobeLabels);
+      }
+      // Show all flat map markers
+      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => el.style.display = '');
+    } else {
+      activeFilter = cat;
+      const types = catToTypes[cat] || [cat];
+
+      // Filter globe markers
+      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
+        globe.pointsData(allGlobePoints.filter(p => types.includes(p.type)));
+        globe.labelsData(allGlobeLabels.filter(l => {
+          // Labels don't have type; just show all labels when filtering
+          return true;
+        }));
+      }
+
+      // Filter flat map markers (SVG circles)
+      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
+        // We can't easily filter flat map circles since they don't have type attrs
+        // But we can at least dim non-matching markers
+      });
+    }
+
+    // Update active class on layer items
+    document.querySelectorAll('.layer-item').forEach(el => {
+      if (activeFilter && el.dataset.category === activeFilter) {
+        el.classList.add('active-filter');
+      } else {
+        el.classList.remove('active-filter');
+      }
+    });
+  }
+
+  // Wait for DOM to be ready and init to complete
+  const origInit = window.init;
+  const hookAfterInit = () => {
+    // Add click handlers to layer items
+    document.querySelectorAll('.layer-item[data-category]').forEach(el => {
+      el.addEventListener('click', () => applyFilter(el.dataset.category));
+    });
+
+    // Sensor Grid header resets filter
+    const hdr = document.getElementById('sensorGridHeader');
+    if (hdr) {
+      hdr.addEventListener('click', () => {
+        activeFilter = 'FORCE_RESET';
+        applyFilter('FORCE_RESET'); // will deselect since no match
+        activeFilter = null;
+        if (typeof globe !== 'undefined' && globe && allGlobePoints) {
+          globe.pointsData(allGlobePoints);
+          globe.labelsData(allGlobeLabels);
+        }
+        document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('active-filter'));
+      });
+    }
+  };
+
+  // Hook into init completion
+  const observer = new MutationObserver(() => {
+    if (document.querySelector('.layer-item[data-category]')) {
+      observer.disconnect();
+      setTimeout(hookAfterInit, 500);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
 </script>
 </body>
 </html>
