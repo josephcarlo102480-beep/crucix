@@ -105,8 +105,8 @@ const OBSERVER = { lat: 30.5155, lng: -90.5063 };
 const CATEGORIES = {
   iss:      { noradId: 25544, query: 'ISS', pageSize: 5, color: '#ffffff', trackColor: 'rgba(255,255,255,0.6)' },
   military: { query: 'military', pageSize: 20, color: '#ff5f63', trackColor: 'rgba(255,95,99,0.5)' },
-  starlink: { query: 'starlink', pageSize: 50, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
-  oneweb:   { query: 'oneweb', pageSize: 50, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
+  starlink: { query: 'starlink', pageSize: 30, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
+  oneweb:   { query: 'oneweb', pageSize: 30, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
   gps:      { query: 'GPS', pageSize: 30, color: '#ff9800', trackColor: 'rgba(255,152,0,0.5)' },
 };
 
@@ -274,8 +274,8 @@ function computeTracksAndPositions(catName) {
   catData.points = [];
 
   for (const { satrec, tle } of catData.satrecs) {
-    // Ground track: +/- 90 minutes, 60-second intervals
-    const segments = generateGroundTrack(satrec, 90, 90, 60);
+    // Ground track: +/- 45 minutes, 60-second intervals
+    const segments = generateGroundTrack(satrec, 45, 45, 60);
     for (const seg of segments) {
       catData.paths.push({
         coords: seg.map(p => [p.lat, p.lng]),
