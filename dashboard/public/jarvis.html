@@ -1899,12 +1899,12 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 
 // === Phase 3: Sensor Grid Click-to-Filter ===
+// Uses event delegation on #leftRail so handlers survive re-renders (reinit/SSE/resize).
 (function(){
   let activeFilter = null;
   let allGlobePoints = null;
   let allGlobeLabels = null;
 
-  // Map category -> marker types it should show
   const catToTypes = {
     air: ['air'],
     thermal: ['thermal'],
@@ -1919,21 +1919,23 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   function applyFilter(cat) {
-    // Store all points on first use
+    // Snapshot all globe data on first use
     if (typeof globe !== 'undefined' && globe && !allGlobePoints) {
       allGlobePoints = globe.pointsData();
       allGlobeLabels = globe.labelsData();
     }
 
     if (cat === activeFilter) {
-      // Deselect
+      // Deselect — show everything
       activeFilter = null;
       if (typeof globe !== 'undefined' && globe && allGlobePoints) {
         globe.pointsData(allGlobePoints);
         globe.labelsData(allGlobeLabels);
       }
-      // Show all flat map markers
-      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => el.style.display = '');
+      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
+        el.style.display = '';
+        el.style.opacity = '';
+      });
     } else {
       activeFilter = cat;
       const types = catToTypes[cat] || [cat];
@@ -1941,17 +1943,41 @@ document.addEventListener('DOMContentLoaded', () => {
       // Filter globe markers
       if (typeof globe !== 'undefined' && globe && allGlobePoints) {
         globe.pointsData(allGlobePoints.filter(p => types.includes(p.type)));
-        globe.labelsData(allGlobeLabels.filter(l => {
-          // Labels don't have type; just show all labels when filtering
-          return true;
-        }));
+        globe.labelsData(allGlobeLabels);
       }
 
-      // Filter flat map markers (SVG circles)
+      // Dim non-matching flat map markers
       document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
-        // We can't easily filter flat map circles since they don't have type attrs
-        // But we can at least dim non-matching markers
+        const elType = el.getAttribute('data-type');
+        if (elType && !types.includes(elType)) {
+          el.style.opacity = '0.1';
+        } else {
+          el.style.opacity = '';
+        }
       });
+
+      // Pan globe to a representative marker for this category
+      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
+        const match = allGlobePoints.find(p => types.includes(p.type));
+        if (match) {
+          globe.pointOfView({ lat: match.lat, lng: match.lng, altitude: 1.2 }, 1000);
+        }
+      }
+      // Pan flat map to a representative marker
+      if (typeof flatProjection !== 'undefined' && flatProjection && typeof flatZoom !== 'undefined' && flatZoom && typeof flatSvg !== 'undefined' && flatSvg && typeof d3 !== 'undefined') {
+        const pts = (allGlobePoints || []).filter(p => types.includes(p.type));
+        if (pts.length) {
+          const avgLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
+          const avgLng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
+          const [cx, cy] = flatProjection([avgLng, avgLat]);
+          if (cx != null && cy != null) {
+            const fw = typeof flatW !== 'undefined' ? flatW : 800;
+            const fh = typeof flatH !== 'undefined' ? flatH : 500;
+            const t = d3.zoomIdentity.translate(fw / 2, fh / 2).scale(2).translate(-cx, -cy);
+            flatSvg.transition().duration(800).call(flatZoom.transform, t);
+          }
+        }
+      }
     }
 
     // Update active class on layer items
@@ -1964,38 +1990,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Wait for DOM to be ready and init to complete
-  const origInit = window.init;
-  const hookAfterInit = () => {
-    // Add click handlers to layer items
-    document.querySelectorAll('.layer-item[data-category]').forEach(el => {
-      el.addEventListener('click', () => applyFilter(el.dataset.category));
-    });
+  // Event delegation: attach once to #leftRail, survives innerHTML re-renders
+  function attachDelegatedHandler() {
+    const rail = document.getElementById('leftRail');
+    if (!rail || rail._sensorGridBound) return;
+    rail._sensorGridBound = true;
 
-    // Sensor Grid header resets filter
-    const hdr = document.getElementById('sensorGridHeader');
-    if (hdr) {
-      hdr.addEventListener('click', () => {
-        activeFilter = 'FORCE_RESET';
-        applyFilter('FORCE_RESET'); // will deselect since no match
+    rail.addEventListener('click', (e) => {
+      // Layer item click
+      const item = e.target.closest('.layer-item[data-category]');
+      if (item) {
+        applyFilter(item.dataset.category);
+        return;
+      }
+      // Sensor Grid header click — reset
+      const hdr = e.target.closest('#sensorGridHeader');
+      if (hdr) {
         activeFilter = null;
         if (typeof globe !== 'undefined' && globe && allGlobePoints) {
           globe.pointsData(allGlobePoints);
           globe.labelsData(allGlobeLabels);
         }
+        document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
+          el.style.display = '';
+          el.style.opacity = '';
+        });
         document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('active-filter'));
-      });
-    }
-  };
+      }
+    });
+  }
 
-  // Hook into init completion
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('.layer-item[data-category]')) {
-      observer.disconnect();
-      setTimeout(hookAfterInit, 500);
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  // Attach as soon as #leftRail exists
+  if (document.getElementById('leftRail')) {
+    attachDelegatedHandler();
+  } else {
+    const observer = new MutationObserver(() => {
+      if (document.getElementById('leftRail')) {
+        observer.disconnect();
+        attachDelegatedHandler();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
 })();
 </script>
 </body>
