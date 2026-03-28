@@ -45,6 +45,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .observer-info{padding:8px 16px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim)}
 .leaflet-container{background:var(--bg) !important}
 .leaflet-control-zoom a{background:var(--panel) !important;color:var(--accent) !important;border-color:var(--border) !important}
+.observer-marker{color:#ffb84c;font-size:22px;font-weight:bold;text-align:center;line-height:20px;text-shadow:0 0 8px rgba(255,184,76,0.6)}
+.passes-header{padding:8px 16px;font-size:10px;color:var(--accent);letter-spacing:0.08em;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+#passes{max-height:40vh;overflow-y:auto}
+.pass-item{padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:10px}
+.pass-item.overhead{background:rgba(100,240,200,0.08);border-left:2px solid var(--accent)}
+.pass-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pass-detail{color:var(--dim);font-size:9px;margin-top:2px}
+.pass-empty{padding:8px 16px;font-size:9px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -85,6 +93,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
         <span class="cat-count"></span>
       </button>
     </div>
+    <div class="passes-header">UPCOMING PASSES (12H)</div>
+    <div id="passes"><div class="pass-empty">Load satellites to see passes</div></div>
     <div id="status">Ready. Click a category to load satellites.</div>
   </div>
   <div id="globe-container"></div>
@@ -101,6 +111,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 // === Satellite Tracker ===
 const TLE_API = 'https://tle.ivanstanojevic.me/api/tle';
 const OBSERVER = { lat: 30.5155, lng: -90.5063 };
+const OBSERVER_GD = {
+  longitude: OBSERVER.lng * Math.PI / 180,
+  latitude: OBSERVER.lat * Math.PI / 180,
+  height: 0.01
+};
 
 const CATEGORIES = {
   iss:      { noradId: 25544, query: 'ISS', pageSize: 5, color: '#ffffff', trackColor: 'rgba(255,255,255,0.6)' },
@@ -138,6 +153,16 @@ function initGlobe() {
   pointLayer = L.layerGroup().addTo(globe);
 
   L.control.zoom({ position: 'bottomright' }).addTo(globe);
+
+  // Observer marker
+  L.circleMarker([OBSERVER.lat, OBSERVER.lng], {
+    radius: 7, fillColor: '#ffb84c', color: '#fff',
+    fillOpacity: 0.9, weight: 2, opacity: 1
+  }).addTo(globe);
+  L.marker([OBSERVER.lat, OBSERVER.lng], {
+    icon: L.divIcon({ className: 'observer-marker', html: '+', iconSize: [20, 20], iconAnchor: [10, 10] }),
+    interactive: false
+  }).addTo(globe);
 
   window.addEventListener('resize', () => { globe.invalidateSize(); });
 }
@@ -231,6 +256,7 @@ async function toggleCategory(catName) {
     loadedCategories[catName].visible = !loadedCategories[catName].visible;
     btn.classList.toggle('active');
     updateGlobe();
+    computePasses();
     return;
   }
 
@@ -262,6 +288,7 @@ async function toggleCategory(catName) {
 
   computeTracksAndPositions(catName);
   updateGlobe();
+  computePasses();
 }
 
 // === Compute Tracks and Positions ===
@@ -425,6 +452,92 @@ function showSatPopup(pt) {
 // === Status ===
 function setStatus(msg) {
   document.getElementById('status').textContent = msg;
+}
+
+// === Pass Predictions ===
+function computeLookAngles(satrec, time) {
+  const posVel = satellite.propagate(satrec, time);
+  if (!posVel.position || typeof posVel.position === 'boolean') return null;
+  const gmst = satellite.gstime(time);
+  const ecf = satellite.eciToEcf(posVel.position, gmst);
+  const look = satellite.ecfToLookAngles(OBSERVER_GD, ecf);
+  return {
+    azimuth: look.azimuth * 180 / Math.PI,
+    elevation: look.elevation * 180 / Math.PI,
+    range: look.rangeSat
+  };
+}
+
+function azToBearing(azDeg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(((azDeg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+function computePasses() {
+  const passes = [];
+  const now = new Date();
+  const stepSec = 60;
+  const hoursAhead = 12;
+
+  for (const [catName, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible || !catData.satrecs) continue;
+    const cat = CATEGORIES[catName];
+
+    for (const { satrec, tle } of catData.satrecs) {
+      let inPass = false, passMaxEl = 0, passMaxElTime = null, passMaxElAz = 0;
+
+      for (let t = 0; t <= hoursAhead * 3600; t += stepSec) {
+        const time = new Date(now.getTime() + t * 1000);
+        const look = computeLookAngles(satrec, time);
+        if (!look) continue;
+
+        if (look.elevation > 0) {
+          if (!inPass) { inPass = true; passMaxEl = 0; }
+          if (look.elevation > passMaxEl) {
+            passMaxEl = look.elevation;
+            passMaxElTime = time;
+            passMaxElAz = look.azimuth;
+          }
+        } else if (inPass) {
+          if (passMaxEl > 5) {
+            passes.push({
+              name: tle.name, category: catName, color: cat.color,
+              maxElTime: passMaxElTime, maxEl: passMaxEl,
+              azimuth: passMaxElAz, bearing: azToBearing(passMaxElAz)
+            });
+          }
+          inPass = false;
+        }
+      }
+      if (inPass && passMaxEl > 5) {
+        passes.push({
+          name: tle.name, category: catName, color: cat.color,
+          maxElTime: passMaxElTime, maxEl: passMaxEl,
+          azimuth: passMaxElAz, bearing: azToBearing(passMaxElAz)
+        });
+      }
+    }
+  }
+
+  passes.sort((a, b) => a.maxElTime - b.maxElTime);
+  renderPasses(passes);
+}
+
+function renderPasses(passes) {
+  const el = document.getElementById('passes');
+  if (passes.length === 0) {
+    el.innerHTML = '<div class="pass-empty">No upcoming passes</div>';
+    return;
+  }
+  el.innerHTML = passes.slice(0, 30).map(p => {
+    const oh = p.maxEl > 60;
+    const t = p.maxElTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const d = p.maxElTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `<div class="pass-item${oh ? ' overhead' : ''}">
+      <div class="pass-name" style="color:${p.color}">${p.name || 'Unknown'}</div>
+      <div class="pass-detail">${d} ${t} · El ${p.maxEl.toFixed(0)}° · ${p.bearing} (${p.azimuth.toFixed(0)}°)${oh ? ' · OVERHEAD' : ''}</div>
+    </div>`;
+  }).join('');
 }
 
 // === Init ===
