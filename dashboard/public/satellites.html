@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRUCIX — Satellite Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
+  --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
+  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);overflow:hidden}
+#app{display:flex;height:100vh;width:100vw}
+#sidebar{width:280px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;flex-shrink:0;z-index:10}
+#globe-container{flex:1;position:relative;overflow:hidden}
+.logo{padding:16px;border-bottom:1px solid var(--border);text-align:center}
+.logo h1{font-size:14px;letter-spacing:0.15em;color:var(--accent)}
+.logo .sub{font-size:10px;color:var(--dim);margin-top:4px}
+.back-link{display:block;padding:8px 16px;color:var(--accent2);font-size:10px;text-decoration:none;border-bottom:1px solid var(--border);letter-spacing:0.08em}
+.back-link:hover{background:rgba(68,204,255,0.08)}
+.cat-section{padding:8px 0}
+.cat-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 16px;background:none;border:none;border-bottom:1px solid rgba(255,255,255,0.03);color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer;text-align:left;transition:all 0.2s}
+.cat-btn:hover{background:rgba(100,240,200,0.06)}
+.cat-btn.active{background:rgba(100,240,200,0.1);border-left:2px solid var(--accent)}
+.cat-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.cat-name{flex:1}
+.cat-count{font-size:9px;color:var(--dim)}
+.cat-btn.loading .cat-count::after{content:'...';animation:dots 1s steps(3,end) infinite}
+@keyframes dots{0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}
+#status{padding:12px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);margin-top:auto}
+#satPopup{display:none;position:fixed;z-index:9999;pointer-events:auto}
+#satPopup .popup-inner{background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:300px;box-shadow:0 4px 24px rgba(0,0,0,0.5)}
+#satPopup .popup-title{color:var(--accent);font-weight:600;margin-bottom:6px;font-size:12px}
+#satPopup .popup-row{margin-bottom:3px;color:var(--dim)}
+#satPopup .popup-row span{color:var(--text)}
+#satPopup .popup-close{font-size:9px;color:var(--dim);margin-top:8px;cursor:pointer}
+#satPopup .popup-close:hover{color:var(--accent)}
+.observer-info{padding:8px 16px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="logo">
+      <h1>CRUCIX SATELLITE TRACKER</h1>
+      <div class="sub">Real-time orbital tracking</div>
+    </div>
+    <a href="/" class="back-link">&larr; BACK TO DASHBOARD</a>
+    <div class="observer-info">
+      OBSERVER: 30.5155N, 90.5063W<br>Independence, LA
+    </div>
+    <div class="cat-section">
+      <button class="cat-btn" data-cat="iss">
+        <div class="cat-dot" style="background:#ffffff;box-shadow:0 0 6px rgba(255,255,255,0.6)"></div>
+        <span class="cat-name">ISS</span>
+        <span class="cat-count"></span>
+      </button>
+      <button class="cat-btn" data-cat="military">
+        <div class="cat-dot" style="background:#ff5f63;box-shadow:0 0 6px rgba(255,95,99,0.6)"></div>
+        <span class="cat-name">Military</span>
+        <span class="cat-count"></span>
+      </button>
+      <button class="cat-btn" data-cat="starlink">
+        <div class="cat-dot" style="background:#4488ff;box-shadow:0 0 6px rgba(68,136,255,0.6)"></div>
+        <span class="cat-name">Starlink</span>
+        <span class="cat-count"></span>
+      </button>
+      <button class="cat-btn" data-cat="oneweb">
+        <div class="cat-dot" style="background:#69f0ae;box-shadow:0 0 6px rgba(105,240,174,0.6)"></div>
+        <span class="cat-name">OneWeb</span>
+        <span class="cat-count"></span>
+      </button>
+      <button class="cat-btn" data-cat="gps">
+        <div class="cat-dot" style="background:#ff9800;box-shadow:0 0 6px rgba(255,152,0,0.6)"></div>
+        <span class="cat-name">GPS</span>
+        <span class="cat-count"></span>
+      </button>
+    </div>
+    <div id="status">Ready. Click a category to load satellites.</div>
+  </div>
+  <div id="globe-container"></div>
+</div>
+<div id="satPopup">
+  <div class="popup-inner">
+    <div class="popup-title"></div>
+    <div class="popup-body"></div>
+    <div class="popup-close">Click anywhere to close</div>
+  </div>
+</div>
+
+<script>
+// === Satellite Tracker ===
+const TLE_API = 'https://tle.ivanstanojevic.me/api/tle';
+const OBSERVER = { lat: 30.5155, lng: -90.5063 };
+
+const CATEGORIES = {
+  iss:      { noradId: 25544, query: 'ISS', pageSize: 5, color: '#ffffff', trackColor: 'rgba(255,255,255,0.6)' },
+  military: { query: 'military', pageSize: 20, color: '#ff5f63', trackColor: 'rgba(255,95,99,0.5)' },
+  starlink: { query: 'starlink', pageSize: 50, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
+  oneweb:   { query: 'oneweb', pageSize: 50, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
+  gps:      { query: 'GPS', pageSize: 30, color: '#ff9800', trackColor: 'rgba(255,152,0,0.5)' },
+};
+
+// State
+const loadedCategories = {}; // cat -> { tles: [], satrecs: [], visible: bool }
+let globe = null;
+let allPaths = [];
+let allPoints = [];
+
+// === Globe setup ===
+function initGlobe() {
+  const container = document.getElementById('globe-container');
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+
+  globe = Globe()
+    .width(w)
+    .height(h)
+    .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg')
+    .bumpImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-topology.png')
+    .backgroundImageUrl('')
+    .backgroundColor('rgba(0,0,0,0)')
+    .showAtmosphere(true)
+    .atmosphereColor('#64f0c8')
+    .atmosphereAltitude(0.15)
+    .showGraticules(true)
+    // Paths (ground tracks)
+    .pathsData([])
+    .pathPoints('coords')
+    .pathPointLat(p => p[0])
+    .pathPointLng(p => p[1])
+    .pathPointAlt(0.005)
+    .pathColor('color')
+    .pathStroke('stroke')
+    .pathTransitionDuration(0)
+    // Points (current positions)
+    .pointsData([])
+    .pointLat('lat')
+    .pointLng('lng')
+    .pointAlt('alt')
+    .pointColor('color')
+    .pointRadius('radius')
+    .pointLabel('')
+    .onPointClick((pt) => showSatPopup(pt))
+    .onPointHover(pt => { container.style.cursor = pt ? 'pointer' : 'grab'; })
+    (container);
+
+  // Add stars
+  const scene = globe.scene();
+  const starGeom = new THREE.BufferGeometry();
+  const starVerts = [];
+  for (let i = 0; i < 2000; i++) {
+    const r = 600 + Math.random() * 300;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi));
+  }
+  starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+  scene.add(new THREE.Points(starGeom, new THREE.PointsMaterial({ color: 0x88bbaa, size: 0.8, transparent: true, opacity: 0.5 })));
+
+  // Graticule styling
+  scene.traverse(obj => {
+    if (obj.material && obj.type === 'Line') {
+      obj.material.color.set(0x1a3a2a);
+      obj.material.opacity = 0.2;
+      obj.material.transparent = true;
+    }
+  });
+
+  // Controls
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.2;
+  globe.controls().enableDamping = true;
+
+  let rotateTimer;
+  container.addEventListener('mousedown', () => {
+    globe.controls().autoRotate = false;
+    clearTimeout(rotateTimer);
+  });
+  container.addEventListener('mouseup', () => {
+    rotateTimer = setTimeout(() => { globe.controls().autoRotate = true; }, 8000);
+  });
+
+  // Set initial view centered on observer
+  globe.pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 }, 0);
+
+  // Resize handler
+  window.addEventListener('resize', () => {
+    globe.width(container.clientWidth).height(container.clientHeight);
+  });
+}
+
+// === TLE Fetching ===
+async function fetchTLEs(category) {
+  const cat = CATEGORIES[category];
+  if (!cat) return [];
+
+  setStatus(`Fetching ${category} TLEs...`);
+
+  try {
+    // ISS: fetch by NORAD ID directly for accuracy
+    if (cat.noradId) {
+      const res = await fetch(`${TLE_API}/${cat.noradId}`);
+      const data = await res.json();
+      if (data.line1 && data.line2) {
+        setStatus(`Loaded ISS (NORAD ${cat.noradId})`);
+        return [data];
+      }
+      return [];
+    }
+
+    const url = `${TLE_API}/?search=${encodeURIComponent(cat.query)}&page_size=${cat.pageSize}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const tles = (data.member || []).filter(t => t.line1 && t.line2);
+    setStatus(`Loaded ${tles.length} ${category} satellites`);
+    return tles;
+  } catch (err) {
+    setStatus(`Error fetching ${category}: ${err.message}`);
+    return [];
+  }
+}
+
+// === Orbital Propagation ===
+function propagatePosition(satrec, time) {
+  const posVel = satellite.propagate(satrec, time);
+  if (!posVel.position || typeof posVel.position === 'boolean') return null;
+
+  const gmst = satellite.gstime(time);
+  const gd = satellite.eciToGeodetic(posVel.position, gmst);
+
+  return {
+    lat: satellite.degreesLat(gd.latitude),
+    lng: satellite.degreesLong(gd.longitude),
+    alt: gd.height, // km
+    vel: posVel.velocity ? Math.sqrt(
+      posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2
+    ) : 0
+  };
+}
+
+function generateGroundTrack(satrec, minutesBefore, minutesAfter, intervalSeconds) {
+  const points = [];
+  const now = new Date();
+
+  for (let t = -minutesBefore * 60; t <= minutesAfter * 60; t += intervalSeconds) {
+    const time = new Date(now.getTime() + t * 1000);
+    const pos = propagatePosition(satrec, time);
+    if (pos) points.push(pos);
+  }
+
+  // Break into segments at antimeridian crossings
+  if (points.length === 0) return [];
+
+  const segments = [];
+  let currentSegment = [points[0]];
+
+  for (let i = 1; i < points.length; i++) {
+    const prevLng = points[i - 1].lng;
+    const currLng = points[i].lng;
+    if (Math.abs(currLng - prevLng) > 180) {
+      if (currentSegment.length > 1) segments.push(currentSegment);
+      currentSegment = [points[i]];
+    } else {
+      currentSegment.push(points[i]);
+    }
+  }
+  if (currentSegment.length > 1) segments.push(currentSegment);
+
+  return segments;
+}
+
+// === Toggle Category ===
+async function toggleCategory(catName) {
+  const btn = document.querySelector(`.cat-btn[data-cat="${catName}"]`);
+
+  if (loadedCategories[catName]) {
+    // Toggle visibility
+    loadedCategories[catName].visible = !loadedCategories[catName].visible;
+    btn.classList.toggle('active');
+    updateGlobe();
+    return;
+  }
+
+  // Load new category
+  btn.classList.add('loading');
+  btn.querySelector('.cat-count').textContent = 'loading';
+
+  const tles = await fetchTLEs(catName);
+  if (tles.length === 0) {
+    btn.classList.remove('loading');
+    btn.querySelector('.cat-count').textContent = '0';
+    return;
+  }
+
+  const satrecs = [];
+  for (const tle of tles) {
+    try {
+      const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+      satrecs.push({ satrec, tle });
+    } catch (e) {
+      // Skip invalid TLEs
+    }
+  }
+
+  loadedCategories[catName] = { tles, satrecs, visible: true };
+  btn.classList.remove('loading');
+  btn.classList.add('active');
+  btn.querySelector('.cat-count').textContent = satrecs.length;
+
+  computeTracksAndPositions(catName);
+  updateGlobe();
+}
+
+// === Compute Tracks and Positions ===
+function computeTracksAndPositions(catName) {
+  const catData = loadedCategories[catName];
+  if (!catData) return;
+
+  const cat = CATEGORIES[catName];
+  catData.paths = [];
+  catData.points = [];
+
+  for (const { satrec, tle } of catData.satrecs) {
+    // Ground track: +/- 90 minutes, 60-second intervals
+    const segments = generateGroundTrack(satrec, 90, 90, 60);
+    for (const seg of segments) {
+      catData.paths.push({
+        coords: seg.map(p => [p.lat, p.lng]),
+        color: cat.trackColor,
+        stroke: catName === 'iss' ? 2.0 : 1.0,
+        category: catName,
+      });
+    }
+
+    // Current position
+    const now = new Date();
+    const pos = propagatePosition(satrec, now);
+    if (pos) {
+      catData.points.push({
+        lat: pos.lat,
+        lng: pos.lng,
+        alt: pos.alt / 6371 * 0.5 + 0.01, // scale for visibility
+        color: cat.color,
+        radius: catName === 'iss' ? 0.6 : 0.25,
+        category: catName,
+        name: tle.name,
+        noradId: tle.satelliteId,
+        altitude: pos.alt,
+        velocity: pos.vel,
+        actualLat: pos.lat,
+        actualLng: pos.lng,
+      });
+    }
+  }
+}
+
+// === Update Globe ===
+function updateGlobe() {
+  allPaths = [];
+  allPoints = [];
+
+  for (const [catName, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible) continue;
+    if (catData.paths) allPaths.push(...catData.paths);
+    if (catData.points) allPoints.push(...catData.points);
+  }
+
+  globe.pathsData(allPaths);
+  globe.pointsData(allPoints);
+}
+
+// === Update Current Positions (periodic) ===
+function updatePositions() {
+  const now = new Date();
+
+  for (const [catName, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible || !catData.satrecs) continue;
+
+    catData.points = [];
+    const cat = CATEGORIES[catName];
+
+    for (const { satrec, tle } of catData.satrecs) {
+      const pos = propagatePosition(satrec, now);
+      if (pos) {
+        catData.points.push({
+          lat: pos.lat,
+          lng: pos.lng,
+          alt: pos.alt / 6371 * 0.5 + 0.01,
+          color: cat.color,
+          radius: catName === 'iss' ? 0.6 : 0.25,
+          category: catName,
+          name: tle.name,
+          noradId: tle.satelliteId,
+          altitude: pos.alt,
+          velocity: pos.vel,
+          actualLat: pos.lat,
+          actualLng: pos.lng,
+        });
+      }
+    }
+  }
+
+  // Update only points, keep paths
+  allPoints = [];
+  for (const [, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible || !catData.points) continue;
+    allPoints.push(...catData.points);
+  }
+  globe.pointsData(allPoints);
+}
+
+// === Popup ===
+function showSatPopup(pt) {
+  const popup = document.getElementById('satPopup');
+  const title = popup.querySelector('.popup-title');
+  const body = popup.querySelector('.popup-body');
+
+  title.textContent = pt.name || 'Unknown';
+  body.innerHTML = `
+    <div class="popup-row">NORAD ID: <span>${pt.noradId || '?'}</span></div>
+    <div class="popup-row">Category: <span>${(pt.category || '').toUpperCase()}</span></div>
+    <div class="popup-row">Altitude: <span>${pt.altitude?.toFixed(1) || '?'} km</span></div>
+    <div class="popup-row">Velocity: <span>${pt.velocity?.toFixed(2) || '?'} km/s</span></div>
+    <div class="popup-row">Lat: <span>${pt.actualLat?.toFixed(4) || '?'}</span></div>
+    <div class="popup-row">Lng: <span>${pt.actualLng?.toFixed(4) || '?'}</span></div>
+  `;
+
+  popup.style.display = 'block';
+  popup.style.top = '50%';
+  popup.style.left = '50%';
+  popup.style.transform = 'translate(-50%, -50%)';
+
+  const close = () => {
+    popup.style.display = 'none';
+    document.removeEventListener('click', closeHandler);
+  };
+  const closeHandler = (e) => {
+    if (!popup.contains(e.target)) close();
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 100);
+}
+
+// === Status ===
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// === Init ===
+document.addEventListener('DOMContentLoaded', () => {
+  initGlobe();
+
+  // Category button clicks
+  document.querySelectorAll('.cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleCategory(btn.dataset.cat));
+  });
+
+  // Auto-update positions every 15 seconds
+  setInterval(updatePositions, 15000);
+
+  setStatus('Ready. Click a category to load satellites.');
+});
+</script>
+</body>
+</html>

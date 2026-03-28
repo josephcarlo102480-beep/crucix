@@ -667,6 +667,7 @@ function renderLeftRail(){
         ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
         ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
       ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
+      <a href="/satellites.html" style="display:block;margin-top:8px;padding:6px 10px;border:1px solid rgba(100,240,200,0.2);background:rgba(100,240,200,0.04);color:var(--accent);font-family:var(--mono);font-size:10px;text-decoration:none;text-align:center;letter-spacing:0.1em;transition:all 0.2s" onmouseover="this.style.borderColor='rgba(100,240,200,0.5)';this.style.background='rgba(100,240,200,0.1)'" onmouseout="this.style.borderColor='rgba(100,240,200,0.2)';this.style.background='rgba(100,240,200,0.04)'">&raquo; SATELLITE TRACKER</a>
     </div>`;
 }
 
