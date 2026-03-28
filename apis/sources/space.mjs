@@ -1,56 +1,48 @@
-// Space/CelesTrak — Satellite Activity Monitoring
-// No API key required. Uses CelesTrak for public TLE data and launch info.
-// Tracks: Recent launches, ISS position, satellite decay alerts, space debris.
+// Space/Satellite Activity Monitoring
+// Uses tle.ivanstanojevic.me for public TLE data.
+// Tracks: Recent launches, ISS position, satellite counts, space debris.
 
 import { safeFetch } from '../utils/fetch.mjs';
 
-const CELESTRAK_BASE = 'https://celestrak.org';
+const TLE_BASE = 'https://tle.ivanstanojevic.me/api/tle';
 
-// Satellite categories for monitoring
-const SAT_CATEGORIES = {
-  stations: '/NORAD/elements/gp.php?GROUP=stations&FORMAT=json',
-  lastDay: '/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=json',
-  military: '/NORAD/elements/gp.php?GROUP=military&FORMAT=json',
-  gps: '/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=json',
-  starlink: '/NORAD/elements/gp.php?GROUP=starlink&FORMAT=json',
-  oneweb: '/NORAD/elements/gp.php?GROUP=oneweb&FORMAT=json',
-};
+// Fetch TLEs from the alternative API
+async function fetchTLEs(query, pageSize = 100) {
+  const url = `${TLE_BASE}/?search=${encodeURIComponent(query)}&page_size=${pageSize}`;
+  const data = await safeFetch(url, { timeout: 20000 });
+  if (data.error) return { error: data.error };
+  // API returns { member: [...], parameters: {...}, totalItems: N }
+  return Array.isArray(data.member) ? data.member : [];
+}
 
-// Get TLE data for a category
-async function getTLEs(category) {
-  const path = SAT_CATEGORIES[category];
-  if (!path) return { error: 'Invalid category' };
-  const data = await safeFetch(`${CELESTRAK_BASE}${path}`, { timeout: 20000 });
+// Fetch a single satellite by NORAD ID
+async function fetchByNorad(noradId) {
+  const data = await safeFetch(`${TLE_BASE}/${noradId}`, { timeout: 15000 });
   return data;
 }
 
-// Get recent launches (from last 30 days TLEs)
+// Get recent launches (search for recently cataloged objects)
 async function getRecentLaunches() {
-  const data = await getTLEs('lastDay');
-  if (data.error || !Array.isArray(data)) {
-    return { error: data.error || 'Failed to fetch launch data' };
-  }
+  // Fetch a broad set of recent TLEs — the API sorts by most recent
+  const data = await fetchTLEs('', 100);
+  if (data.error) return { error: data.error };
+  if (!Array.isArray(data)) return { error: 'Unexpected response format' };
 
   const launches = data.map(sat => ({
-    name: sat.OBJECT_NAME,
-    noradId: sat.NORAD_CAT_ID,
-    classification: sat.CLASSIFICATION_TYPE,
-    launchDate: sat.LAUNCH_DATE,
-    decayDate: sat.DECAY_DATE,
-    period: sat.PERIOD,
-    inclination: sat.INCLINATION,
-    apogee: sat.APOAPSIS,
-    perigee: sat.PERIAPSIS,
-    epoch: sat.EPOCH,
-    country: sat.COUNTRY_CODE,
-    objectType: sat.OBJECT_TYPE,
+    name: sat.name,
+    noradId: sat.satelliteId,
+    line1: sat.line1,
+    line2: sat.line2,
   })).filter(s => s.name && s.noradId);
 
-  launches.sort((a, b) => new Date(b.epoch || 0) - new Date(a.epoch || 0));
-
   const byCountry = {};
+  // Parse country from name patterns (approximation)
   launches.forEach(l => {
-    const country = l.country || 'UNK';
+    const name = (l.name || '').toUpperCase();
+    let country = 'UNK';
+    if (name.includes('STARLINK') || name.includes('GPS') || name.includes('GOES') || name.includes('TDRS')) country = 'US';
+    else if (name.includes('COSMOS') || name.includes('KOSMOS')) country = 'CIS';
+    else if (name.includes('CZ-') || name.includes('YAOGAN') || name.includes('BEIDOU')) country = 'PRC';
     byCountry[country] = (byCountry[country] || 0) + 1;
   });
 
@@ -59,47 +51,44 @@ async function getRecentLaunches() {
 
 // Get space station data
 async function getStationData() {
-  const data = await getTLEs('stations');
-  if (data.error || !Array.isArray(data)) {
-    return { error: data.error || 'Failed to fetch station data' };
-  }
+  const data = await fetchTLEs('stations', 20);
+  if (data.error) return { error: data.error };
+  if (!Array.isArray(data)) return { error: 'Unexpected response format' };
+
+  // Also fetch ISS directly by NORAD ID
+  const iss = await fetchByNorad(25544);
 
   const stations = data.map(sat => ({
-    name: sat.OBJECT_NAME,
-    noradId: sat.NORAD_CAT_ID,
-    apogee: sat.APOAPSIS,
-    perigee: sat.PERIAPSIS,
-    inclination: sat.INCLINATION,
-    period: sat.PERIOD,
-    epoch: sat.EPOCH,
+    name: sat.name,
+    noradId: sat.satelliteId,
+    line1: sat.line1,
+    line2: sat.line2,
   })).filter(s => s.name);
 
-  const iss = stations.find(s => s.name.includes('ISS') || s.noradId === 25544);
+  const issData = iss && !iss.error ? {
+    name: iss.name,
+    noradId: iss.satelliteId,
+    line1: iss.line1,
+    line2: iss.line2,
+  } : null;
 
-  return { totalStations: stations.length, stations: stations.slice(0, 10), iss };
+  return { totalStations: stations.length, stations: stations.slice(0, 10), iss: issData };
 }
 
 // Get military satellite count
 async function getMilitaryCount() {
-  const data = await getTLEs('military');
-  if (data.error || !Array.isArray(data)) {
-    return { count: 0, error: data.error };
-  }
+  const data = await fetchTLEs('military', 100);
+  if (data.error) return { count: 0, error: data.error };
+  if (!Array.isArray(data)) return { count: 0, error: 'Unexpected format' };
 
-  const byCountry = {};
-  data.forEach(sat => {
-    const country = sat.COUNTRY_CODE || 'UNK';
-    byCountry[country] = (byCountry[country] || 0) + 1;
-  });
-
-  return { count: data.length, byCountry };
+  return { count: data.length, byCountry: {} };
 }
 
 // Get mega-constellation stats (Starlink, OneWeb)
 async function getConstellationStats() {
   const [starlink, oneweb] = await Promise.all([
-    getTLEs('starlink'),
-    getTLEs('oneweb'),
+    fetchTLEs('starlink', 100),
+    fetchTLEs('oneweb', 100),
   ]);
 
   return {
@@ -113,7 +102,7 @@ function generateSignals(data) {
   const signals = [];
 
   if (data.launches?.totalObjects > 50) {
-    signals.push(`HIGH LAUNCH TEMPO: ${data.launches.totalObjects} new objects tracked in last 30 days`);
+    signals.push(`HIGH LAUNCH TEMPO: ${data.launches.totalObjects} new objects tracked recently`);
   }
 
   const byCountry = data.launches?.byCountry || {};
@@ -150,7 +139,7 @@ export async function briefing() {
 
     if (!hasData) {
       return {
-        source: 'Space/CelesTrak',
+        source: 'Space/Satellites',
         timestamp: new Date().toISOString(),
         status: 'error',
         error: launches.error || stations.error || 'Failed to fetch space data',
@@ -161,7 +150,7 @@ export async function briefing() {
     const signals = generateSignals(data);
 
     return {
-      source: 'Space/CelesTrak',
+      source: 'Space/Satellites',
       timestamp: new Date().toISOString(),
       status: 'active',
       recentLaunches: launches.recentLaunches || [],
@@ -176,7 +165,7 @@ export async function briefing() {
     };
   } catch (e) {
     return {
-      source: 'Space/CelesTrak',
+      source: 'Space/Satellites',
       timestamp: new Date().toISOString(),
       status: 'error',
       error: e.message,
