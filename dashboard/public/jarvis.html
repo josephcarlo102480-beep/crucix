@@ -253,6 +253,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .delta-badge.new{color:#4dd0e1;border:1px solid rgba(77,208,225,0.3);background:rgba(77,208,225,0.08);animation:pulse-new 2s ease infinite}
 .delta-list{max-height:160px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.2) transparent}
 .delta-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-family:var(--mono);font-size:10px;border-bottom:1px solid rgba(255,255,255,0.04)}
+.delta-row.delta-expandable{cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
+.delta-row.delta-expandable:hover{border-color:rgba(100,240,200,0.2);box-shadow:0 0 6px rgba(100,240,200,0.1)}
+.delta-row.delta-expanded{border-color:rgba(100,240,200,0.3);background:rgba(100,240,200,0.04)}
 .delta-row.new{background:rgba(77,208,225,0.04)}
 .delta-label{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .delta-val{color:var(--dim);font-size:9px;white-space:nowrap}
@@ -1507,17 +1510,30 @@ function renderRight(){
   const deescalated = (delta.signals?.deescalated || []).slice(0,4);
   const newSigs = (delta.signals?.new || []).slice(0,4);
   const deltaRows = [];
+  function deltaDetail(s,type){
+    const parts=[];
+    if(s.source)parts.push(`Source: ${s.source}`);
+    if(s.key)parts.push(`Key: ${s.key}`);
+    if(s.timestamp)parts.push(`Time: ${new Date(s.timestamp).toLocaleString()}`);
+    if(s.severity)parts.push(`Severity: ${s.severity.toUpperCase()}`);
+    if(type==='new'&&s.reason)parts.push(`Reason: ${s.reason}`);
+    if(s.from!==undefined)parts.push(`From: ${s.from} → To: ${s.to}`);
+    if(s.pctChange!==undefined)parts.push(`Change: ${s.pctChange>0?'+':''}${s.pctChange}%`);
+    else if(s.change!==undefined)parts.push(`Change: ${s.change>0?'+':''}${s.change}`);
+    if(s.url)parts.push(`<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--accent2)">${s.url}</a>`);
+    return `<div class="delta-detail" style="display:none;padding:4px 8px 6px 24px;font-size:9px;color:var(--dim);line-height:1.6;border-bottom:1px solid rgba(255,255,255,0.03)">${parts.join('<br>')}</div>`;
+  }
   for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>`);
+    deltaRows.push(`<div class="delta-row new delta-expandable"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>${deltaDetail(s,'new')}`);
   }
   for(const s of escalated){
     const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
     const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>${deltaDetail(s,'up')}`);
   }
   for(const s of deescalated){
     const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>`);
+    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>${deltaDetail(s,'down')}`);
   }
   const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
 
@@ -1854,6 +1870,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.querySelector('.nuke-clickable[data-site]')) {
       observer.disconnect();
       setTimeout(hookNukeClicks, 600);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+
+// === Phase 6: Sweep Delta Expandable Items ===
+(function(){
+  function hookDeltaClicks() {
+    document.querySelectorAll('.delta-expandable').forEach(row => {
+      row.addEventListener('click', () => {
+        const detail = row.nextElementSibling;
+        if (detail && detail.classList.contains('delta-detail')) {
+          const isOpen = detail.style.display !== 'none';
+          detail.style.display = isOpen ? 'none' : 'block';
+          row.classList.toggle('delta-expanded', !isOpen);
+        }
+      });
+    });
+  }
+  const observer = new MutationObserver(() => {
+    if (document.querySelector('.delta-expandable')) {
+      observer.disconnect();
+      setTimeout(hookDeltaClicks, 600);
     }
   });
   observer.observe(document.body, { childList: true, subtree: true });
