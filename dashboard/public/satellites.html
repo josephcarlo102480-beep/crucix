@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.35.2"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -53,6 +54,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .pass-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pass-detail{color:var(--dim);font-size:9px;margin-top:2px}
 .pass-empty{padding:8px 16px;font-size:9px;color:var(--dim)}
+#map2d,#globe3d{position:absolute;top:0;left:0;width:100%;height:100%}
+#globe3d{display:none}
+#view-toggle{position:absolute;top:12px;right:12px;z-index:1000;display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer}
+#view-toggle .vtg{padding:6px 14px;background:var(--panel);color:var(--dim);border:none;font-family:var(--mono);font-size:11px;cursor:pointer;transition:all 0.2s}
+#view-toggle .vtg:first-child{border-right:1px solid var(--border)}
+#view-toggle .vtg.active{color:var(--accent);background:rgba(100,240,200,0.12);text-shadow:0 0 8px rgba(100,240,200,0.4)}
+#view-toggle:hover{border-color:var(--border-bright);box-shadow:0 0 12px rgba(100,240,200,0.1)}
 </style>
 </head>
 <body>
@@ -97,7 +105,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
     <div id="passes"><div class="pass-empty">Load satellites to see passes</div></div>
     <div id="status">Ready. Click a category to load satellites.</div>
   </div>
-  <div id="globe-container"></div>
+  <div id="globe-container">
+    <div id="map2d"></div>
+    <div id="globe3d"></div>
+    <div id="view-toggle">
+      <button class="vtg active" data-view="2d">2D</button>
+      <button class="vtg" data-view="3d">3D</button>
+    </div>
+  </div>
 </div>
 <div id="satPopup">
   <div class="popup-inner">
@@ -135,7 +150,7 @@ let allPoints = [];
 
 // === Globe setup ===
 function initGlobe() {
-  globe = L.map('globe-container', {
+  globe = L.map('map2d', {
     center: [OBSERVER.lat, OBSERVER.lng],
     zoom: 2,
     minZoom: 2,
@@ -388,6 +403,8 @@ function updateGlobe() {
       opacity: 0.8
     }).on('click', () => showSatPopup(pt)).addTo(pointLayer);
   }
+
+  if (viewMode === '3d') update3DGlobe();
 }
 
 // === Update Current Positions (periodic) ===
@@ -439,6 +456,8 @@ function updatePositions() {
       opacity: 0.8
     }).on('click', () => showSatPopup(pt)).addTo(pointLayer);
   }
+
+  if (viewMode === '3d') update3DGlobe();
 }
 
 // === Popup ===
@@ -563,6 +582,94 @@ function renderPasses(passes) {
   }).join('');
 }
 
+// === 3D Globe (Globe.gl) ===
+let globe3d = null;
+let viewMode = '2d';
+
+function init3DGlobe() {
+  const container = document.getElementById('globe3d');
+  globe3d = Globe()(container)
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+    .showAtmosphere(true)
+    .atmosphereColor('#64f0c8')
+    .atmosphereAltitude(0.15)
+    .pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 })
+    // Satellite points
+    .pointsData([])
+    .pointLat('lat')
+    .pointLng('lng')
+    .pointAltitude('alt3d')
+    .pointColor('color')
+    .pointRadius('r3d')
+    .pointsMerge(false)
+    .onPointClick(pt => showSatPopup(pt))
+    // Ground tracks
+    .pathsData([])
+    .pathPoints('coords3d')
+    .pathPointLat(p => p[0])
+    .pathPointLng(p => p[1])
+    .pathPointAlt(0)
+    .pathColor('color3d')
+    .pathStroke('stroke3d')
+    .pathTransitionDuration(0);
+
+  // Observer point — add a custom ring
+  globe3d.ringsData([{ lat: OBSERVER.lat, lng: OBSERVER.lng }])
+    .ringLat('lat').ringLng('lng')
+    .ringColor(() => '#ffb84c')
+    .ringMaxRadius(1.2)
+    .ringPropagationSpeed(0.8)
+    .ringRepeatPeriod(1200);
+}
+
+function update3DGlobe() {
+  if (!globe3d) return;
+
+  // Build points data for 3D
+  const pts3d = allPoints.map(pt => ({
+    ...pt,
+    alt3d: pt.altitude / 6371 * 0.5 + 0.005,
+    r3d: pt.radius > 0.5 ? 0.4 : 0.2,
+  }));
+
+  // Build paths data for 3D
+  const paths3d = allPaths.map(p => ({
+    coords3d: p.coords,
+    color3d: p.color,
+    stroke3d: (p.stroke || 1) * 0.6,
+  }));
+
+  globe3d.pointsData(pts3d);
+  globe3d.pathsData(paths3d);
+}
+
+function setViewMode(mode) {
+  if (mode === viewMode) return;
+  viewMode = mode;
+  const map2d = document.getElementById('map2d');
+  const g3d = document.getElementById('globe3d');
+  const btns = document.querySelectorAll('#view-toggle .vtg');
+
+  btns.forEach(b => b.classList.toggle('active', b.dataset.view === mode));
+
+  if (mode === '3d') {
+    map2d.style.display = 'none';
+    g3d.style.display = 'block';
+    if (!globe3d) init3DGlobe();
+    // Resize to fill container
+    const rect = document.getElementById('globe-container').getBoundingClientRect();
+    globe3d.width(rect.width);
+    globe3d.height(rect.height);
+    update3DGlobe();
+  } else {
+    g3d.style.display = 'none';
+    map2d.style.display = 'block';
+    globe.invalidateSize();
+  }
+}
+
 // === Init ===
 document.addEventListener('DOMContentLoaded', () => {
   initGlobe();
@@ -572,8 +679,22 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => toggleCategory(btn.dataset.cat));
   });
 
+  // View toggle
+  document.querySelectorAll('#view-toggle .vtg').forEach(btn => {
+    btn.addEventListener('click', () => setViewMode(btn.dataset.view));
+  });
+
   // Auto-update positions every 15 seconds
   setInterval(updatePositions, 15000);
+
+  // Resize 3D globe on window resize
+  window.addEventListener('resize', () => {
+    if (globe3d && viewMode === '3d') {
+      const rect = document.getElementById('globe-container').getBoundingClientRect();
+      globe3d.width(rect.width);
+      globe3d.height(rect.height);
+    }
+  });
 
   setStatus('Ready. Click a category to load satellites.');
 });
