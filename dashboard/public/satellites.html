@@ -119,7 +119,7 @@ const OBSERVER_GD = {
 
 const CATEGORIES = {
   iss:      { noradId: 25544, query: 'ISS', pageSize: 5, color: '#ffffff', trackColor: 'rgba(255,255,255,0.6)' },
-  military: { query: 'military', pageSize: 20, color: '#ff5f63', trackColor: 'rgba(255,95,99,0.5)' },
+  military: { queries: ['USA', 'NOSS', 'COSMOS'], pageSize: 15, maxTotal: 30, color: '#ff5f63', trackColor: 'rgba(255,95,99,0.5)' },
   starlink: { query: 'starlink', pageSize: 30, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
   oneweb:   { query: 'oneweb', pageSize: 30, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
   gps:      { query: 'GPS', pageSize: 30, color: '#ff9800', trackColor: 'rgba(255,152,0,0.5)' },
@@ -184,6 +184,29 @@ async function fetchTLEs(category) {
         return [data];
       }
       return [];
+    }
+
+    // Multi-query categories (e.g. military: USA + NOSS + COSMOS)
+    if (cat.queries) {
+      const seen = new Set();
+      const combined = [];
+      for (const q of cat.queries) {
+        try {
+          const url = `${TLE_API}/?search=${encodeURIComponent(q)}&page_size=${cat.pageSize}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          for (const t of (data.member || [])) {
+            if (t.line1 && t.line2 && !seen.has(t.satelliteId)) {
+              seen.add(t.satelliteId);
+              combined.push(t);
+              if (combined.length >= (cat.maxTotal || 30)) break;
+            }
+          }
+        } catch (e) { /* skip failed sub-query */ }
+        if (combined.length >= (cat.maxTotal || 30)) break;
+      }
+      setStatus(`Loaded ${combined.length} ${category} satellites`);
+      return combined;
     }
 
     const url = `${TLE_API}/?search=${encodeURIComponent(cat.query)}&page_size=${cat.pageSize}`;
