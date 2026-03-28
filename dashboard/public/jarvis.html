@@ -67,7 +67,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 /* GRID */
 .grid{display:grid;grid-template-columns:240px 1fr 340px;gap:10px;margin-top:10px;min-height:calc(100vh - 100px)}
 .col{display:flex;flex-direction:column;gap:10px}
-.g-panel{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(16px);padding:12px;position:relative;overflow:hidden}
+.g-panel{border:1px solid var(--border);background:var(--glass);backdrop-filter:blur(16px);padding:12px;position:relative;overflow:visible}
 .g-panel::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(100,240,200,0.15),transparent);pointer-events:none}
 .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .sec-head h3{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:var(--dim)}
@@ -94,6 +94,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
 .nuke-ok{padding:8px;border:1px solid rgba(100,240,200,0.15);background:rgba(100,240,200,0.04);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
 .site-row{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;display:flex;justify-content:space-between}
+.site-row.nuke-clickable{cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
+.site-row.nuke-clickable:hover{border-color:rgba(100,240,200,0.3);box-shadow:0 0 8px rgba(100,240,200,0.15);background:rgba(100,240,200,0.05)}
 .site-val{font-family:var(--mono);color:var(--accent);font-size:10px}
 .econ-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px}
 .econ-row .elabel{color:var(--dim)}
@@ -626,7 +628,7 @@ function renderLeftRail(){
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
+  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${s.site}"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
   const usd=D.fred.find(f=>f.id==='DTWEXBGS');
@@ -1769,6 +1771,93 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <script>
+// === Phase 4: Nuclear Watch Map Integration ===
+(function(){
+  const nukeCoords = {
+    'Zaporizhzhia NPP (Ukraine)': { lat: 47.5069, lng: 34.5853 },
+    'Chernobyl Exclusion Zone': { lat: 51.3894, lng: 30.0988 },
+    'Bushehr NPP (Iran)': { lat: 28.8325, lng: 50.8868 },
+    'Yongbyon (North Korea)': { lat: 39.7964, lng: 125.7558 },
+    'Fukushima Daiichi': { lat: 37.4211, lng: 141.0328 },
+    'Dimona (Israel)': { lat: 31.0646, lng: 35.1466 },
+  };
+
+  function findNukeCoords(siteName) {
+    for (const [key, coords] of Object.entries(nukeCoords)) {
+      if (siteName.includes(key) || key.includes(siteName)) return coords;
+    }
+    // Fuzzy match: check if any key word overlaps
+    const words = siteName.toLowerCase().split(/[\s()]+/);
+    for (const [key, coords] of Object.entries(nukeCoords)) {
+      const keyWords = key.toLowerCase().split(/[\s()]+/);
+      if (words.some(w => w.length > 3 && keyWords.some(kw => kw.includes(w)))) return coords;
+    }
+    return null;
+  }
+
+  function hookNukeClicks() {
+    document.querySelectorAll('.nuke-clickable[data-site]').forEach(el => {
+      el.addEventListener('click', () => {
+        const site = el.dataset.site;
+        const coords = findNukeCoords(site);
+        if (!coords) return;
+
+        // Find the nuke data
+        const nukeData = (typeof D !== 'undefined' && D.nuke) ? D.nuke.find(n => n.site === site) : null;
+
+        // Zoom globe to site
+        if (typeof globe !== 'undefined' && globe) {
+          globe.pointOfView({ lat: coords.lat, lng: coords.lng, altitude: 0.8 }, 1000);
+        }
+
+        // Show popup overlay
+        const popup = document.getElementById('mapPopup') || createNukePopup();
+        const cpmVal = nukeData?.cpm?.toFixed(1) || 'No data';
+        const status = nukeData?.anom ? 'ANOMALY DETECTED' : 'Normal';
+        const statusColor = nukeData?.anom ? 'var(--danger)' : 'var(--accent)';
+        popup.innerHTML = `
+          <div style="padding:12px;background:var(--panel);border:1px solid var(--border-bright);font-family:var(--mono);font-size:11px;max-width:280px">
+            <div style="color:var(--accent);font-weight:600;margin-bottom:6px">${site}</div>
+            <div style="margin-bottom:4px">CPM: <span style="color:var(--accent)">${cpmVal}</span></div>
+            <div style="margin-bottom:4px">Status: <span style="color:${statusColor}">${status}</span></div>
+            <div style="margin-bottom:4px">Readings: ${nukeData?.n || 0}</div>
+            <div style="color:var(--dim);font-size:9px;margin-top:6px">Click anywhere to close</div>
+          </div>`;
+        popup.style.display = 'block';
+        popup.style.position = 'fixed';
+        popup.style.top = '50%';
+        popup.style.left = '50%';
+        popup.style.transform = 'translate(-50%,-50%)';
+        popup.style.zIndex = '9999';
+
+        const closeHandler = (e) => {
+          if (!popup.contains(e.target) && !el.contains(e.target)) {
+            popup.style.display = 'none';
+            document.removeEventListener('click', closeHandler);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 100);
+      });
+    });
+  }
+
+  function createNukePopup() {
+    const div = document.createElement('div');
+    div.id = 'nukePopup';
+    div.style.display = 'none';
+    document.body.appendChild(div);
+    return div;
+  }
+
+  const observer = new MutationObserver(() => {
+    if (document.querySelector('.nuke-clickable[data-site]')) {
+      observer.disconnect();
+      setTimeout(hookNukeClicks, 600);
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+})();
+
 // === Phase 3: Sensor Grid Click-to-Filter ===
 (function(){
   let activeFilter = null;
