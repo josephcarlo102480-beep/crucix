@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CRUCIX — Satellite Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -42,6 +43,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 #satPopup .popup-close{font-size:9px;color:var(--dim);margin-top:8px;cursor:pointer}
 #satPopup .popup-close:hover{color:var(--accent)}
 .observer-info{padding:8px 16px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim)}
+.leaflet-container{background:var(--bg) !important}
+.leaflet-control-zoom a{background:var(--panel) !important;color:var(--accent) !important;border-color:var(--border) !important}
 </style>
 </head>
 <body>
@@ -110,90 +113,33 @@ const CATEGORIES = {
 // State
 const loadedCategories = {}; // cat -> { tles: [], satrecs: [], visible: bool }
 let globe = null;
+let pathLayer = null;
+let pointLayer = null;
 let allPaths = [];
 let allPoints = [];
 
 // === Globe setup ===
 function initGlobe() {
-  const container = document.getElementById('globe-container');
-  const w = container.clientWidth;
-  const h = container.clientHeight;
-
-  globe = Globe()
-    .width(w)
-    .height(h)
-    .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg')
-    .bumpImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-topology.png')
-    .backgroundImageUrl('')
-    .backgroundColor('rgba(0,0,0,0)')
-    .showAtmosphere(true)
-    .atmosphereColor('#64f0c8')
-    .atmosphereAltitude(0.15)
-    .showGraticules(true)
-    // Paths (ground tracks)
-    .pathsData([])
-    .pathPoints('coords')
-    .pathPointLat(p => p[0])
-    .pathPointLng(p => p[1])
-    .pathPointAlt(0.005)
-    .pathColor('color')
-    .pathStroke('stroke')
-    .pathTransitionDuration(0)
-    // Points (current positions)
-    .pointsData([])
-    .pointLat('lat')
-    .pointLng('lng')
-    .pointAltitude('alt')
-    .pointColor('color')
-    .pointRadius('radius')
-    .pointLabel('')
-    .onPointClick((pt) => showSatPopup(pt))
-    .onPointHover(pt => { container.style.cursor = pt ? 'pointer' : 'grab'; })
-    (container);
-
-  // Add stars
-  const scene = globe.scene();
-  const starGeom = new THREE.BufferGeometry();
-  const starVerts = [];
-  for (let i = 0; i < 2000; i++) {
-    const r = 600 + Math.random() * 300;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi));
-  }
-  starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-  scene.add(new THREE.Points(starGeom, new THREE.PointsMaterial({ color: 0x88bbaa, size: 0.8, transparent: true, opacity: 0.5 })));
-
-  // Graticule styling
-  scene.traverse(obj => {
-    if (obj.material && obj.type === 'Line') {
-      obj.material.color.set(0x1a3a2a);
-      obj.material.opacity = 0.2;
-      obj.material.transparent = true;
-    }
+  globe = L.map('globe-container', {
+    center: [OBSERVER.lat, OBSERVER.lng],
+    zoom: 2,
+    minZoom: 2,
+    maxZoom: 10,
+    worldCopyJump: true,
+    zoomControl: false,
+    attributionControl: false
   });
 
-  // Controls
-  globe.controls().autoRotate = true;
-  globe.controls().autoRotateSpeed = 0.2;
-  globe.controls().enableDamping = true;
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 18
+  }).addTo(globe);
 
-  let rotateTimer;
-  container.addEventListener('mousedown', () => {
-    globe.controls().autoRotate = false;
-    clearTimeout(rotateTimer);
-  });
-  container.addEventListener('mouseup', () => {
-    rotateTimer = setTimeout(() => { globe.controls().autoRotate = true; }, 8000);
-  });
+  pathLayer = L.layerGroup().addTo(globe);
+  pointLayer = L.layerGroup().addTo(globe);
 
-  // Set initial view centered on observer
-  globe.pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 }, 0);
+  L.control.zoom({ position: 'bottomright' }).addTo(globe);
 
-  // Resize handler
-  window.addEventListener('resize', () => {
-    globe.width(container.clientWidth).height(container.clientHeight);
-  });
+  window.addEventListener('resize', () => { globe.invalidateSize(); });
 }
 
 // === TLE Fetching ===
@@ -372,8 +318,26 @@ function updateGlobe() {
     if (catData.points) allPoints.push(...catData.points);
   }
 
-  globe.pathsData(allPaths);
-  globe.pointsData(allPoints);
+  pathLayer.clearLayers();
+  for (const path of allPaths) {
+    L.polyline(path.coords, {
+      color: path.color,
+      weight: path.stroke || 1,
+      opacity: 0.8
+    }).addTo(pathLayer);
+  }
+
+  pointLayer.clearLayers();
+  for (const pt of allPoints) {
+    L.circleMarker([pt.lat, pt.lng], {
+      radius: pt.radius > 0.5 ? 6 : 4,
+      fillColor: pt.color,
+      color: pt.color,
+      fillOpacity: 1,
+      weight: 1,
+      opacity: 0.8
+    }).on('click', () => showSatPopup(pt)).addTo(pointLayer);
+  }
 }
 
 // === Update Current Positions (periodic) ===
@@ -413,7 +377,18 @@ function updatePositions() {
     if (!catData.visible || !catData.points) continue;
     allPoints.push(...catData.points);
   }
-  globe.pointsData(allPoints);
+
+  pointLayer.clearLayers();
+  for (const pt of allPoints) {
+    L.circleMarker([pt.lat, pt.lng], {
+      radius: pt.radius > 0.5 ? 6 : 4,
+      fillColor: pt.color,
+      color: pt.color,
+      fillOpacity: 1,
+      weight: 1,
+      opacity: 0.8
+    }).on('click', () => showSatPopup(pt)).addTo(pointLayer);
+  }
 }
 
 // === Popup ===
