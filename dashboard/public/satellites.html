@@ -794,9 +794,9 @@ function init3DGlobe() {
     .pointsData([])
     .pointLat('lat')
     .pointLng('lng')
-    .pointAltitude(0)
+    .pointAltitude(d => d.alt3d || 0.01)
     .pointColor(d => d.color)
-    .pointRadius(0.4)
+    .pointRadius(d => d.r3d || 0.4)
     .pointsMerge(false)
     .onPointClick(pt => showSatPopup(pt))
     // Ground tracks
