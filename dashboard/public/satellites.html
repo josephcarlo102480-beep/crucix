@@ -118,6 +118,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
         <span class="cat-name">GPS</span>
         <span class="cat-count"></span>
       </button>
+      <button class="cat-btn" data-cat="geo">
+        <div class="cat-dot" style="background:#bb44ff;box-shadow:0 0 6px rgba(187,68,255,0.6)"></div>
+        <span class="cat-name">GEO</span>
+        <span class="cat-count"></span>
+      </button>
     </div>
     <div class="passes-header">UPCOMING PASSES (12H)</div>
     <div id="passes"><div class="pass-empty">Load satellites to see passes</div></div>
@@ -158,6 +163,7 @@ const CATEGORIES = {
   starlink: { query: 'starlink', pageSize: 30, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
   oneweb:   { query: 'oneweb', pageSize: 30, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
   gps:      { query: 'GPS', pageSize: 30, color: '#ff9800', trackColor: 'rgba(255,152,0,0.5)' },
+  geo:      { queries: ['UFO', 'AEHF', 'WGS', 'MUOS', 'SBIRS'], pageSize: 10, maxTotal: 30, color: '#bb44ff', trackColor: 'rgba(187,68,255,0.5)' },
 };
 
 // State
@@ -550,6 +556,11 @@ function computePasses() {
     const cat = CATEGORIES[catName];
 
     for (const { satrec, tle } of catData.satrecs) {
+      // Skip non-LEO satellites — they don't produce real "passes"
+      // Period = 2π / meanMotion(rad/min); LEO period < 128 min (~2000 km alt)
+      const periodMin = 2 * Math.PI / satrec.no;
+      if (periodMin > 128) continue;
+
       let inPass = false, passMaxEl = 0, passMaxElTime = null, passMaxElAz = 0;
 
       for (let t = 0; t <= hoursAhead * 3600; t += stepSec) {
@@ -783,9 +794,9 @@ function init3DGlobe() {
     .pointsData([])
     .pointLat('lat')
     .pointLng('lng')
-    .pointAltitude('alt3d')
+    .pointAltitude(0)
     .pointColor(d => d.color)
-    .pointRadius(d => d.r3d)
+    .pointRadius(0.4)
     .pointsMerge(false)
     .onPointClick(pt => showSatPopup(pt))
     // Ground tracks
@@ -793,14 +804,14 @@ function init3DGlobe() {
     .pathPoints('coords3d')
     .pathPointLat(p => p[0])
     .pathPointLng(p => p[1])
-    .pathPointAlt(0)
+    .pathPointAlt(0.005)
     .pathColor(d => d.color3d)
     .pathStroke(d => d.stroke3d)
     .pathTransitionDuration(0);
 
   // Auto-rotate so globe spins on load
   globe3d.controls().autoRotate = true;
-  globe3d.controls().autoRotateSpeed = 1.2;
+  globe3d.controls().autoRotateSpeed = 0.05;
 
   // Observer point — add a custom ring
   globe3d.ringsData([{ lat: OBSERVER.lat, lng: OBSERVER.lng }])
@@ -817,7 +828,7 @@ function update3DGlobe() {
   // Build points data for 3D
   const pts3d = allPoints.map(pt => ({
     ...pt,
-    alt3d: pt.altitude / 6371 * 0.5 + 0.005,
+    alt3d: pt.altitude / 6371,
     r3d: pt.radius > 0.5 ? 0.4 : 0.2,
   }));
 
