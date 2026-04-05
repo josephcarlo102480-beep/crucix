@@ -955,7 +955,7 @@ function init3DGlobe() {
     // Earth radius. Explicit function accessors prevent Globe.gl from treating
     // bare constants as property keys → NaN vertices → spikes on VideoCore VII.
     .pathsData([])
-    .pathPoints('coords3d')
+    .pathPoints(d => d.coords3d)
     .pathPointLat(p => p[0])
     .pathPointLng(p => p[1])
     .pathPointAlt(p => p[2])
