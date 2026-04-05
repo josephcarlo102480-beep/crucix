@@ -941,16 +941,18 @@ function init3DGlobe() {
     .atmosphereColor('#64f0c8')
     .atmosphereAltitude(0.15)
     .pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 })
-    // Satellite points
-    .pointsData([])
-    .pointLat(d => d.lat)
-    .pointLng(d => d.lng)
-    .pointAltitude(d => (d.altKm || 0) / 6371)
-    .pointColor(d => d.color3d || '#00ffff')
-    .pointRadius(0.15)
-    .pointResolution(4)
-    .pointsMerge(false)
-    .onPointClick(pt => showSatPopup(pt))
+    // Satellites as floating spheres via customLayerData (no altitude pillars)
+    .customLayerData([])
+    .customThreeObject(d => {
+      const geo = new THREE.SphereGeometry(0.5, 6, 6);
+      const mat = new THREE.MeshBasicMaterial({ color: d.color3d || '#00ffff' });
+      return new THREE.Mesh(geo, mat);
+    })
+    .customThreeObjectUpdate((obj, d) => {
+      const c = globe3d.getCoords(d.lat, d.lng, d.altKm / 6371);
+      Object.assign(obj.position, c);
+      obj.material.color.set(d.color3d || '#00ffff');
+    })
     // Ground tracks — each point is [lat, lng, alt] with alt as fraction of
     // Earth radius. Explicit function accessors prevent Globe.gl from treating
     // bare constants as property keys → NaN vertices → spikes on VideoCore VII.
@@ -1017,7 +1019,7 @@ function update3DGlobe() {
   }
   console.log(`[CRUCIX] 3D update: ${pts3d.length} points, ${paths3d.length} path segments | propagate ok/fail: ${_satDiag.propagateOk}/${_satDiag.propagateFail}`, _satDiag.failReasons);
 
-  globe3d.pointsData(pts3d);
+  globe3d.customLayerData(pts3d);
   globe3d.pathsData(paths3d);
 
   // Scan the Three.js scene for bad vertices after Globe.gl builds geometry.
