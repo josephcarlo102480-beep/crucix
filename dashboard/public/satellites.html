@@ -150,6 +150,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 <script>
 // === Satellite Tracker ===
 const TLE_API = 'https://tle.ivanstanojevic.me/api/tle';
+const TLE_MAX_AGE_DAYS = 14; // Skip TLEs older than this — stale TLEs produce erratic tracks
 const OBSERVER = { lat: 30.5155, lng: -90.5063 };
 const OBSERVER_GD = {
   longitude: OBSERVER.lng * Math.PI / 180,
@@ -211,6 +212,36 @@ function initGlobe() {
 }
 
 // === TLE Fetching ===
+function tleEpochToDate(line1) {
+  // TLE line1 cols 19-32: YYDDD.DDDDDDDD (2-digit year + fractional day-of-year)
+  try {
+    const epochStr = line1.substring(18, 32).trim();
+    const yy = parseInt(epochStr.substring(0, 2), 10);
+    const ddd = parseFloat(epochStr.substring(2));
+    if (!Number.isFinite(yy) || !Number.isFinite(ddd)) return null;
+    const year = yy < 57 ? 2000 + yy : 1900 + yy; // standard TLE convention
+    const jan1 = new Date(Date.UTC(year, 0, 1));
+    return new Date(jan1.getTime() + (ddd - 1) * 86400000);
+  } catch (e) {
+    return null;
+  }
+}
+
+function isTleFresh(tle) {
+  const maxAge = TLE_MAX_AGE_DAYS * 86400000;
+  // Primary: use API date field
+  if (tle.date) {
+    const ageMs = Date.now() - new Date(tle.date).getTime();
+    return Number.isFinite(ageMs) && ageMs < maxAge;
+  }
+  // Fallback: parse epoch from TLE line1
+  if (tle.line1) {
+    const epoch = tleEpochToDate(tle.line1);
+    if (epoch) return (Date.now() - epoch.getTime()) < maxAge;
+  }
+  return false; // Can't verify freshness — reject
+}
+
 async function fetchTLEs(category) {
   const cat = CATEGORIES[category];
   if (!cat) return [];
@@ -239,7 +270,7 @@ async function fetchTLEs(category) {
           const res = await fetch(url);
           const data = await res.json();
           for (const t of (data.member || [])) {
-            if (t.line1 && t.line2 && !seen.has(t.satelliteId)) {
+            if (t.line1 && t.line2 && !seen.has(t.satelliteId) && isTleFresh(t)) {
               seen.add(t.satelliteId);
               combined.push(t);
               if (combined.length >= (cat.maxTotal || 30)) break;
@@ -255,7 +286,7 @@ async function fetchTLEs(category) {
     const url = `${TLE_API}/?search=${encodeURIComponent(cat.query)}&page_size=${cat.pageSize}`;
     const res = await fetch(url);
     const data = await res.json();
-    const tles = (data.member || []).filter(t => t.line1 && t.line2);
+    const tles = (data.member || []).filter(t => t.line1 && t.line2 && isTleFresh(t));
     setStatus(`Loaded ${tles.length} ${category} satellites`);
     return tles;
   } catch (err) {
@@ -265,21 +296,84 @@ async function fetchTLEs(category) {
 }
 
 // === Orbital Propagation ===
+// Diagnostic counters — check via console: window._satDiag
+const _satDiag = { propagateOk: 0, propagateFail: 0, failReasons: {} };
+window._satDiag = _satDiag;
+function _propagateFail(reason) {
+  _satDiag.propagateFail++;
+  _satDiag.failReasons[reason] = (_satDiag.failReasons[reason] || 0) + 1;
+  return null;
+}
+
 function propagatePosition(satrec, time) {
-  const posVel = satellite.propagate(satrec, time);
-  if (!posVel.position || typeof posVel.position === 'boolean') return null;
+  try {
+    const posVel = satellite.propagate(satrec, time);
 
-  const gmst = satellite.gstime(time);
-  const gd = satellite.eciToGeodetic(posVel.position, gmst);
+    // propagate() returns false/undefined for position on failure
+    if (!posVel || !posVel.position || typeof posVel.position === 'boolean') {
+      return _propagateFail('no_position');
+    }
 
-  return {
-    lat: satellite.degreesLat(gd.latitude),
-    lng: satellite.degreesLong(gd.longitude),
-    alt: gd.height, // km
-    vel: posVel.velocity ? Math.sqrt(
-      posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2
-    ) : 0
-  };
+    // SGP4 error code: nonzero means propagation failed (decay, bad elements, etc.)
+    if (satrec.error !== 0) return _propagateFail('sgp4_error_' + satrec.error);
+
+    // Validate raw ECI — NaN here means everything downstream is garbage
+    const p = posVel.position;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+      return _propagateFail('eci_nan');
+    }
+
+    const gmst = satellite.gstime(time);
+    const gd = satellite.eciToGeodetic(posVel.position, gmst);
+
+    // Convert radians to degrees — these throw RangeError if out of bounds
+    const lat = satellite.degreesLat(gd.latitude);
+    const lng = satellite.degreesLong(gd.longitude);
+    const alt = gd.height; // km
+
+    // Final coordinate validation
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(alt)) {
+      return _propagateFail('geodetic_nan');
+    }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      return _propagateFail('coord_range');
+    }
+    if (alt < 0 || alt > 100000) return _propagateFail('bad_alt');
+
+    _satDiag.propagateOk++;
+    return { lat, lng, alt,
+      vel: posVel.velocity ? Math.sqrt(
+        posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2
+      ) : 0
+    };
+  } catch (e) {
+    return _propagateFail('exception');
+  }
+}
+
+// Angular separation on the sphere (degrees) — used for 3D splitting
+function angularSep(p1, p2) {
+  const toRad = Math.PI / 180;
+  const lat1 = p1.lat * toRad, lng1 = p1.lng * toRad;
+  const lat2 = p2.lat * toRad, lng2 = p2.lng * toRad;
+  const cos_a = Math.sin(lat1) * Math.sin(lat2)
+              + Math.cos(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+  return Math.acos(Math.min(1, Math.max(-1, cos_a))) / toRad;
+}
+
+function splitByCondition(points, isBad) {
+  const segs = [];
+  let cur = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    if (isBad(points[i - 1], points[i])) {
+      if (cur.length > 1) segs.push(cur);
+      cur = [points[i]];
+    } else {
+      cur.push(points[i]);
+    }
+  }
+  if (cur.length > 1) segs.push(cur);
+  return segs;
 }
 
 function generateGroundTrack(satrec, minutesBefore, minutesAfter, intervalSeconds) {
@@ -292,25 +386,41 @@ function generateGroundTrack(satrec, minutesBefore, minutesAfter, intervalSecond
     if (pos) points.push(pos);
   }
 
-  // Break into segments at antimeridian crossings
-  if (points.length === 0) return [];
+  if (points.length < 2) return { segments2d: [], segments3d: [] };
 
-  const segments = [];
-  let currentSegment = [points[0]];
-
-  for (let i = 1; i < points.length; i++) {
-    const prevLng = points[i - 1].lng;
-    const currLng = points[i].lng;
-    if (Math.abs(currLng - prevLng) > 180) {
-      if (currentSegment.length > 1) segments.push(currentSegment);
-      currentSegment = [points[i]];
-    } else {
-      currentSegment.push(points[i]);
+  // --- Outlier removal ---
+  // A point is an outlier if it's far from BOTH neighbors while the neighbors
+  // are close to each other — i.e. the track is smooth without this point.
+  const cleaned = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const dPrev = angularSep(points[i - 1], points[i]);
+    const dNext = angularSep(points[i], points[i + 1]);
+    const dSkip = angularSep(points[i - 1], points[i + 1]);
+    if (dPrev > 3 * dSkip && dNext > 3 * dSkip && dSkip < 10) {
+      continue; // isolated bad propagation result — skip it
     }
+    cleaned.push(points[i]);
   }
-  if (currentSegment.length > 1) segments.push(currentSegment);
+  cleaned.push(points[points.length - 1]);
 
-  return segments;
+  if (cleaned.length < 2) return { segments2d: [], segments3d: [] };
+
+  // --- 2D segments (Leaflet) ---
+  // Split on large longitude jumps (antimeridian + near-pole flips) and
+  // large latitude jumps (propagation glitches). These thresholds prevent
+  // lines from shooting across the flat map.
+  const segments2d = splitByCondition(cleaned, (a, b) => {
+    return Math.abs(b.lng - a.lng) > 90 || Math.abs(b.lat - a.lat) > 10;
+  });
+
+  // --- 3D segments (Globe.gl) ---
+  // Use actual angular separation on the sphere.  A LEO satellite at 60-second
+  // intervals moves ~4° of arc; anything beyond 8° is a discontinuity (stale
+  // TLE, orbit gap, antimeridian).  This correctly handles near-pole tracks
+  // where huge longitude swings correspond to tiny real distances.
+  const segments3d = splitByCondition(cleaned, (a, b) => angularSep(a, b) > 8);
+
+  return { segments2d, segments3d };
 }
 
 // === Toggle Category ===
@@ -339,9 +449,17 @@ async function toggleCategory(catName) {
   }
 
   const satrecs = [];
+  const maxEpochAge = TLE_MAX_AGE_DAYS * 86400000;
   for (const tle of tles) {
     try {
       const satrec = satellite.twoline2satrec(tle.line1, tle.line2);
+      // Double-check epoch age from the parsed satrec itself.
+      // satrec.jdsatepoch is Julian date of TLE epoch; convert to ms since Unix epoch.
+      // Julian day 2440587.5 = Unix epoch (Jan 1 1970 00:00 UTC)
+      const epochMs = (satrec.jdsatepoch - 2440587.5) * 86400000;
+      if (Number.isFinite(epochMs) && (Date.now() - epochMs) > maxEpochAge) {
+        continue; // Epoch too old — propagation will produce garbage
+      }
       satrecs.push({ satrec, tle });
     } catch (e) {
       // Skip invalid TLEs
@@ -366,17 +484,32 @@ function computeTracksAndPositions(catName) {
 
   const cat = CATEGORIES[catName];
   catData.paths = [];
+  catData.paths3d = [];
   catData.points = [];
 
   for (const { satrec, tle } of catData.satrecs) {
     // Ground track: +/- 45 minutes, 60-second intervals
-    const segments = generateGroundTrack(satrec, 45, 45, 60);
-    for (const seg of segments) {
+    const { segments2d, segments3d } = generateGroundTrack(satrec, 45, 45, 60);
+
+    // 2D paths (Leaflet) — split at antimeridian / large lng jumps
+    for (const seg of segments2d) {
       catData.paths.push({
         coords: seg.map(p => [p.lat, p.lng]),
         color: cat.trackColor,
         stroke: catName === 'iss' ? 2.0 : 1.0,
         category: catName,
+      });
+    }
+
+    // 3D paths (Globe.gl) — split by angular separation on the sphere
+    // Include explicit altitude (fraction of Earth radius) in every point.
+    // Globe.gl's pathPointAlt with a bare number constant is unreliable in
+    // pathPoints mode — it can produce NaN vertices → spikes on VideoCore VII.
+    for (const seg of segments3d) {
+      catData.paths3d.push({
+        coords: seg.map(p => [p.lat, p.lng, 0.005]),
+        color: cat.trackColor,
+        stroke: catName === 'iss' ? 2.0 : 1.0,
       });
     }
 
@@ -394,6 +527,7 @@ function computeTracksAndPositions(catName) {
         name: tle.name,
         noradId: tle.satelliteId,
         altitude: pos.alt,
+        altKm: pos.alt,
         velocity: pos.vel,
         actualLat: pos.lat,
         actualLng: pos.lng,
@@ -460,6 +594,7 @@ function updatePositions() {
           name: tle.name,
           noradId: tle.satelliteId,
           altitude: pos.alt,
+          altKm: pos.alt,
           velocity: pos.vel,
           actualLat: pos.lat,
           actualLng: pos.lng,
@@ -528,16 +663,22 @@ function setStatus(msg) {
 
 // === Pass Predictions ===
 function computeLookAngles(satrec, time) {
-  const posVel = satellite.propagate(satrec, time);
-  if (!posVel.position || typeof posVel.position === 'boolean') return null;
-  const gmst = satellite.gstime(time);
-  const ecf = satellite.eciToEcf(posVel.position, gmst);
-  const look = satellite.ecfToLookAngles(OBSERVER_GD, ecf);
-  return {
-    azimuth: look.azimuth * 180 / Math.PI,
-    elevation: look.elevation * 180 / Math.PI,
-    range: look.rangeSat
-  };
+  try {
+    const posVel = satellite.propagate(satrec, time);
+    if (!posVel || !posVel.position || typeof posVel.position === 'boolean') return null;
+    if (satrec.error !== 0) return null;
+    const p = posVel.position;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return null;
+    const gmst = satellite.gstime(time);
+    const ecf = satellite.eciToEcf(p, gmst);
+    const look = satellite.ecfToLookAngles(OBSERVER_GD, ecf);
+    const az = look.azimuth * 180 / Math.PI;
+    const el = look.elevation * 180 / Math.PI;
+    if (!Number.isFinite(az) || !Number.isFinite(el)) return null;
+    return { azimuth: az, elevation: el, range: look.rangeSat };
+  } catch (e) {
+    return null;
+  }
 }
 
 function azToBearing(azDeg) {
@@ -621,9 +762,16 @@ function renderPasses(passes) {
 let allConjunctions = [];
 
 function propagateECI(satrec, time) {
-  const posVel = satellite.propagate(satrec, time);
-  if (!posVel.position || typeof posVel.position === 'boolean') return null;
-  return posVel.position; // { x, y, z } in km ECI
+  try {
+    const posVel = satellite.propagate(satrec, time);
+    if (!posVel || !posVel.position || typeof posVel.position === 'boolean') return null;
+    if (satrec.error !== 0) return null;
+    const p = posVel.position;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return null;
+    return p; // { x, y, z } in km ECI
+  } catch (e) {
+    return null;
+  }
 }
 
 function eciDistance(a, b) {
@@ -756,13 +904,16 @@ function drawConjunctionMarkers() {
     }).addTo(conjLayer);
 
     // Line connecting the two satellites at closest approach
+    // Skip if endpoints cross the antimeridian — the line would span the whole map
     const lineColor = c.severityClass === 'critical' ? '#ff5f63' : c.severityClass === 'warning' ? '#ff9800' : '#ffeb3b';
-    L.polyline([[c.latA, c.lngA], [c.latB, c.lngB]], {
-      color: lineColor,
-      weight: 2,
-      opacity: 0.7,
-      dashArray: '6,4',
-    }).addTo(conjLayer);
+    if (Math.abs(c.lngA - c.lngB) < 180) {
+      L.polyline([[c.latA, c.lngA], [c.latB, c.lngB]], {
+        color: lineColor,
+        weight: 2,
+        opacity: 0.7,
+        dashArray: '6,4',
+      }).addTo(conjLayer);
+    }
   }
 }
 
@@ -792,21 +943,24 @@ function init3DGlobe() {
     .pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 })
     // Satellite points
     .pointsData([])
-    .pointLat('lat')
-    .pointLng('lng')
-    .pointAltitude(d => d.alt3d || 0.01)
-    .pointColor(d => d.color)
-    .pointRadius(d => d.r3d || 0.4)
+    .pointLat(d => d.lat)
+    .pointLng(d => d.lng)
+    .pointAltitude(d => (d.altKm || 0) / 6371)
+    .pointColor(d => d.color3d || '#00ffff')
+    .pointRadius(0.15)
+    .pointResolution(4)
     .pointsMerge(false)
     .onPointClick(pt => showSatPopup(pt))
-    // Ground tracks
+    // Ground tracks — each point is [lat, lng, alt] with alt as fraction of
+    // Earth radius. Explicit function accessors prevent Globe.gl from treating
+    // bare constants as property keys → NaN vertices → spikes on VideoCore VII.
     .pathsData([])
     .pathPoints('coords3d')
     .pathPointLat(p => p[0])
     .pathPointLng(p => p[1])
-    .pathPointAlt(0.005)
+    .pathPointAlt(p => p[2])
     .pathColor(d => d.color3d)
-    .pathStroke(d => d.stroke3d)
+    .pathStroke(null)
     .pathTransitionDuration(0);
 
   // Auto-rotate so globe spins on load
@@ -822,25 +976,71 @@ function init3DGlobe() {
     .ringRepeatPeriod(1200);
 }
 
+function isValidCoord(lat, lng) {
+  return Number.isFinite(lat) && Number.isFinite(lng)
+    && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
 function update3DGlobe() {
   if (!globe3d) return;
 
-  // Build points data for 3D
-  const pts3d = allPoints.map(pt => ({
-    ...pt,
-    alt3d: pt.altitude / 6371,
-    r3d: pt.radius > 0.5 ? 0.4 : 0.2,
-  }));
+  // Build points data for 3D — validate every coordinate before Globe.gl sees it
+  const pts3d = allPoints
+    .filter(pt => isValidCoord(pt.lat, pt.lng) && Number.isFinite(pt.altKm) && pt.altKm > 0)
+    .map(pt => ({
+      ...pt,
+      color3d: pt.color,
+    }));
 
-  // Build paths data for 3D
-  const paths3d = allPaths.map(p => ({
+  // Build paths data for 3D — validate every vertex, discard any path with a bad point
+  const all3dPaths = [];
+  let pathsDropped = 0;
+  for (const [, catData] of Object.entries(loadedCategories)) {
+    if (!catData.visible || !catData.paths3d) continue;
+    for (const p of catData.paths3d) {
+      const clean = p.coords.every(c => isValidCoord(c[0], c[1]) && Number.isFinite(c[2]));
+      if (clean && p.coords.length >= 2) {
+        all3dPaths.push(p);
+      } else {
+        pathsDropped++;
+      }
+    }
+  }
+
+  const paths3d = all3dPaths.map(p => ({
     coords3d: p.coords,
     color3d: p.color,
-    stroke3d: (p.stroke || 1) * 0.6,
   }));
+
+  if (pathsDropped > 0) {
+    console.warn(`[CRUCIX] Dropped ${pathsDropped} path segment(s) with invalid coordinates`);
+  }
+  console.log(`[CRUCIX] 3D update: ${pts3d.length} points, ${paths3d.length} path segments | propagate ok/fail: ${_satDiag.propagateOk}/${_satDiag.propagateFail}`, _satDiag.failReasons);
 
   globe3d.pointsData(pts3d);
   globe3d.pathsData(paths3d);
+
+  // Scan the Three.js scene for bad vertices after Globe.gl builds geometry.
+  // This runs one frame later so Globe.gl has finished creating the meshes.
+  requestAnimationFrame(() => {
+    if (!globe3d) return;
+    const scene = globe3d.scene();
+    let badVerts = 0, totalVerts = 0;
+    scene.traverse(obj => {
+      if (!obj.geometry) return;
+      const pos = obj.geometry.getAttribute('position') ||
+                  obj.geometry.getAttribute('instanceStart'); // Line2 uses instanceStart
+      if (!pos) return;
+      const arr = pos.array;
+      for (let i = 0; i < arr.length; i++) {
+        totalVerts++;
+        if (!Number.isFinite(arr[i])) badVerts++;
+      }
+    });
+    if (badVerts > 0) {
+      console.error(`[CRUCIX] BAD VERTICES FOUND: ${badVerts} NaN/Inf values out of ${totalVerts} in Three.js scene`);
+    }
+  });
 }
 
 function setViewMode(mode) {
