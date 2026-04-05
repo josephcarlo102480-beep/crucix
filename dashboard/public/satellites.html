@@ -520,7 +520,7 @@ function computeTracksAndPositions(catName) {
       catData.points.push({
         lat: pos.lat,
         lng: pos.lng,
-        alt: pos.alt / 6371 * 0.5 + 0.01, // scale for visibility
+        alt: pos.alt / 6371,
         color: cat.color,
         radius: catName === 'iss' ? 0.6 : 0.25,
         category: catName,
@@ -587,7 +587,7 @@ function updatePositions() {
         catData.points.push({
           lat: pos.lat,
           lng: pos.lng,
-          alt: pos.alt / 6371 * 0.5 + 0.01,
+          alt: pos.alt / 6371,
           color: cat.color,
           radius: catName === 'iss' ? 0.6 : 0.25,
           category: catName,
