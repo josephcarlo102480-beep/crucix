@@ -152,6 +152,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 const TLE_API = 'https://tle.ivanstanojevic.me/api/tle';
 const TLE_MAX_AGE_DAYS = 14; // Skip TLEs older than this — stale TLEs produce erratic tracks
 const OBSERVER = { lat: 30.5155, lng: -90.5063 };
+// Compress orbital altitude for 3D display so GEO/GPS don't fly off the globe.
+// sqrt compression: LEO stays roughly proportional, MEO/GEO pulled in close.
+//   LEO  400 km → 0.025    GPS 20200 km → 0.18    GEO 35786 km → 0.24
+function displayAlt(altKm) { return Math.sqrt(altKm / 6371) * 0.1; }
 const OBSERVER_GD = {
   longitude: OBSERVER.lng * Math.PI / 180,
   latitude: OBSERVER.lat * Math.PI / 180,
@@ -338,14 +342,19 @@ function propagatePosition(satrec, time) {
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       return _propagateFail('coord_range');
     }
-    if (alt < 0 || alt > 100000) return _propagateFail('bad_alt');
+    // Min 100 km (below Kármán line = decayed), max 45000 km (keeps GEO ~35786
+    // and Molniya apogee ~40000 but drops garbage propagations from stale TLEs)
+    if (alt < 100 || alt > 45000) return _propagateFail('bad_alt');
+
+    // Velocity sanity check — escape velocity at Earth's surface is ~11.2 km/s.
+    // Anything above that is a bad TLE producing hyperbolic nonsense.
+    const vel = posVel.velocity ? Math.sqrt(
+      posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2
+    ) : 0;
+    if (vel > 11) return _propagateFail('escape_vel');
 
     _satDiag.propagateOk++;
-    return { lat, lng, alt,
-      vel: posVel.velocity ? Math.sqrt(
-        posVel.velocity.x ** 2 + posVel.velocity.y ** 2 + posVel.velocity.z ** 2
-      ) : 0
-    };
+    return { lat, lng, alt, vel };
   } catch (e) {
     return _propagateFail('exception');
   }
@@ -488,8 +497,8 @@ function computeTracksAndPositions(catName) {
   catData.points = [];
 
   for (const { satrec, tle } of catData.satrecs) {
-    // Ground track: +/- 45 minutes, 60-second intervals
-    const { segments2d, segments3d } = generateGroundTrack(satrec, 45, 45, 60);
+    // Ground track: 25 min past + 25 min future, 30-second steps
+    const { segments2d, segments3d } = generateGroundTrack(satrec, 25, 25, 30);
 
     // 2D paths (Leaflet) — split at antimeridian / large lng jumps
     for (const seg of segments2d) {
@@ -502,12 +511,13 @@ function computeTracksAndPositions(catName) {
     }
 
     // 3D paths (Globe.gl) — split by angular separation on the sphere
-    // Include explicit altitude (fraction of Earth radius) in every point.
-    // Globe.gl's pathPointAlt with a bare number constant is unreliable in
-    // pathPoints mode — it can produce NaN vertices → spikes on VideoCore VII.
+    // Each point carries the satellite's REAL altitude (fraction of Earth radius).
+    // Using a constant altitude causes visual disconnect from the satellite markers
+    // which float at true altitude. Mixing altitudes (e.g. zero for failed points)
+    // causes spikes — but we already filter those in generateGroundTrack().
     for (const seg of segments3d) {
       catData.paths3d.push({
-        coords: seg.map(p => [p.lat, p.lng, 0.005]),
+        coords: seg.map(p => [p.lat, p.lng, displayAlt(p.alt)]),
         color: cat.trackColor,
         stroke: catName === 'iss' ? 2.0 : 1.0,
       });
@@ -941,17 +951,36 @@ function init3DGlobe() {
     .atmosphereColor('#64f0c8')
     .atmosphereAltitude(0.15)
     .pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 })
-    // Satellites as floating spheres via customLayerData (no altitude pillars)
-    .customLayerData([])
-    .customThreeObject(d => {
-      const geo = new THREE.SphereGeometry(0.5, 6, 6);
-      const mat = new THREE.MeshBasicMaterial({ color: d.color3d || '#00ffff' });
-      return new THREE.Mesh(geo, mat);
-    })
-    .customThreeObjectUpdate((obj, d) => {
-      const c = globe3d.getCoords(d.lat, d.lng, d.altKm / 6371);
-      Object.assign(obj.position, c);
-      obj.material.color.set(d.color3d || '#00ffff');
+    // Satellite current positions — HTML elements always render on top, never get lost
+    .htmlElementsData([])
+    .htmlLat(d => d.lat)
+    .htmlLng(d => d.lng)
+    .htmlAltitude(d => displayAlt(d.altKm))
+    .htmlElement(d => {
+      // 0x0 root — immune to any translate(-50%,-50%) Globe.gl applies
+      const el = document.createElement('div');
+      el.style.cssText = 'width:0;height:0;overflow:visible;';
+      const size = d.radius > 0.5 ? 14 : 8;
+      const hitSize = size + 20;
+      // Hit area centered on the 0x0 anchor
+      const hit = document.createElement('div');
+      hit.style.cssText = `position:absolute;left:${-hitSize/2}px;top:${-hitSize/2}px;width:${hitSize}px;height:${hitSize}px;display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto;`;
+      const dot = document.createElement('div');
+      dot.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${d.color3d || '#fff'};box-shadow:0 0 ${size}px ${d.color3d || '#fff'}, 0 0 ${size*2}px ${d.color3d || '#fff'};pointer-events:none;`;
+      hit.appendChild(dot);
+      const tip = document.createElement('div');
+      tip.style.cssText = 'position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:6px;background:rgba(6,14,22,0.95);border:1px solid rgba(100,240,200,0.3);padding:8px 10px;font-family:IBM Plex Mono,monospace;font-size:10px;color:#e8f4f0;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:9999;';
+      tip.innerHTML = `<div style="color:${d.color3d || '#fff'};font-weight:600;margin-bottom:4px">${d.name || 'Unknown'}</div>`
+        + `<div style="color:#6a8a82">NORAD: <span style="color:#e8f4f0">${d.noradId || '?'}</span></div>`
+        + `<div style="color:#6a8a82">Alt: <span style="color:#e8f4f0">${d.altKm?.toFixed(1) || '?'} km</span></div>`
+        + `<div style="color:#6a8a82">Vel: <span style="color:#e8f4f0">${d.velocity?.toFixed(2) || '?'} km/s</span></div>`
+        + `<div style="color:#6a8a82">Lat: <span style="color:#e8f4f0">${d.lat?.toFixed(4)}</span> Lng: <span style="color:#e8f4f0">${d.lng?.toFixed(4)}</span></div>`;
+      hit.appendChild(tip);
+      hit.onmouseenter = () => { tip.style.opacity = '1'; };
+      hit.onmouseleave = () => { tip.style.opacity = '0'; };
+      hit.onclick = () => showSatPopup(d);
+      el.appendChild(hit);
+      return el;
     })
     // Ground tracks — each point is [lat, lng, alt] with alt as fraction of
     // Earth radius. Explicit function accessors prevent Globe.gl from treating
@@ -1019,7 +1048,7 @@ function update3DGlobe() {
   }
   console.log(`[CRUCIX] 3D update: ${pts3d.length} points, ${paths3d.length} path segments | propagate ok/fail: ${_satDiag.propagateOk}/${_satDiag.propagateFail}`, _satDiag.failReasons);
 
-  globe3d.customLayerData(pts3d);
+  globe3d.htmlElementsData(pts3d);
   globe3d.pathsData(paths3d);
 
   // Scan the Three.js scene for bad vertices after Globe.gl builds geometry.
