@@ -668,7 +668,7 @@ function renderLeftRail(){
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
       <div class="sec-head clickable" id="sensorGridHeader"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
-      ${layers.map(l=>`<div class="layer-item" data-category="${l.cat||l.dot}"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div></div>`).join('')}
+      ${layers.map(l=>`<div class="layer-item" data-category="${l.cat||l.dot}"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div><span class="layer-chevron">&#9656;</span></div><div class="layer-sub-items" data-category="${l.cat||l.dot}">${(l.items||[]).map((it,idx)=>`<div class="sub-item" data-cat="${l.cat||l.dot}" data-idx="${idx}" data-lat="${it.lat}" data-lon="${it.lon}"><div class="sub-item-name" title="${it.name}">${it.name}</div><div class="sub-item-meta">${it.status}</div></div>`).join('')}</div>`).join('')}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
