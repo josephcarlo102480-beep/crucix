@@ -792,7 +792,7 @@ function initGlobe(){
     .arcAltitudeAutoScale(0.3)
     .arcLabel(d => d.label || '')
     // Rings layer (pulsing conflict events)
-    .ringColor(d => t => `rgba(255,120,80,${1-t})`)
+    .ringColor(d => t => d._highlight ? `rgba(100,240,200,${1-t})` : `rgba(255,120,80,${1-t})`)
     .ringMaxRadius(d => d.maxR || 3)
     .ringPropagationSpeed(d => d.speed || 2)
     .ringRepeatPeriod(d => d.period || 800)
@@ -1924,12 +1924,14 @@ document.addEventListener('DOMContentLoaded', () => {
   observer.observe(document.body, { childList: true, subtree: true });
 })();
 
-// === Phase 3: Sensor Grid Click-to-Filter ===
+// === Phase 3: Sensor Grid Click-to-Filter + Accordion + Fly-to ===
 // Uses event delegation on #leftRail so handlers survive re-renders (reinit/SSE/resize).
 (function(){
   let activeFilter = null;
   let allGlobePoints = null;
   let allGlobeLabels = null;
+  let selectedSubItem = null;   // currently selected sub-item element
+  let highlightRingData = [];   // rings layer data for selected marker
 
   const catToTypes = {
     air: ['air'],
@@ -1943,6 +1945,46 @@ document.addEventListener('DOMContentLoaded', () => {
     osint: ['osint'],
     space: ['space'],
   };
+
+  function getBaseRings() {
+    // Preserve conflict rings already on the globe
+    if (typeof globe !== 'undefined' && globe) {
+      const all = globe.ringsData() || [];
+      return all.filter(r => !r._highlight);
+    }
+    return [];
+  }
+
+  function clearHighlightRing() {
+    highlightRingData = [];
+    if (typeof globe !== 'undefined' && globe) {
+      globe.ringsData(getBaseRings());
+    }
+  }
+
+  function setHighlightRing(lat, lng) {
+    highlightRingData = [{ lat, lng, maxR: 4, speed: 3, period: 1200, _highlight: true }];
+    if (typeof globe !== 'undefined' && globe) {
+      globe.ringsData([...getBaseRings(), ...highlightRingData]);
+    }
+  }
+
+  function flyTo(lat, lng, altitude) {
+    if (typeof globe !== 'undefined' && globe) {
+      globe.controls().autoRotate = false;
+      globe.pointOfView({ lat, lng, altitude: altitude || 0.8 }, 1200);
+    }
+    // Flat map pan
+    if (typeof flatProjection !== 'undefined' && flatProjection && typeof flatZoom !== 'undefined' && flatZoom && typeof flatSvg !== 'undefined' && flatSvg && typeof d3 !== 'undefined') {
+      const [cx, cy] = flatProjection([lng, lat]);
+      if (cx != null && cy != null) {
+        const fw = typeof flatW !== 'undefined' ? flatW : 800;
+        const fh = typeof flatH !== 'undefined' ? flatH : 500;
+        const t = d3.zoomIdentity.translate(fw / 2, fh / 2).scale(3).translate(-cx, -cy);
+        flatSvg.transition().duration(800).call(flatZoom.transform, t);
+      }
+    }
+  }
 
   function applyFilter(cat) {
     // Snapshot all globe data on first use
@@ -1986,22 +2028,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof globe !== 'undefined' && globe && allGlobePoints) {
         const match = allGlobePoints.find(p => types.includes(p.type));
         if (match) {
-          globe.pointOfView({ lat: match.lat, lng: match.lng, altitude: 1.2 }, 1000);
-        }
-      }
-      // Pan flat map to a representative marker
-      if (typeof flatProjection !== 'undefined' && flatProjection && typeof flatZoom !== 'undefined' && flatZoom && typeof flatSvg !== 'undefined' && flatSvg && typeof d3 !== 'undefined') {
-        const pts = (allGlobePoints || []).filter(p => types.includes(p.type));
-        if (pts.length) {
-          const avgLat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-          const avgLng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
-          const [cx, cy] = flatProjection([avgLng, avgLat]);
-          if (cx != null && cy != null) {
-            const fw = typeof flatW !== 'undefined' ? flatW : 800;
-            const fh = typeof flatH !== 'undefined' ? flatH : 500;
-            const t = d3.zoomIdentity.translate(fw / 2, fh / 2).scale(2).translate(-cx, -cy);
-            flatSvg.transition().duration(800).call(flatZoom.transform, t);
-          }
+          flyTo(match.lat, match.lng, 1.2);
         }
       }
     }
@@ -2016,6 +2043,54 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function toggleAccordion(layerItem) {
+    const cat = layerItem.dataset.category;
+    const wasExpanded = layerItem.classList.contains('expanded');
+
+    // Collapse all
+    document.querySelectorAll('.layer-item.expanded').forEach(el => el.classList.remove('expanded'));
+    // Deselect any sub-item
+    if (selectedSubItem) {
+      selectedSubItem.classList.remove('selected');
+      selectedSubItem = null;
+    }
+    clearHighlightRing();
+
+    if (wasExpanded) {
+      // Collapsing — also clear filter
+      applyFilter(cat === activeFilter ? cat : null);
+      return;
+    }
+
+    // Expand this one
+    layerItem.classList.add('expanded');
+    applyFilter(cat);
+  }
+
+  function selectSubItem(subEl) {
+    const lat = parseFloat(subEl.dataset.lat);
+    const lon = parseFloat(subEl.dataset.lon);
+
+    // Deselect previous
+    if (selectedSubItem) selectedSubItem.classList.remove('selected');
+
+    if (selectedSubItem === subEl) {
+      // Toggle off
+      selectedSubItem = null;
+      clearHighlightRing();
+      return;
+    }
+
+    selectedSubItem = subEl;
+    subEl.classList.add('selected');
+
+    // Fly to location if valid coords
+    if (lat !== 0 || lon !== 0) {
+      flyTo(lat, lon, 0.7);
+      setHighlightRing(lat, lon);
+    }
+  }
+
   // Event delegation: attach once to #leftRail, survives innerHTML re-renders
   function attachDelegatedHandler() {
     const rail = document.getElementById('leftRail');
@@ -2023,13 +2098,22 @@ document.addEventListener('DOMContentLoaded', () => {
     rail._sensorGridBound = true;
 
     rail.addEventListener('click', (e) => {
-      // Layer item click
-      const item = e.target.closest('.layer-item[data-category]');
-      if (item) {
-        applyFilter(item.dataset.category);
+      // Sub-item click — fly to + select
+      const sub = e.target.closest('.sub-item');
+      if (sub) {
+        e.stopPropagation();
+        selectSubItem(sub);
         return;
       }
-      // Sensor Grid header click — reset
+
+      // Layer item click — accordion toggle + filter
+      const item = e.target.closest('.layer-item[data-category]');
+      if (item) {
+        toggleAccordion(item);
+        return;
+      }
+
+      // Sensor Grid header click — reset all
       const hdr = e.target.closest('#sensorGridHeader');
       if (hdr) {
         activeFilter = null;
@@ -2041,7 +2125,20 @@ document.addEventListener('DOMContentLoaded', () => {
           el.style.display = '';
           el.style.opacity = '';
         });
-        document.querySelectorAll('.layer-item').forEach(el => el.classList.remove('active-filter'));
+        document.querySelectorAll('.layer-item').forEach(el => {
+          el.classList.remove('active-filter');
+          el.classList.remove('expanded');
+        });
+        if (selectedSubItem) {
+          selectedSubItem.classList.remove('selected');
+          selectedSubItem = null;
+        }
+        clearHighlightRing();
+        // Reset globe to world view
+        if (typeof globe !== 'undefined' && globe) {
+          globe.pointOfView(regionPOV.world, 1000);
+          if (!lowPerfMode) setTimeout(() => { if(globe) globe.controls().autoRotate = true; }, 2000);
+        }
       }
     });
   }
