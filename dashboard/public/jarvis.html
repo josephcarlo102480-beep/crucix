@@ -627,17 +627,34 @@ function renderLeftRail(){
   const newsCount=(D.news||[]).length;
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
+  const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+  const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
+  const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
+  const osintGeo=[{lat:45,lon:41},{lat:48,lon:37},{lat:48.5,lon:37.5},{lat:45,lon:40.2},{lat:50.6,lon:36.6},{lat:48.5,lon:35}];
   const layers=[
-    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`},
-    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`},
-    {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`},
-    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints')},
-    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors')},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`},
-    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts')},
-    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated')},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',cat:'osint',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`},
-    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`}
+    {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`,
+     items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:a.region.replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total} acft · No CS: ${a.noCallsign} · Hi-alt: ${a.highAlt}`,detail:`Top: ${a.top.slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
+    {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`,
+     items:D.thermal.map(tr=>({name:tr.region,lat:tr.fires[0]?.lat||0,lon:tr.fires[0]?.lon||0,status:`${tr.fires.length} fires`,meta:`${tr.det.toLocaleString()} det · ${tr.night.toLocaleString()} night`,detail:`Peak FRP: ${Math.max(...tr.fires.map(f=>f.frp)).toFixed(1)} MW`})).filter(tr=>tr.lat!==0)},
+    {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`,
+     items:D.sdr.zones.flatMap(z=>z.receivers.map(r=>({name:r.name||z.region,lat:r.lat,lon:r.lon,status:'ONLINE',meta:`Zone: ${z.region} · ${z.count} in zone`,detail:`Freq coverage active`})))},
+    {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),
+     items:D.chokepoints.map(cp=>({name:cp.label,lat:cp.lat,lon:cp.lon,status:'MONITORED',meta:cp.note||'Chokepoint',detail:`${cp.lat.toFixed(2)}°, ${cp.lon.toFixed(2)}°`}))},
+    {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
+     items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:n.anom?'ANOMALY':'NORMAL',meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} readings`,detail:n.anom?'⚠ Anomaly detected':'All readings nominal'}:null}).filter(Boolean)},
+    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`,
+     items:(D.acled?.regions||[]).map(r=>({name:r.region||r.country||'Unknown',lat:r.lat||0,lon:r.lon||0,status:`${r.events||0} events`,meta:`${(r.fatalities||0).toLocaleString()} fatalities`,detail:r.topType||'Armed conflict'})).filter(r=>r.lat!==0)},
+    {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),
+     items:D.who.slice(0,10).map((w,i)=>{const c=whoGeo[i];return c?{name:w.title?.substring(0,40)||'Alert',lat:c.lat,lon:c.lon,status:'WHO ALERT',meta:w.summary?.substring(0,60)||'',detail:`${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°`}:null}).filter(Boolean)},
+    {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated'),
+     items:(D.news||[]).slice(0,12).map(n=>({name:n.title?.substring(0,40)||n.source,lat:n.lat,lon:n.lon,status:n.source,meta:`${n.region} · ${getAge(n.date)}`,detail:`${n.lat.toFixed(2)}°, ${n.lon.toFixed(2)}°`}))},
+    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',cat:'osint',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`,
+     items:D.tg.urgent.slice(0,6).map((p,i)=>{const c=osintGeo[i];return c?{name:(p.channel||'').toUpperCase(),lat:c.lat,lon:c.lon,status:'URGENT',meta:`${p.views?.toLocaleString()||'?'} views`,detail:cleanText(p.text?.substring(0,50)||'')}:null}).filter(Boolean)},
+    {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`,
+     items:[
+       ...(D.space?.iss?[{name:'ISS',lat:0,lon:0,status:'TRACKING',meta:`Alt: ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km`,detail:'International Space Station'}]:[]),
+       ...Object.entries(D.space?.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=>({name:`${c} Mil Sats`,lat:0,lon:0,status:`${n} sats`,meta:'Military constellation',detail:'No fixed position'}))
+     ]}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
   const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${s.site}"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
