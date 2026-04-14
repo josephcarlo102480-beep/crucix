@@ -77,6 +77,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
 .layer-item:hover{border-color:rgba(100,240,200,0.3);box-shadow:0 0 8px rgba(100,240,200,0.15)}
 .layer-item.active-filter{border-color:rgba(100,240,200,0.6);box-shadow:0 0 12px rgba(100,240,200,0.3);background:rgba(100,240,200,0.08)}
+.layer-item .layer-chevron{margin-left:auto;padding-left:8px;font-size:10px;color:var(--dim);transition:transform 0.25s ease}
+.layer-item.expanded .layer-chevron{transform:rotate(90deg);color:var(--accent)}
+.layer-sub-items{max-height:0;overflow:hidden;transition:max-height 0.3s ease}
+.layer-item.expanded+.layer-sub-items{max-height:600px}
+.sub-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px 5px 28px;border-left:2px solid rgba(255,255,255,0.04);margin-left:12px;font-size:11px;cursor:pointer;transition:border-color 0.2s,background 0.2s;color:var(--dim)}
+.sub-item:hover{border-left-color:rgba(100,240,200,0.4);background:rgba(100,240,200,0.04);color:#e0e0e0}
+.sub-item.selected{border-left-color:var(--accent);background:rgba(100,240,200,0.08);color:var(--accent)}
+.sub-item-name{font-family:var(--mono);font-size:10px;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.sub-item-meta{font-family:var(--mono);font-size:9px;color:var(--dim);text-align:right;white-space:nowrap}
 .sec-head.clickable{cursor:pointer}.sec-head.clickable:hover h3{color:var(--accent)}
 .layer-left{display:flex;align-items:center;gap:8px}
 .ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
@@ -1022,7 +1031,7 @@ function plotMarkers(){
       const from=airCoordsFlight[i], to=airCoordsFlight[j];
       if(!from||!to) continue;
       const traffic=a.total+b.total;
-      if(traffic<30) continue;
+      if(traffic<3) continue;
       const ncRatio=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
       const color = ncRatio>0.15 ? ['rgba(255,95,99,0.6)','rgba(255,95,99,0.15)'] :
                     ncRatio>0.05 ? ['rgba(255,184,76,0.5)','rgba(255,184,76,0.1)'] :
@@ -1036,7 +1045,7 @@ function plotMarkers(){
   }
   // Hub corridors
   D.air.forEach((a,i)=>{
-    if(!airCoordsFlight[i]||a.total<25) return;
+    if(!airCoordsFlight[i]||a.total<2) return;
     globalHubs.forEach(hub=>{
       const dLat=Math.abs(airCoordsFlight[i].lat-hub.lat);
       const dLon=Math.abs(airCoordsFlight[i].lon-hub.lon);
@@ -1277,7 +1286,7 @@ function plotFlatMarkers(){
     const cG=flatG.append('g').attr('class','corridors-layer');
     for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
       const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
-      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<30)continue;
+      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<3)continue;
       const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
       const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
       const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
@@ -1285,7 +1294,7 @@ function plotFlatMarkers(){
       const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
       cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
     }}
-    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<25)return;hubs.forEach(hub=>{
+    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<2)return;hubs.forEach(hub=>{
       if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
       const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
       const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
