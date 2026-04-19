@@ -48,14 +48,18 @@ import { briefing as cisaKev } from './sources/cisa-kev.mjs';
 import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
 
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
+const SOURCE_TIMEOUT_OVERRIDES = {
+  OpenSky: 90_000, // OpenSky queries hotspots sequentially with delays to avoid 429s
+};
 
 export async function runSource(name, fn, ...args) {
   const start = Date.now();
   let timer;
+  const timeoutMs = SOURCE_TIMEOUT_OVERRIDES[name] || SOURCE_TIMEOUT_MS;
   try {
     const dataPromise = fn(...args);
     const timeoutPromise = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Source ${name} timed out after ${SOURCE_TIMEOUT_MS / 1000}s`)), SOURCE_TIMEOUT_MS);
+      timer = setTimeout(() => reject(new Error(`Source ${name} timed out after ${timeoutMs / 1000}s`)), timeoutMs);
     });
     const data = await Promise.race([dataPromise, timeoutPromise]);
     return { name, status: 'ok', durationMs: Date.now() - start, data };

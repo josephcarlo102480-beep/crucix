@@ -1,14 +1,27 @@
 // OpenSky Network — Real-time flight tracking
 // Free for research. 4,000 API credits/day (no auth), 8,000 with account.
 // Tracks all aircraft with ADS-B transponders including many military.
+//
+// Rate-limit mitigation:
+//   - Cache results for 10 minutes (reuse between sweep cycles)
+//   - Query hotspots sequentially with delays (not all at once)
+//   - Identify via User-Agent to reduce 429s
 
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://opensky-network.org/api';
+const OPENSKY_HEADERS = { 'User-Agent': 'Crucix-OSINT-Dashboard/1.0' };
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const INTER_QUERY_DELAY_MS = 2000;    // 2s between hotspot queries
+const RATE_LIMIT_BACKOFF_MS = 5000;   // 5s extra wait after a 429
+
+// Module-level cache
+let cachedBriefing = null;
+let cacheTimestamp = 0;
 
 // Get all current flights (global state vector)
 export async function getAllFlights() {
-  return safeFetch(`${BASE}/states/all`, { timeout: 30000 });
+  return safeFetch(`${BASE}/states/all`, { timeout: 30000, headers: OPENSKY_HEADERS });
 }
 
 // Get flights in a bounding box (lat/lon)
@@ -19,7 +32,7 @@ export async function getFlightsInArea(lamin, lomin, lamax, lomax) {
     lamax: String(lamax),
     lomax: String(lomax),
   });
-  return safeFetch(`${BASE}/states/all?${params}`, { timeout: 20000 });
+  return safeFetch(`${BASE}/states/all?${params}`, { timeout: 20000, headers: OPENSKY_HEADERS });
 }
 
 // Get flights by specific aircraft (ICAO24 hex codes)
@@ -64,36 +77,56 @@ const HOTSPOTS = {
 };
 
 // Briefing — check hotspot regions for flight activity
+// Uses a 10-minute cache to avoid hammering OpenSky every sweep cycle.
+// Queries hotspots sequentially with delays to reduce 429 rate-limit hits.
 export async function briefing() {
+  // Return cached result if still fresh
+  const now = Date.now();
+  if (cachedBriefing && (now - cacheTimestamp) < CACHE_TTL_MS) {
+    const ageMin = ((now - cacheTimestamp) / 60000).toFixed(1);
+    console.log(`[OpenSky] Returning cached result (${ageMin}m old, TTL ${CACHE_TTL_MS / 60000}m)`);
+    return { ...cachedBriefing, cached: true, cacheAgeMs: now - cacheTimestamp };
+  }
+
   const hotspotEntries = Object.entries(HOTSPOTS);
-  const results = await Promise.all(
-    hotspotEntries.map(async ([key, box]) => {
-      const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
-      const error = data?.error || null;
-      const states = data?.states || [];
-      return {
-        region: box.label,
-        key,
-        totalAircraft: states.length,
-        // states format: [icao24, callsign, origin_country, ...]
-        byCountry: states.reduce((acc, s) => {
-          const country = s[2] || 'Unknown';
-          acc[country] = (acc[country] || 0) + 1;
-          return acc;
-        }, {}),
-        // Flag potentially interesting (military often have no callsign or specific patterns)
-        noCallsign: states.filter(s => !s[1]?.trim()).length,
-        highAltitude: states.filter(s => s[7] && s[7] > 12000).length, // >12km altitude
-        ...(error ? { error } : {}),
-      };
-    })
-  );
+  const results = [];
+
+  // Query hotspots sequentially with delays to avoid rate-limiting
+  for (const [key, box] of hotspotEntries) {
+    const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
+    const error = data?.error || null;
+    const states = data?.states || [];
+
+    const is429 = error && error.includes('429');
+
+    results.push({
+      region: box.label,
+      key,
+      totalAircraft: states.length,
+      // states format: [icao24, callsign, origin_country, ...]
+      byCountry: states.reduce((acc, s) => {
+        const country = s[2] || 'Unknown';
+        acc[country] = (acc[country] || 0) + 1;
+        return acc;
+      }, {}),
+      // Flag potentially interesting (military often have no callsign or specific patterns)
+      noCallsign: states.filter(s => !s[1]?.trim()).length,
+      highAltitude: states.filter(s => s[7] && s[7] > 12000).length, // >12km altitude
+      ...(error ? { error } : {}),
+    });
+
+    // Wait between queries — longer if we just got rate-limited (skip after last)
+    if (results.length < hotspotEntries.length) {
+      const delay = is429 ? RATE_LIMIT_BACKOFF_MS : INTER_QUERY_DELAY_MS;
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
 
   const hotspotErrors = results
     .filter(r => r.error)
     .map(r => ({ region: r.region, error: r.error }));
 
-  return {
+  const briefingResult = {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
     hotspots: results,
@@ -104,6 +137,22 @@ export async function briefing() {
       hotspotErrors,
     } : {}),
   };
+
+  // Cache result (even partial success is worth caching to avoid re-hitting a 429'd API)
+  const totalAircraft = results.reduce((s, r) => s + r.totalAircraft, 0);
+  const successfulHotspots = results.filter(r => !r.error).length;
+  if (totalAircraft > 0 || successfulHotspots > 0) {
+    cachedBriefing = briefingResult;
+    cacheTimestamp = now;
+    console.log(`[OpenSky] Cached result: ${totalAircraft} aircraft across ${successfulHotspots}/${results.length} hotspots`);
+  } else if (cachedBriefing) {
+    // All failed — return stale cache rather than all-zeros
+    const staleAge = ((now - cacheTimestamp) / 60000).toFixed(1);
+    console.log(`[OpenSky] All hotspots failed, returning stale cache (${staleAge}m old)`);
+    return { ...cachedBriefing, cached: true, stale: true, cacheAgeMs: now - cacheTimestamp };
+  }
+
+  return briefingResult;
 }
 
 if (process.argv[1]?.endsWith('opensky.mjs')) {
