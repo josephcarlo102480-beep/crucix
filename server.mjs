@@ -16,6 +16,14 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
+import {
+  buildBriefSnapshot,
+  buildStatusSnapshot,
+  formatDiscordBrief,
+  formatDiscordStatus,
+  formatTelegramBrief,
+  formatTelegramStatus,
+} from './lib/bot/messages.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -34,6 +42,9 @@ let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
 const startTime = Date.now();
 const sseClients = new Set();
+let sweepTimer = null;
+let httpServer = null;
+let shuttingDown = false;
 
 // === Delta/Memory ===
 const memory = new MemoryManager(RUNS_DIR);
@@ -43,6 +54,26 @@ const llmProvider = createLLMProvider(config.llm);
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
 
+function getStatusSnapshot() {
+  return buildStatusSnapshot({
+    startTime,
+    currentData,
+    llmProvider,
+    lastSweepTime,
+    refreshIntervalMinutes: config.refreshIntervalMinutes,
+    sweepInProgress,
+    sseClientCount: sseClients.size,
+    port: config.port,
+  });
+}
+
+function getBriefSnapshot() {
+  return buildBriefSnapshot({
+    currentData,
+    delta: memory.getLastDelta(),
+  });
+}
+
 if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
 if (telegramAlerter.isConfigured) {
   console.log('[Crucix] Telegram alerts enabled');
@@ -50,29 +81,7 @@ if (telegramAlerter.isConfigured) {
   // ─── Two-Way Bot Commands ───────────────────────────────────────────────
 
   telegramAlerter.onCommand('/status', async () => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const h = Math.floor(uptime / 3600);
-    const m = Math.floor((uptime % 3600) / 60);
-    const sourcesOk = currentData?.meta?.sourcesOk || 0;
-    const sourcesTotal = currentData?.meta?.sourcesQueried || 0;
-    const sourcesFailed = currentData?.meta?.sourcesFailed || 0;
-    const llmStatus = llmProvider?.isConfigured ? `✅ ${llmProvider.name}` : '❌ Disabled';
-    const nextSweep = lastSweepTime
-      ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()
-      : 'pending';
-
-    return [
-      `🖥️ *CRUCIX STATUS*`,
-      ``,
-      `Uptime: ${h}h ${m}m`,
-      `Last sweep: ${lastSweepTime ? new Date(lastSweepTime).toLocaleTimeString() + ' UTC' : 'never'}`,
-      `Next sweep: ${nextSweep} UTC`,
-      `Sweep in progress: ${sweepInProgress ? '🔄 Yes' : '⏸️ No'}`,
-      `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
-      `LLM: ${llmStatus}`,
-      `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
-    ].join('\n');
+    return formatTelegramStatus(getStatusSnapshot());
   });
 
   telegramAlerter.onCommand('/sweep', async () => {
@@ -84,53 +93,7 @@ if (telegramAlerter.isConfigured) {
 
   telegramAlerter.onCommand('/brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [
-      `📋 *CRUCIX BRIEF*`,
-      `_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_`,
-      ``,
-    ];
-
-    // Delta direction
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: *${delta.summary.direction.toUpperCase()}* | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical`);
-      sections.push('');
-    }
-
-    // Key metrics
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      if (hy) sections.push(`   HY Spread: ${hy.value} | NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    // OSINT
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      // Top 2 urgent
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    // Top ideas
-    if (ideas.length > 0) {
-      sections.push(`💡 *Top Ideas:*`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return formatTelegramBrief(getBriefSnapshot());
   });
 
   telegramAlerter.onCommand('/portfolio', async () => {
@@ -147,28 +110,7 @@ if (discordAlerter.isConfigured) {
 
   // Reuse the same command handlers as Telegram (DRY)
   discordAlerter.onCommand('status', async () => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const h = Math.floor(uptime / 3600);
-    const m = Math.floor((uptime % 3600) / 60);
-    const sourcesOk = currentData?.meta?.sourcesOk || 0;
-    const sourcesTotal = currentData?.meta?.sourcesQueried || 0;
-    const sourcesFailed = currentData?.meta?.sourcesFailed || 0;
-    const llmStatus = llmProvider?.isConfigured ? `✅ ${llmProvider.name}` : '❌ Disabled';
-    const nextSweep = lastSweepTime
-      ? new Date(new Date(lastSweepTime).getTime() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()
-      : 'pending';
-
-    return [
-      `**🖥️ CRUCIX STATUS**\n`,
-      `Uptime: ${h}h ${m}m`,
-      `Last sweep: ${lastSweepTime ? new Date(lastSweepTime).toLocaleTimeString() + ' UTC' : 'never'}`,
-      `Next sweep: ${nextSweep} UTC`,
-      `Sweep in progress: ${sweepInProgress ? '🔄 Yes' : '⏸️ No'}`,
-      `Sources: ${sourcesOk}/${sourcesTotal} OK${sourcesFailed > 0 ? ` (${sourcesFailed} failed)` : ''}`,
-      `LLM: ${llmStatus}`,
-      `SSE clients: ${sseClients.size}`,
-      `Dashboard: http://localhost:${config.port}`,
-    ].join('\n');
+    return formatDiscordStatus(getStatusSnapshot());
   });
 
   discordAlerter.onCommand('sweep', async () => {
@@ -179,43 +121,7 @@ if (discordAlerter.isConfigured) {
 
   discordAlerter.onCommand('brief', async () => {
     if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-
-    const tg = currentData.tg || {};
-    const energy = currentData.energy || {};
-    const delta = memory.getLastDelta();
-    const ideas = (currentData.ideas || []).slice(0, 3);
-
-    const sections = [`**📋 CRUCIX BRIEF**\n_${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC_\n`];
-
-    if (delta?.summary) {
-      const dirEmoji = { 'risk-off': '📉', 'risk-on': '📈', 'mixed': '↔️' }[delta.summary.direction] || '↔️';
-      sections.push(`${dirEmoji} Direction: **${delta.summary.direction.toUpperCase()}** | ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical\n`);
-    }
-
-    const vix = currentData.fred?.find(f => f.id === 'VIXCLS');
-    const hy = currentData.fred?.find(f => f.id === 'BAMLH0A0HYM2');
-    if (vix || energy.wti) {
-      sections.push(`📊 VIX: ${vix?.value || '--'} | WTI: $${energy.wti || '--'} | Brent: $${energy.brent || '--'}`);
-      if (hy) sections.push(`   HY Spread: ${hy.value} | NatGas: $${energy.natgas || '--'}`);
-      sections.push('');
-    }
-
-    if (tg.urgent?.length > 0) {
-      sections.push(`📡 OSINT: ${tg.urgent.length} urgent signals, ${tg.posts || 0} total posts`);
-      for (const p of tg.urgent.slice(0, 2)) {
-        sections.push(`  • ${(p.text || '').substring(0, 80)}`);
-      }
-      sections.push('');
-    }
-
-    if (ideas.length > 0) {
-      sections.push(`**💡 Top Ideas:**`);
-      for (const idea of ideas) {
-        sections.push(`  ${idea.type === 'long' ? '📈' : idea.type === 'hedge' ? '🛡️' : '👁️'} ${idea.title}`);
-      }
-    }
-
-    return sections.join('\n');
+    return formatDiscordBrief(getBriefSnapshot());
   });
 
   discordAlerter.onCommand('portfolio', async () => {
@@ -268,8 +174,8 @@ app.get('/api/health', (req, res) => {
     sweepStartedAt,
     sourcesOk: currentData?.meta?.sourcesOk || 0,
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
-    llmEnabled: !!config.llm.provider,
-    llmProvider: config.llm.provider,
+    llmEnabled: !!llmProvider?.isConfigured,
+    llmProvider: llmProvider?.name || null,
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
@@ -411,9 +317,9 @@ async function start() {
   ╚══════════════════════════════════════════════╝
   `);
 
-  const server = app.listen(port);
+  httpServer = app.listen(port);
 
-  server.on('error', (err) => {
+  httpServer.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`\n[Crucix] FATAL: Port ${port} is already in use!`);
       console.error(`[Crucix] A previous Crucix instance may still be running.`);
@@ -426,17 +332,19 @@ async function start() {
     process.exit(1);
   });
 
-  server.on('listening', async () => {
+  httpServer.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
 
     // Auto-open browser
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
     // We must use `cmd /c start ""` to ensure it works in both cmd.exe and PowerShell.
-    const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
-                    process.platform === 'darwin' ? 'open' : 'xdg-open';
-    exec(`${openCmd} "http://localhost:${port}"`, (err) => {
-      if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
-    });
+    if (process.env.CRUCIX_NO_BROWSER !== '1') {
+      const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
+                      process.platform === 'darwin' ? 'open' : 'xdg-open';
+      exec(`${openCmd} "http://localhost:${port}"`, (err) => {
+        if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
+      });
+    }
 
     // Try to load existing data first for instant display (await so dashboard shows immediately)
     try {
@@ -456,8 +364,29 @@ async function start() {
     });
 
     // Schedule recurring sweeps
-    setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
+    sweepTimer = setInterval(runSweepCycle, config.refreshIntervalMinutes * 60 * 1000);
   });
+}
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Crucix] Received ${signal}. Shutting down...`);
+
+  if (sweepTimer) clearInterval(sweepTimer);
+  for (const client of sseClients) {
+    try { client.end(); } catch { }
+  }
+
+  await Promise.allSettled([
+    discordAlerter.stop?.(),
+    new Promise((resolve) => {
+      if (!httpServer) return resolve();
+      httpServer.close(() => resolve());
+    }),
+  ]);
+
+  process.exit(0);
 }
 
 // Graceful error handling — log full stack traces for diagnosis
@@ -467,6 +396,8 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
 });
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 start().catch(err => {
   console.error('[Crucix] FATAL — Server failed to start:', err?.stack || err?.message || err);

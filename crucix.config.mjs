@@ -2,9 +2,22 @@
 
 import "./apis/utils/env.mjs"; // Load .env first
 
+function parseIntegerEnv(name, fallback, { min = Number.NEGATIVE_INFINITY } = {}) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < min) {
+    console.warn(`[Crucix] Invalid ${name}=${JSON.stringify(raw)}. Using default ${fallback}.`);
+    return fallback;
+  }
+
+  return parsed;
+}
+
 export default {
-  port: parseInt(process.env.PORT) || 3117,
-  refreshIntervalMinutes: parseInt(process.env.REFRESH_INTERVAL_MINUTES) || 15,
+  port: parseIntegerEnv('PORT', 3117, { min: 0 }),
+  refreshIntervalMinutes: parseIntegerEnv('REFRESH_INTERVAL_MINUTES', 15, { min: 1 }),
 
   llm: {
     provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama
@@ -16,7 +29,7 @@ export default {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN || null,
     chatId: process.env.TELEGRAM_CHAT_ID || null,
-    botPollingInterval: parseInt(process.env.TELEGRAM_POLL_INTERVAL) || 5000,
+    botPollingInterval: parseIntegerEnv('TELEGRAM_POLL_INTERVAL', 5000, { min: 250 }),
     channels: process.env.TELEGRAM_CHANNELS || null, // Comma-separated extra channel IDs
   },
 
