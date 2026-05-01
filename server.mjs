@@ -303,19 +303,29 @@ async function runSweepCycle() {
 async function start() {
   const port = config.port;
 
-  console.log(`
-  ╔══════════════════════════════════════════════╗
-  ║           CRUCIX INTELLIGENCE ENGINE         ║
-  ║          Local Palantir · 26 Sources         ║
-  ╠══════════════════════════════════════════════╣
-  ║  Dashboard:  http://localhost:${port}${' '.repeat(14 - String(port).length)}║
-  ║  Health:     http://localhost:${port}/api/health${' '.repeat(4 - String(port).length)}║
-  ║  Refresh:    Every ${config.refreshIntervalMinutes} min${' '.repeat(20 - String(config.refreshIntervalMinutes).length)}║
-  ║  LLM:        ${(config.llm.provider || 'disabled').padEnd(31)}║
-  ║  Telegram:   ${config.telegram.botToken ? 'enabled' : 'disabled'}${' '.repeat(config.telegram.botToken ? 24 : 23)}║
-  ║  Discord:    ${config.discord?.botToken ? 'enabled' : config.discord?.webhookUrl ? 'webhook only' : 'disabled'}${' '.repeat(config.discord?.botToken ? 24 : config.discord?.webhookUrl ? 20 : 23)}║
-  ╚══════════════════════════════════════════════╝
-  `);
+  const telegramStatus = config.telegram.botToken ? 'enabled' : 'disabled';
+  const discordStatus = config.discord?.botToken
+    ? 'enabled'
+    : config.discord?.webhookUrl ? 'webhook only' : 'disabled';
+
+  const lines = [
+    '           CRUCIX INTELLIGENCE ENGINE         ',
+    '          Local Palantir · 29 Sources         ',
+    null, // separator
+    `  Dashboard:  http://localhost:${port}`,
+    `  Health:     http://localhost:${port}/api/health`,
+    `  Refresh:    Every ${config.refreshIntervalMinutes} min`,
+    `  LLM:        ${config.llm.provider || 'disabled'}`,
+    `  Telegram:   ${telegramStatus}`,
+    `  Discord:    ${discordStatus}`,
+  ];
+  const INNER = Math.max(46, ...lines.filter(Boolean).map(s => s.length + 2));
+  const out = lines.map(l =>
+    l === null
+      ? `  ╠${'═'.repeat(INNER)}╣`
+      : `  ║${l.padEnd(INNER, ' ')}║`
+  );
+  console.log(['', `  ╔${'═'.repeat(INNER)}╗`, ...out, `  ╚${'═'.repeat(INNER)}╝`].join('\n'));
 
   httpServer = app.listen(port);
 
