@@ -53,6 +53,7 @@ const memory = new MemoryManager(RUNS_DIR);
 const llmProvider = createLLMProvider(config.llm);
 const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
+let integrationsStarted = false;
 
 function getStatusSnapshot() {
   return buildStatusSnapshot({
@@ -74,64 +75,69 @@ function getBriefSnapshot() {
   });
 }
 
-if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
-if (telegramAlerter.isConfigured) {
-  console.log('[Crucix] Telegram alerts enabled');
+function initializeIntegrations() {
+  if (integrationsStarted) return;
+  integrationsStarted = true;
 
-  // ─── Two-Way Bot Commands ───────────────────────────────────────────────
+  if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
+  if (telegramAlerter.isConfigured) {
+    console.log('[Crucix] Telegram alerts enabled');
 
-  telegramAlerter.onCommand('/status', async () => {
-    return formatTelegramStatus(getStatusSnapshot());
-  });
+    // ─── Two-Way Bot Commands ─────────────────────────────────────────────
 
-  telegramAlerter.onCommand('/sweep', async () => {
-    if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
-    // Fire and forget — don't block the bot response
-    runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
-    return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
-  });
+    telegramAlerter.onCommand('/status', async () => {
+      return formatTelegramStatus(getStatusSnapshot());
+    });
 
-  telegramAlerter.onCommand('/brief', async () => {
-    if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-    return formatTelegramBrief(getBriefSnapshot());
-  });
+    telegramAlerter.onCommand('/sweep', async () => {
+      if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
+      // Fire and forget — don't block the bot response
+      runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
+      return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
+    });
 
-  telegramAlerter.onCommand('/portfolio', async () => {
-    return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-  });
+    telegramAlerter.onCommand('/brief', async () => {
+      if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
+      return formatTelegramBrief(getBriefSnapshot());
+    });
 
-  // Start polling for bot commands
-  telegramAlerter.startPolling(config.telegram.botPollingInterval);
-}
+    telegramAlerter.onCommand('/portfolio', async () => {
+      return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
+    });
 
-// === Discord Bot ===
-if (discordAlerter.isConfigured) {
-  console.log('[Crucix] Discord bot enabled');
+    // Start polling for bot commands
+    telegramAlerter.startPolling(config.telegram.botPollingInterval);
+  }
 
-  // Reuse the same command handlers as Telegram (DRY)
-  discordAlerter.onCommand('status', async () => {
-    return formatDiscordStatus(getStatusSnapshot());
-  });
+  // === Discord Bot ===
+  if (discordAlerter.isConfigured) {
+    console.log('[Crucix] Discord alerts enabled');
 
-  discordAlerter.onCommand('sweep', async () => {
-    if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
-    runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
-    return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
-  });
+    // Reuse the same command handlers as Telegram (DRY)
+    discordAlerter.onCommand('status', async () => {
+      return formatDiscordStatus(getStatusSnapshot());
+    });
 
-  discordAlerter.onCommand('brief', async () => {
-    if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-    return formatDiscordBrief(getBriefSnapshot());
-  });
+    discordAlerter.onCommand('sweep', async () => {
+      if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
+      runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
+      return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
+    });
 
-  discordAlerter.onCommand('portfolio', async () => {
-    return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-  });
+    discordAlerter.onCommand('brief', async () => {
+      if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
+      return formatDiscordBrief(getBriefSnapshot());
+    });
 
-  // Start the Discord bot (non-blocking — connection happens async)
-  discordAlerter.start().catch(err => {
-    console.error('[Crucix] Discord bot startup failed (non-fatal):', err.message);
-  });
+    discordAlerter.onCommand('portfolio', async () => {
+      return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
+    });
+
+    // Start the Discord bot (non-blocking — connection happens async)
+    discordAlerter.start().catch(err => {
+      console.error('[Crucix] Discord bot startup failed (non-fatal):', err.message);
+    });
+  }
 }
 
 // === Express Server ===
@@ -301,6 +307,8 @@ async function runSweepCycle() {
 
 // === Startup ===
 async function start() {
+  initializeIntegrations();
+
   const port = config.port;
 
   const telegramStatus = config.telegram.botToken ? 'enabled' : 'disabled';
@@ -384,6 +392,7 @@ async function shutdown(signal) {
   console.log(`[Crucix] Received ${signal}. Shutting down...`);
 
   if (sweepTimer) clearInterval(sweepTimer);
+  telegramAlerter.stopPolling?.();
   for (const client of sseClients) {
     try { client.end(); } catch { }
   }
@@ -399,17 +408,32 @@ async function shutdown(signal) {
   process.exit(0);
 }
 
-// Graceful error handling — log full stack traces for diagnosis
-process.on('unhandledRejection', (err) => {
-  console.error('[Crucix] Unhandled rejection:', err?.stack || err?.message || err);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
-});
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+function installProcessHandlers() {
+  // Graceful error handling — log full stack traces for diagnosis
+  process.on('unhandledRejection', (err) => {
+    console.error('[Crucix] Unhandled rejection:', err?.stack || err?.message || err);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
+  });
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
 
-start().catch(err => {
-  console.error('[Crucix] FATAL — Server failed to start:', err?.stack || err?.message || err);
-  process.exit(1);
-});
+const isMain = process.argv[1]
+  && fileURLToPath(import.meta.url).replace(/\\/g, '/') === process.argv[1].replace(/\\/g, '/');
+
+if (isMain) {
+  installProcessHandlers();
+  start().catch(err => {
+    console.error('[Crucix] FATAL — Server failed to start:', err?.stack || err?.message || err);
+    process.exit(1);
+  });
+}
+
+export {
+  app,
+  runSweepCycle,
+  shutdown,
+  start,
+};

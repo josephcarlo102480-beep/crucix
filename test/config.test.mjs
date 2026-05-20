@@ -1,8 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const configUrl = pathToFileURL('/home/joseph/Crucix/crucix.config.mjs').href;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const configUrl = pathToFileURL(join(__dirname, '..', 'crucix.config.mjs')).href;
 
 async function loadConfigWithEnv(overrides) {
   const keys = Object.keys(overrides);

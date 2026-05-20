@@ -10,6 +10,7 @@ import {
   formatTelegramStatus,
 } from '../lib/bot/messages.mjs';
 import { contentHash, getNewSignals, ruleBasedEvaluation } from '../lib/alerts/shared.mjs';
+import { DiscordAlerter } from '../lib/alerts/discord.mjs';
 
 describe('bot message builders', () => {
   it('formats shared status content for telegram and discord', () => {
@@ -80,5 +81,19 @@ describe('shared alert logic', () => {
     assert.equal(evaluation.shouldAlert, true);
     assert.equal(evaluation.tier, 'FLASH');
     assert.match(evaluation.reason, /anomaly/i);
+  });
+});
+
+describe('DiscordAlerter configuration modes', () => {
+  it('does not start a bot client in webhook-only mode', async () => {
+    const alerter = new DiscordAlerter({ webhookUrl: 'https://discord.test/webhook' });
+
+    assert.equal(alerter.isConfigured, true);
+    assert.equal(alerter.hasWebhookConfigured, true);
+    assert.equal(alerter.hasBotConfigured, false);
+
+    await alerter.start();
+
+    assert.equal(alerter._client, null);
   });
 });

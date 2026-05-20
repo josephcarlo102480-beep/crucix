@@ -64,7 +64,8 @@ for (const [path, label] of modules) {
 // Step 5: Check port availability
 console.log('');
 const net = await import('net');
-const port = 3117;
+const { default: config } = await import('./crucix.config.mjs');
+const port = config.port;
 const server = net.default.createServer();
 try {
   await new Promise((resolve, reject) => {
@@ -77,17 +78,21 @@ try {
     console.error(`❌ Port ${port} is already in use!`);
     console.error('   A previous Crucix instance may still be running.');
     console.error('   Fix: taskkill /F /IM node.exe   (kills all Node processes)');
-    console.error('   Or:  npx kill-port 3117');
+    console.error(`   Or:  npx kill-port ${port}`);
   } else {
     console.error(`❌ Port ${port} error:`, err.message);
   }
 }
 
-// Step 6: Try full server import
-console.log('\n--- Attempting full server import ---');
+// Step 6: Verify server module can be imported without starting listeners/sweeps.
+console.log('\n--- Checking server module import ---');
 try {
-  await import('./server.mjs');
-  console.log('✅ server.mjs loaded and running');
+  const serverModule = await import('./server.mjs');
+  if (typeof serverModule.start !== 'function') {
+    throw new Error('server.mjs did not export start()');
+  }
+  console.log('✅ server.mjs imports cleanly');
+  console.log('   Start it with: npm run dev');
 } catch (err) {
   console.error('❌ server.mjs CRASHED:', err.message);
   console.error(err.stack);
