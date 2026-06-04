@@ -20,4 +20,20 @@ describe('dashboard ticker expansion', () => {
     assert.match(html, /e\.key === 'Escape' && expandedTickerId/);
     assert.match(html, /expandedTickerId = expandedTickerId === card\.dataset\.tickerId \? null : card\.dataset\.tickerId/);
   });
+
+  it('supports live and pinned ticker modes', () => {
+    assert.match(html, /let tickerMode = localStorage\.getItem\('crucix_ticker_mode'\)/);
+    assert.match(html, /function setTickerMode/);
+    assert.match(html, /class="ticker-tabs"/);
+    assert.match(html, /onclick="setTickerMode\('live'\)">Live/);
+    assert.match(html, /onclick="setTickerMode\('pinned'\)">Pinned/);
+  });
+
+  it('persists ticker item pins separately from panel pinning', () => {
+    assert.match(html, /crucix_pinned_ticker_items/);
+    assert.match(html, /function toggleTickerPin/);
+    assert.match(html, /data-ticker-key/);
+    assert.match(html, /toggleTickerPin\('\$\{escapeAttr\(key\)\}'\)/);
+    assert.match(html, /Pin panel/);
+  });
 });

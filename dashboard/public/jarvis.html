@@ -63,7 +63,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .guide-btn:hover{border-color:rgba(68,204,255,0.5);background:rgba(68,204,255,0.12);color:#d9f7ff}
 .perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
 .perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
-.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
+.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* HERO */
 .hero-strip{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -303,6 +303,13 @@ body.view-map #lowerGrid{margin-top:10px}
 .tk-summary{margin:7px 0;color:#d6e4df}
 .tk-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .tk-action{display:inline-flex;align-items:center;padding:4px 7px;border:1px solid rgba(68,204,255,0.25);color:var(--accent2);background:rgba(68,204,255,0.06);font-family:var(--mono);font-size:9px;text-transform:uppercase;text-decoration:none}
+.ticker-tabs{display:inline-flex;align-items:center;border:1px solid rgba(100,240,200,0.16);background:rgba(255,255,255,0.02);margin-right:6px}
+.ticker-tab{border:0;border-right:1px solid rgba(100,240,200,0.12);background:transparent;color:var(--dim);font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;padding:4px 7px;cursor:pointer}
+.ticker-tab:last-child{border-right:0}
+.ticker-tab.active{background:rgba(100,240,200,0.12);color:var(--accent)}
+.ticker-tab:hover{color:var(--text)}
+.tk-pin{display:inline-flex;align-items:center;padding:4px 7px;border:1px solid rgba(100,240,200,0.22);color:var(--accent);background:rgba(100,240,200,0.05);font-family:var(--mono);font-size:9px;text-transform:uppercase;cursor:pointer}
+.tk-pin.active{border-color:rgba(255,184,76,0.35);color:var(--warn);background:rgba(255,184,76,0.08)}
 .tk-raw{margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:6px}
 .tk-raw summary{font-family:var(--mono);font-size:9px;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:0.08em}
 .tk-raw pre{white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:160px;overflow:auto;color:#9eb7af;font-family:var(--mono);font-size:9px}
@@ -475,6 +482,8 @@ let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let primaryView = localStorage.getItem('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
 let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
 let expandedTickerId = null;
+let tickerMode = localStorage.getItem('crucix_ticker_mode') === 'pinned' ? 'pinned' : 'live';
+let pinnedTickerItems = loadPinnedTickerItems();
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
@@ -736,6 +745,28 @@ function setPrimaryView(view){
 function setPinnedPanel(panel){
   pinnedLowerPanel = panel;
   localStorage.setItem('crucix_pinned_panel', panel);
+  renderLower();
+}
+
+function loadPinnedTickerItems(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem('crucix_pinned_ticker_items') || '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter(entry => entry && typeof entry.key === 'string' && entry.item && typeof entry.item === 'object').slice(0,40)
+      : [];
+  }catch{
+    return [];
+  }
+}
+
+function savePinnedTickerItems(){
+  localStorage.setItem('crucix_pinned_ticker_items', JSON.stringify(pinnedTickerItems.slice(0,40)));
+}
+
+function setTickerMode(mode){
+  tickerMode = mode === 'pinned' ? 'pinned' : 'live';
+  localStorage.setItem('crucix_ticker_mode', tickerMode);
+  expandedTickerId = null;
   renderLower();
 }
 
@@ -1630,8 +1661,39 @@ function mkSparkSvg(values, isGood){
   return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}"><polyline class="spark-line ${cls}" points="${pts.join(' ')}"/><circle class="${cls} spark-dot" cx="${last.split(',')[0]}" cy="${last.split(',')[1]}" r="2" fill="${isGood?'var(--accent)':'var(--danger)'}"/></svg>`;
 }
 
+function tickerItemKey(item){
+  const basis = [
+    item?.url,
+    item?.timestamp || item?.date,
+    item?.source || item?.channel || item?.type,
+    item?.headline || item?.title || item?.text || ''
+  ].filter(Boolean).join('|');
+  let hash = 5381;
+  for(let i=0;i<basis.length;i++) hash = ((hash << 5) + hash) ^ basis.charCodeAt(i);
+  return `tk-${(hash >>> 0).toString(36)}`;
+}
+
 function tickerItemId(item, index){
-  return `ticker-${index}-${String(item?.timestamp || item?.date || item?.headline || item?.title || '').slice(0,40).replace(/[^a-z0-9]+/gi,'-')}`;
+  return `ticker-${index}-${tickerItemKey(item)}`;
+}
+
+function tickerPinnedKeys(){
+  return new Set(pinnedTickerItems.map(entry => entry.key));
+}
+
+function toggleTickerPin(key){
+  const existingIndex = pinnedTickerItems.findIndex(entry => entry.key === key);
+  if(existingIndex >= 0){
+    pinnedTickerItems.splice(existingIndex, 1);
+  }else{
+    const item = (D?.newsFeed || []).find(entry => tickerItemKey(entry) === key);
+    if(item) pinnedTickerItems.unshift({key, item});
+  }
+  savePinnedTickerItems();
+  if(tickerMode === 'pinned' && !pinnedTickerItems.length) tickerMode = 'live';
+  localStorage.setItem('crucix_ticker_mode', tickerMode);
+  expandedTickerId = null;
+  renderLower();
 }
 
 function formatTickerDate(item){
@@ -1646,7 +1708,9 @@ function tickerSeverity(item){
 
 function buildTickerCard(item, index, srcClass){
   const id = tickerItemId(item, index);
+  const key = tickerItemKey(item);
   const isOpen = expandedTickerId === id;
+  const isPinned = tickerPinnedKeys().has(key);
   const source = item?.source || item?.channel || item?.type || 'NEWS';
   const sc = srcClass(source);
   const headline = cleanText(item?.headline || item?.title || item?.text || 'Untitled feed item');
@@ -1656,10 +1720,11 @@ function buildTickerCard(item, index, srcClass){
   const severity = tickerSeverity(item);
   const safeUrl = safeExternalUrl(item?.url);
   const raw = JSON.stringify(item || {}, null, 2);
-  return `<div class="tk-card ${item?.urgent?'urgent':''}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}" data-ticker-id="${escapeAttr(id)}">
+  return `<div class="tk-card ${item?.urgent?'urgent':''}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}" data-ticker-id="${escapeAttr(id)}" data-ticker-key="${escapeAttr(key)}">
       <div class="tk-line">
         <span class="tk-src ${sc}">${escapeHtml(String(source).substring(0,12) || 'NEWS')}</span>
         <span class="tk-src other">${escapeHtml(String(type).toUpperCase().substring(0,12))}</span>
+        ${isPinned ? '<span class="tk-src tg">PINNED</span>' : ''}
         ${severity ? `<span class="tk-src ${item?.urgent?'tg':'other'}">${escapeHtml(String(severity).toUpperCase().substring(0,14))}</span>` : ''}
         <span class="tk-time">${escapeHtml(age)}</span>
         <span class="tk-link" aria-hidden="true">${isOpen?'&#9662;':'&#9656;'}</span>
@@ -1676,6 +1741,7 @@ function buildTickerCard(item, index, srcClass){
         </div>
         <div class="tk-summary">${escapeHtml(summary || 'No summary available for this item.')}</div>
         <div class="tk-actions">
+          <button type="button" class="tk-pin ${isPinned?'active':''}" onclick="event.stopPropagation();toggleTickerPin('${escapeAttr(key)}')">${isPinned?'Unpin':'Pin'}</button>
           ${safeUrl ? `<a class="tk-action" href="${escapeAttr(safeUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open source</a>` : ''}
         </div>
         <details class="tk-raw" onclick="event.stopPropagation()">
@@ -1743,9 +1809,16 @@ function renderLower(){
   const hasMarkets = indexCards || cryptoCards;
 
   // NEWS TICKER — merges RSS + GDELT + Telegram into flowing cards (moved from right rail)
-  const feed = (D.newsFeed || []).slice(0, 20);
+  const liveFeed = (D.newsFeed || []).slice(0, 20);
+  const liveByKey = new Map(liveFeed.map(item => [tickerItemKey(item), item]));
+  pinnedTickerItems = pinnedTickerItems
+    .filter(entry => entry && typeof entry.key === 'string' && entry.item && typeof entry.item === 'object')
+    .map(entry => ({...entry, item: liveByKey.get(entry.key) || entry.item}))
+    .slice(0,40);
+  const pinnedFeed = pinnedTickerItems.map(entry => entry.item);
+  const feed = tickerMode === 'pinned' ? pinnedFeed : liveFeed;
   const panelMeta = {
-    ticker: `Merged feed · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
+    ticker: `${tickerMode === 'pinned' ? 'Pinned feed' : 'Merged feed'} · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
     macro: `FRED · BLS · Yahoo Finance · ${currentSweepAge()}`,
     ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Pending'} · ${currentSweepAge()}`,
     osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`
@@ -1771,7 +1844,7 @@ function renderLower(){
   if(expandedTickerId && !feed.some((item, index) => tickerItemId(item, index) === expandedTickerId)) expandedTickerId = null;
   const tickerCards = feed.length
     ? feed.map((n, index) => buildTickerCard(n, index, srcClass)).join('')
-    : `<div class="empty-state">No ticker items are available yet. Check source status, network access, or wait for the first sweep to complete.</div>`;
+    : `<div class="empty-state">${tickerMode === 'pinned' ? 'No pinned ticker items yet. Open Live and pin items you want to keep.' : 'No ticker items are available yet. Check source status, network access, or wait for the first sweep to complete.'}</div>`;
   const tickerDuration = Math.max(20, feed.length * 2.5);
 
   // Leverageable Ideas (LLM-only feature)
@@ -1791,14 +1864,18 @@ function renderLower(){
       <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
     </div>`;
 
-  const panelHead = (title, meta, badge, pinKey) => `
+  const tickerTabs = `<span class="ticker-tabs" role="tablist" aria-label="Ticker feed">
+        <button type="button" class="ticker-tab focusable ${tickerMode==='live'?'active':''}" role="tab" aria-selected="${tickerMode==='live'?'true':'false'}" onclick="setTickerMode('live')">Live</button>
+        <button type="button" class="ticker-tab focusable ${tickerMode==='pinned'?'active':''}" role="tab" aria-selected="${tickerMode==='pinned'?'true':'false'}" onclick="setTickerMode('pinned')">Pinned ${pinnedTickerItems.length}</button>
+      </span>`;
+  const panelHead = (title, meta, badge, pinKey, beforeActions='') => `
       <div class="sec-head">
         <div class="sec-title"><h3>${title}</h3><div class="sec-meta">${meta}</div></div>
-        <div class="sec-actions">${pinKey ? `<button class="pin-btn focusable ${pinnedLowerPanel===pinKey?'active':''}" onclick="setPinnedPanel('${pinKey}')">${pinnedLowerPanel===pinKey?'Pinned':'Pin'}</button>` : ''}${badge}</div>
+        <div class="sec-actions">${beforeActions}${pinKey ? `<button class="pin-btn focusable ${pinnedLowerPanel===pinKey?'active':''}" onclick="setPinnedPanel('${pinKey}')">${pinnedLowerPanel===pinKey?'Panel pinned':'Pin panel'}</button>` : ''}${badge}</div>
       </div>`;
 
   const tickerPanel = `<div class="g-panel lp-ticker ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
-      ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker')}
+      ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker', tickerTabs)}
       <div class="ticker-wrap ${expandedTickerId?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
         <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerId) ? '' : tickerCards}</div>
       </div>
