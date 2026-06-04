@@ -149,21 +149,27 @@ app.get('/', (req, res) => {
   if (!currentData) {
     res.sendFile(join(ROOT, 'dashboard/public/loading.html'));
   } else {
-    const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
-    let html = readFileSync(htmlPath, 'utf-8');
-    
-    // Inject locale data into the HTML
-    const locale = getLocale();
-    const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
-    html = html.replace('</head>', `${localeScript}\n</head>`);
-    
-    res.type('html').send(html);
+    try {
+      const htmlPath = join(ROOT, 'dashboard/public/jarvis.html');
+      let html = readFileSync(htmlPath, 'utf-8');
+
+      // Inject locale data into the HTML
+      const locale = getLocale();
+      const localeScript = `<script>window.__CRUCIX_LOCALE__ = ${JSON.stringify(locale).replace(/<\/script>/gi, '<\\/script>')};</script>`;
+      html = html.replace('</head>', `${localeScript}\n</head>`);
+
+      res.type('html').send(html);
+    } catch (err) {
+      console.error('[Crucix] Failed to render dashboard shell:', err?.stack || err?.message || err);
+      res.status(500).type('text').send('Crucix dashboard shell failed to render. Check the server console for details.');
+    }
   }
 });
 
 // API: current data
 app.get('/api/data', (req, res) => {
-  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress' });
+  res.set('Cache-Control', 'no-store');
+  if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress', sweepInProgress, sweepStartedAt });
   res.json(currentData);
 });
 
@@ -353,7 +359,18 @@ async function start() {
   httpServer.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
 
-    // Auto-open browser
+    // Try to load existing data first for instant display (await so dashboard shows immediately)
+    try {
+      const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
+      const data = await synthesize(existing);
+      currentData = data;
+      console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
+      broadcast({ type: 'update', data: currentData });
+    } catch (err) {
+      console.log(`[Crucix] No usable cached data loaded (${err?.message || err}) — first sweep required`);
+    }
+
+    // Auto-open browser after cached data hydration, so '/' does not unnecessarily land on loading.html.
     // NOTE: On Windows, `start` in PowerShell is an alias for Start-Service, not cmd's start.
     // We must use `cmd /c start ""` to ensure it works in both cmd.exe and PowerShell.
     if (process.env.CRUCIX_NO_BROWSER !== '1') {
@@ -362,17 +379,6 @@ async function start() {
       exec(`${openCmd} "http://localhost:${port}"`, (err) => {
         if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
       });
-    }
-
-    // Try to load existing data first for instant display (await so dashboard shows immediately)
-    try {
-      const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
-      const data = await synthesize(existing);
-      currentData = data;
-      console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
-      broadcast({ type: 'update', data: currentData });
-    } catch {
-      console.log('[Crucix] No existing data found — first sweep required');
     }
 
     // Run first sweep (refreshes data in background)

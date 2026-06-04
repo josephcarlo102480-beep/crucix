@@ -397,10 +397,13 @@ crucix/
 | Script | Command | Description |
 |--------|---------|-------------|
 | `npm run dev` | `node --trace-warnings server.mjs` | Start dashboard with auto-refresh |
+| `npm test` | `node --test test/*.test.mjs` | Run unit and dashboard regression tests |
 | `npm run sweep` | `node apis/briefing.mjs` | Run a single sweep, output JSON to stdout |
 | `npm run inject` | `node dashboard/inject.mjs` | Inject latest data into static HTML |
 | `npm run brief:save` | `node apis/save-briefing.mjs` | Run sweep + save timestamped JSON |
 | `npm run diag` | `node diag.mjs` | Run diagnostics (Node version, imports, port check) |
+
+After starting the server, use `http://localhost:3117/api/health` to confirm the process is alive and source counts are updating. If the dashboard stays on the loading page, check `http://localhost:3117/api/data`: a `503` means the first sweep is still running or failed before producing data; a JSON payload means the dashboard should render and browser console errors are the next place to inspect.
 
 ---
 

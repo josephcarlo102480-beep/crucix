@@ -63,7 +63,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .guide-btn:hover{border-color:rgba(68,204,255,0.5);background:rgba(68,204,255,0.12);color:#d9f7ff}
 .perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
 .perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
-.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
+.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* HERO */
 .hero-strip{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -264,19 +264,22 @@ body.view-map #lowerGrid{margin-top:10px}
 
 /* NEWS TICKER */
 .ticker-wrap{overflow:hidden;max-height:320px;position:relative;border:1px solid rgba(100,240,200,0.08);background:rgba(0,0,0,0.15)}
+.ticker-wrap.has-expanded{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.2) transparent}
+.ticker-wrap.has-expanded::before,.ticker-wrap.has-expanded::after{display:none}
 .ticker-wrap::before,.ticker-wrap::after{content:'';position:absolute;left:0;right:0;height:30px;z-index:2;pointer-events:none}
 .ticker-wrap::before{top:0;background:linear-gradient(to bottom,rgba(14,17,22,0.95),transparent)}
 .ticker-wrap::after{bottom:0;background:linear-gradient(to top,rgba(14,17,22,0.95),transparent)}
 .ticker-track{display:flex;flex-direction:column;animation:tickerScroll var(--ticker-duration,30s) linear infinite;will-change:transform;contain:layout style}
-.ticker-wrap:hover .ticker-track{animation-play-state:paused}
+.ticker-wrap:hover .ticker-track,.ticker-wrap.has-expanded .ticker-track{animation-play-state:paused}
+.ticker-wrap.has-expanded .ticker-track{animation:none;transform:none}
 @keyframes tickerScroll{0%{transform:translateY(0)}100%{transform:translateY(-50%)}}
-.tk-card{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.03);cursor:default;transition:background 0.2s}
-.tk-card.clickable{cursor:pointer}
-.tk-card .tk-link{display:none;margin-left:auto;font-size:10px;color:var(--dim);transition:color 0.2s}
-.tk-card.clickable .tk-link{display:inline-flex;align-items:center}
-.tk-card.clickable:hover .tk-link{color:var(--accent)}
+.tk-card{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;transition:background 0.2s,border-color 0.2s;overflow-wrap:anywhere}
+.tk-card[aria-expanded="true"]{background:rgba(100,240,200,0.055);border-left:2px solid var(--accent);box-shadow:inset 0 0 0 1px rgba(100,240,200,0.08)}
+.tk-card .tk-link{margin-left:auto;font-size:10px;color:var(--dim);transition:color 0.2s}
 .tk-card:hover{background:rgba(100,240,200,0.04)}
 .tk-card.urgent{border-left:2px solid var(--danger)}
+.tk-card.urgent[aria-expanded="true"]{border-left-color:var(--danger)}
+.tk-line{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
 .tk-src{font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;padding:1px 5px;border:1px solid;display:inline-block;margin-right:4px}
 .tk-src.bbc{color:#64b5f6;border-color:rgba(100,181,246,0.3)}
 .tk-src.nyt{color:#b0bec5;border-color:rgba(176,190,197,0.3)}
@@ -293,6 +296,20 @@ body.view-map #lowerGrid{margin-top:10px}
 .tk-src.other{color:#b0bec5;border-color:rgba(176,190,197,0.2)}
 .tk-head{font-size:11px;line-height:1.35;color:#c8d8d2;margin-top:3px}
 .tk-time{font-family:var(--mono);font-size:8px;color:var(--dim);margin-top:2px}
+.tk-detail{display:none;margin-top:8px;padding:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.18);font-size:10px;line-height:1.5;color:#b7cac3;overflow-wrap:anywhere}
+.tk-card[aria-expanded="true"] .tk-detail{display:block}
+.tk-detail-grid{display:grid;grid-template-columns:72px minmax(0,1fr);gap:4px 8px;margin-bottom:8px}
+.tk-detail-label{font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase}
+.tk-summary{margin:7px 0;color:#d6e4df}
+.tk-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.tk-action{display:inline-flex;align-items:center;padding:4px 7px;border:1px solid rgba(68,204,255,0.25);color:var(--accent2);background:rgba(68,204,255,0.06);font-family:var(--mono);font-size:9px;text-transform:uppercase;text-decoration:none}
+.tk-raw{margin-top:8px;border-top:1px solid rgba(255,255,255,0.05);padding-top:6px}
+.tk-raw summary{font-family:var(--mono);font-size:9px;color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:0.08em}
+.tk-raw pre{white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:160px;overflow:auto;color:#9eb7af;font-family:var(--mono);font-size:9px}
+.empty-state{padding:18px 12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px;line-height:1.5;border:1px dashed rgba(100,240,200,0.12);background:rgba(255,255,255,0.015)}
+.app-error{position:fixed;left:12px;right:12px;bottom:12px;z-index:1500;padding:12px 14px;border:1px solid rgba(255,95,99,0.35);background:rgba(30,6,10,0.94);box-shadow:0 12px 32px rgba(0,0,0,0.4);font-family:var(--mono);font-size:11px;line-height:1.5;color:#ffd8d9}
+.app-error strong{display:block;color:var(--danger);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px}
+.app-error button{float:right;margin-left:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#ffd8d9;font-family:var(--mono);font-size:10px;padding:3px 7px;cursor:pointer}
 
 /* DELTA BADGES */
 .delta-badge{font-family:var(--mono);font-size:8px;letter-spacing:0.05em;padding:1px 4px;margin-left:4px;border-radius:2px;vertical-align:middle}
@@ -457,6 +474,7 @@ let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let primaryView = localStorage.getItem('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
 let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
+let expandedTickerId = null;
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
@@ -585,6 +603,76 @@ const regionPOV = {
 
 if(lowPerfMode) document.body.classList.add('low-perf');
 
+function defaultDashboardData(){
+  const now = new Date().toISOString();
+  return {
+    meta:{timestamp:now,sourcesOk:0,sourcesQueried:0,totalDurationMs:0},
+    air:[],thermal:[],tSignals:[],chokepoints:[],nuke:[],nukeSignals:[],
+    airMeta:{},sdr:{total:0,online:0,zones:[]},tg:{posts:0,urgent:[],topPosts:[]},
+    who:[],fred:[],energy:{wti:null,brent:null,natgas:null,wtiRecent:[],signals:[]},
+    bls:[],treasury:{totalDebt:'0',signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:0,alerts:[]},
+    epa:{totalReadings:0,stations:[]},acled:{totalEvents:0,totalFatalities:0,regions:[],deadliestEvents:[]},
+    gdelt:{totalArticles:0,geoPoints:[]},space:null,health:[],news:[],markets:{indexes:[],crypto:[],rates:[],commodities:[],vix:null},
+    ideas:[],ideasSource:'disabled',newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
+  };
+}
+
+function asArray(value){ return Array.isArray(value) ? value : []; }
+function normalizeDashboardData(input){
+  const base = defaultDashboardData();
+  const data = input && typeof input === 'object' ? input : {};
+  const merged = {...base,...data};
+  merged.meta = {...base.meta,...(data.meta && typeof data.meta === 'object' ? data.meta : {})};
+  if(!Number.isFinite(new Date(merged.meta.timestamp).getTime())) merged.meta.timestamp = new Date().toISOString();
+  merged.meta.sourcesOk = Number.isFinite(+merged.meta.sourcesOk) ? +merged.meta.sourcesOk : 0;
+  merged.meta.sourcesQueried = Number.isFinite(+merged.meta.sourcesQueried) ? +merged.meta.sourcesQueried : 0;
+  merged.meta.totalDurationMs = Number.isFinite(+merged.meta.totalDurationMs) ? +merged.meta.totalDurationMs : 0;
+  merged.air = asArray(data.air);
+  merged.thermal = asArray(data.thermal);
+  merged.tSignals = asArray(data.tSignals);
+  merged.chokepoints = asArray(data.chokepoints);
+  merged.nuke = asArray(data.nuke);
+  merged.nukeSignals = asArray(data.nukeSignals);
+  merged.sdr = {...base.sdr,...(data.sdr && typeof data.sdr === 'object' ? data.sdr : {})};
+  merged.sdr.zones = asArray(merged.sdr.zones);
+  merged.tg = {...base.tg,...(data.tg && typeof data.tg === 'object' ? data.tg : {})};
+  merged.tg.urgent = asArray(merged.tg.urgent);
+  merged.tg.topPosts = asArray(merged.tg.topPosts);
+  merged.who = asArray(data.who);
+  merged.fred = asArray(data.fred);
+  merged.energy = {...base.energy,...(data.energy && typeof data.energy === 'object' ? data.energy : {})};
+  merged.energy.wtiRecent = asArray(merged.energy.wtiRecent).filter(v => Number.isFinite(+v)).map(Number);
+  merged.energy.signals = asArray(merged.energy.signals);
+  merged.bls = asArray(data.bls);
+  merged.treasury = {...base.treasury,...(data.treasury && typeof data.treasury === 'object' ? data.treasury : {})};
+  merged.defense = asArray(data.defense);
+  merged.noaa = {...base.noaa,...(data.noaa && typeof data.noaa === 'object' ? data.noaa : {})};
+  merged.noaa.alerts = asArray(merged.noaa.alerts);
+  merged.epa = {...base.epa,...(data.epa && typeof data.epa === 'object' ? data.epa : {})};
+  merged.epa.stations = asArray(merged.epa.stations);
+  merged.acled = {...base.acled,...(data.acled && typeof data.acled === 'object' ? data.acled : {})};
+  merged.acled.regions = asArray(merged.acled.regions);
+  merged.acled.deadliestEvents = asArray(merged.acled.deadliestEvents);
+  merged.gdelt = {...base.gdelt,...(data.gdelt && typeof data.gdelt === 'object' ? data.gdelt : {})};
+  merged.gdelt.geoPoints = asArray(merged.gdelt.geoPoints);
+  merged.health = asArray(data.health);
+  merged.news = asArray(data.news);
+  merged.markets = {...base.markets,...(data.markets && typeof data.markets === 'object' ? data.markets : {})};
+  merged.markets.indexes = asArray(merged.markets.indexes);
+  merged.markets.crypto = asArray(merged.markets.crypto);
+  merged.markets.rates = asArray(merged.markets.rates);
+  merged.markets.commodities = asArray(merged.markets.commodities);
+  merged.ideas = asArray(data.ideas);
+  merged.newsFeed = asArray(data.newsFeed);
+  merged.delta = {...base.delta,...(data.delta && typeof data.delta === 'object' ? data.delta : {})};
+  merged.delta.summary = {...base.delta.summary,...(merged.delta.summary && typeof merged.delta.summary === 'object' ? merged.delta.summary : {})};
+  merged.delta.signals = {...base.delta.signals,...(merged.delta.signals && typeof merged.delta.signals === 'object' ? merged.delta.signals : {})};
+  merged.delta.signals.new = asArray(merged.delta.signals.new);
+  merged.delta.signals.escalated = asArray(merged.delta.signals.escalated);
+  merged.delta.signals.deescalated = asArray(merged.delta.signals.deescalated);
+  return merged;
+}
+
 function currentSweepAge(){
   return D?.meta?.timestamp ? getAge(D.meta.timestamp) : 'unknown';
 }
@@ -596,6 +684,34 @@ function sourceHealthTone(){
   if(okRatio >= 0.75) return 'warn';
   return 'danger';
 }
+
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+
+function escapeAttr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
+
+function showAppError(message, detail=''){
+  console.error('[Crucix Dashboard]', message, detail);
+  let panel = document.getElementById('appErrorPanel');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'appErrorPanel';
+    panel.className = 'app-error';
+    document.body.appendChild(panel);
+  }
+  panel.innerHTML = `<button type="button" onclick="this.parentElement.remove()">Dismiss</button><strong>Dashboard error</strong>${escapeHtml(message)}${detail ? `<br>${escapeHtml(String(detail).slice(0,240))}` : ''}`;
+}
+
+window.addEventListener('error', event => {
+  showAppError(event.message || 'Unexpected render error', event.error?.stack || '');
+});
+window.addEventListener('unhandledrejection', event => {
+  const reason = event.reason;
+  showAppError(reason?.message || 'Unhandled async error', reason?.stack || reason || '');
+});
 
 function applyPrimaryView(){
   const view = primaryView;
@@ -683,8 +799,9 @@ function renderRegionControls(){
 function renderTopbar(){
   const mobile = isMobileLayout();
   const ts = new Date(D.meta.timestamp);
-  const d = ts.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
-  const timeStr = ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
+  const validTs = Number.isFinite(ts.getTime()) ? ts : new Date();
+  const d = validTs.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+  const timeStr = validTs.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true});
   document.getElementById('topbar').innerHTML=`
     <div class="top-left">
       <span class="brand">CRUCIX MONITOR</span>
@@ -713,6 +830,7 @@ function renderHero(){
   const critical = ds.criticalChanges || 0;
   const failures = (D.meta.sourcesQueried || 0) - (D.meta.sourcesOk || 0);
   const failedNames = (D.health || []).filter(s => s.err).slice(0, 4).map(s => s.n).join(' · ') || 'No failed sources';
+  const sweepSeconds = Number.isFinite(+D.meta.totalDurationMs) ? (+D.meta.totalDurationMs / 1000).toFixed(1) : '0.0';
 
   hero.innerHTML = `
     <div class="hero-card primary">
@@ -727,7 +845,7 @@ function renderHero(){
           </div>`).join('')}
       </div>
       <div class="hero-foot">
-        <div class="hero-meta">Freshness ${currentSweepAge()} · Sweep ${(D.meta.totalDurationMs/1000).toFixed(1)}s · Failed ${failures}</div>
+        <div class="hero-meta">Freshness ${currentSweepAge()} · Sweep ${sweepSeconds}s · Failed ${failures}</div>
         <div class="stage-switch">
           <button class="stage-tab focusable" data-view="overview" onclick="setPrimaryView('overview')">Overview</button>
           <button class="stage-tab focusable" data-view="map" onclick="setPrimaryView('map')">Map</button>
@@ -764,9 +882,9 @@ function renderHero(){
 
 // === LEFT RAIL ===
 function renderLeftRail(){
-  const totalAir=D.air.reduce((s,a)=>s+a.total,0);
-  const totalThermal=D.thermal.reduce((s,t)=>s+t.det,0);
-  const totalNight=D.thermal.reduce((s,t)=>s+t.night,0);
+  const totalAir=D.air.reduce((s,a)=>s+(Number(a.total)||0),0);
+  const totalThermal=D.thermal.reduce((s,t)=>s+(Number(t.det)||0),0);
+  const totalNight=D.thermal.reduce((s,t)=>s+(Number(t.night)||0),0);
   const newsCount=(D.news||[]).length;
   const conflictEvents = D.acled?.totalEvents || 0;
   const conflictFatal = D.acled?.totalFatalities || 0;
@@ -778,11 +896,11 @@ function renderLeftRail(){
     {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`,
      items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:a.region.replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total} acft · No CS: ${a.noCallsign} · Hi-alt: ${a.highAlt}`,detail:`Top: ${a.top.slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
     {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`,
-     items:D.thermal.map(tr=>({name:tr.region,lat:tr.fires[0]?.lat||0,lon:tr.fires[0]?.lon||0,status:`${tr.fires.length} fires`,meta:`${tr.det.toLocaleString()} det · ${tr.night.toLocaleString()} night`,detail:`Peak FRP: ${Math.max(...tr.fires.map(f=>f.frp)).toFixed(1)} MW`})).filter(tr=>tr.lat!==0)},
+     items:D.thermal.map(tr=>{const fires=asArray(tr.fires);const peak=fires.length?Math.max(...fires.map(f=>Number(f.frp)||0)):0;return {name:tr.region||'Thermal region',lat:fires[0]?.lat||0,lon:fires[0]?.lon||0,status:`${fires.length} fires`,meta:`${(Number(tr.det)||0).toLocaleString()} det · ${(Number(tr.night)||0).toLocaleString()} night`,detail:`Peak FRP: ${peak.toFixed(1)} MW`}}).filter(tr=>tr.lat!==0)},
     {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`,
      items:D.sdr.zones.flatMap(z=>z.receivers.map(r=>({name:r.name||z.region,lat:r.lat,lon:r.lon,status:'ONLINE',meta:`Zone: ${z.region} · ${z.count} in zone`,detail:`Freq coverage active`})))},
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),
-     items:D.chokepoints.map(cp=>({name:cp.label,lat:cp.lat,lon:cp.lon,status:'MONITORED',meta:cp.note||'Chokepoint',detail:`${cp.lat.toFixed(2)}°, ${cp.lon.toFixed(2)}°`}))},
+     items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'MONITORED',meta:cp.note||'Chokepoint',detail:`${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
      items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:n.anom?'ANOMALY':'NORMAL',meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} readings`,detail:n.anom?'⚠ Anomaly detected':'All readings nominal'}:null}).filter(Boolean)},
     {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`,
@@ -790,7 +908,7 @@ function renderLeftRail(){
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),
      items:D.who.slice(0,10).map((w,i)=>{const c=whoGeo[i];return c?{name:w.title?.substring(0,40)||'Alert',lat:c.lat,lon:c.lon,status:'WHO ALERT',meta:w.summary?.substring(0,60)||'',detail:`${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°`}:null}).filter(Boolean)},
     {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated'),
-     items:(D.news||[]).slice(0,12).map(n=>({name:n.title?.substring(0,40)||n.source,lat:n.lat,lon:n.lon,status:n.source,meta:`${n.region} · ${getAge(n.date)}`,detail:`${n.lat.toFixed(2)}°, ${n.lon.toFixed(2)}°`}))},
+     items:(D.news||[]).slice(0,12).filter(n=>Number.isFinite(+n.lat)&&Number.isFinite(+n.lon)).map(n=>({name:n.title?.substring(0,40)||n.source||'News',lat:+n.lat,lon:+n.lon,status:n.source||'NEWS',meta:`${n.region||'Unknown'} · ${getAge(n.date)}`,detail:`${(+n.lat).toFixed(2)}°, ${(+n.lon).toFixed(2)}°`}))},
     {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',cat:'osint',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`,
      items:D.tg.urgent.slice(0,6).map((p,i)=>{const c=osintGeo[i];return c?{name:(p.channel||'').toUpperCase(),lat:c.lat,lon:c.lon,status:'URGENT',meta:`${p.views?.toLocaleString()||'?'} views`,detail:cleanText(p.text?.substring(0,50)||'')}:null}).filter(Boolean)},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`,
@@ -826,7 +944,7 @@ function renderLeftRail(){
       <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
       <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value||'--'}%</span></div>
       <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">$${(m2?.value/1000)?.toFixed(1)||'--'}T</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)}T</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${((parseFloat(D.treasury.totalDebt)||0)/1e12).toFixed(2)}T</span></div>
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
@@ -1512,6 +1630,62 @@ function mkSparkSvg(values, isGood){
   return `<svg class="spark-svg" viewBox="0 0 ${w} ${h}"><polyline class="spark-line ${cls}" points="${pts.join(' ')}"/><circle class="${cls} spark-dot" cx="${last.split(',')[0]}" cy="${last.split(',')[1]}" r="2" fill="${isGood?'var(--accent)':'var(--danger)'}"/></svg>`;
 }
 
+function tickerItemId(item, index){
+  return `ticker-${index}-${String(item?.timestamp || item?.date || item?.headline || item?.title || '').slice(0,40).replace(/[^a-z0-9]+/gi,'-')}`;
+}
+
+function formatTickerDate(item){
+  const raw = item?.timestamp || item?.date;
+  const date = raw ? new Date(raw) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : 'Unknown time';
+}
+
+function tickerSeverity(item){
+  return item?.severity || item?.confidence || item?.status || (item?.urgent ? 'urgent' : '');
+}
+
+function buildTickerCard(item, index, srcClass){
+  const id = tickerItemId(item, index);
+  const isOpen = expandedTickerId === id;
+  const source = item?.source || item?.channel || item?.type || 'NEWS';
+  const sc = srcClass(source);
+  const headline = cleanText(item?.headline || item?.title || item?.text || 'Untitled feed item');
+  const summary = cleanText(item?.summary || item?.description || item?.text || headline);
+  const age = item?.timestamp || item?.date ? getAge(item.timestamp || item.date) : 'unknown';
+  const type = item?.type || (item?.channel ? 'telegram' : 'news');
+  const severity = tickerSeverity(item);
+  const safeUrl = safeExternalUrl(item?.url);
+  const raw = JSON.stringify(item || {}, null, 2);
+  return `<div class="tk-card ${item?.urgent?'urgent':''}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}" data-ticker-id="${escapeAttr(id)}">
+      <div class="tk-line">
+        <span class="tk-src ${sc}">${escapeHtml(String(source).substring(0,12) || 'NEWS')}</span>
+        <span class="tk-src other">${escapeHtml(String(type).toUpperCase().substring(0,12))}</span>
+        ${severity ? `<span class="tk-src ${item?.urgent?'tg':'other'}">${escapeHtml(String(severity).toUpperCase().substring(0,14))}</span>` : ''}
+        <span class="tk-time">${escapeHtml(age)}</span>
+        <span class="tk-link" aria-hidden="true">${isOpen?'&#9662;':'&#9656;'}</span>
+      </div>
+      <div class="tk-head">${escapeHtml(headline)}</div>
+      <div class="tk-detail">
+        <div class="tk-detail-grid">
+          <div class="tk-detail-label">Source</div><div>${escapeHtml(source)}</div>
+          <div class="tk-detail-label">Type</div><div>${escapeHtml(type)}</div>
+          <div class="tk-detail-label">Time</div><div>${escapeHtml(formatTickerDate(item))}</div>
+          ${severity ? `<div class="tk-detail-label">Status</div><div>${escapeHtml(severity)}</div>` : ''}
+          ${item?.region ? `<div class="tk-detail-label">Region</div><div>${escapeHtml(item.region)}</div>` : ''}
+          ${item?.confidence ? `<div class="tk-detail-label">Confidence</div><div>${escapeHtml(item.confidence)}</div>` : ''}
+        </div>
+        <div class="tk-summary">${escapeHtml(summary || 'No summary available for this item.')}</div>
+        <div class="tk-actions">
+          ${safeUrl ? `<a class="tk-action" href="${escapeAttr(safeUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open source</a>` : ''}
+        </div>
+        <details class="tk-raw" onclick="event.stopPropagation()">
+          <summary>Details</summary>
+          <pre>${escapeHtml(raw)}</pre>
+        </details>
+      </div>
+    </div>`;
+}
+
 // === LOWER GRID ===
 function renderLower(){
   const mobile = isMobileLayout();
@@ -1522,7 +1696,7 @@ function renderLower(){
   const mkt=D.markets||{};
 
   const wtiH = D.energy.wtiRecent||[];
-  const wtiMax=Math.max(...wtiH),wtiMin=Math.min(...wtiH);
+  const wtiMax=wtiH.length?Math.max(...wtiH):0,wtiMin=wtiH.length?Math.min(...wtiH):0;
   const sparkHtml=wtiH.map(v=>{
     const pct=wtiMax===wtiMin?50:((v-wtiMin)/(wtiMax-wtiMin))*100;
     return `<div class="spark-bar" style="height:${Math.max(pct,8)}%"></div>`;
@@ -1530,10 +1704,13 @@ function renderLower(){
 
   // Helper: format market quote card
   const mktCard = (q) => {
-    if(!q||q.error) return '';
-    const clr = q.changePct>=0?'var(--accent)':'var(--warn)';
-    const arrow = q.changePct>=0?'&#9650;':'&#9660;';
-    return `<div class="mc"><div class="ml">${q.name||q.symbol}</div><span class="mv" style="color:${clr}">${q.symbol.includes('BTC')||q.symbol.includes('ETH')?'$'+q.price.toLocaleString():'$'+q.price}</span><span class="ms" style="color:${clr}">${arrow} ${q.changePct>=0?'+':''}${q.changePct}%</span></div>`;
+    if(!q||q.error||!Number.isFinite(+q.price)) return '';
+    const symbol = String(q.symbol || '');
+    const price = +q.price;
+    const changePct = Number.isFinite(+q.changePct) ? +q.changePct : 0;
+    const clr = changePct>=0?'var(--accent)':'var(--warn)';
+    const arrow = changePct>=0?'&#9650;':'&#9660;';
+    return `<div class="mc"><div class="ml">${escapeHtml(q.name||symbol||'Quote')}</div><span class="mv" style="color:${clr}">${symbol.includes('BTC')||symbol.includes('ETH')?'$'+price.toLocaleString():'$'+price}</span><span class="ms" style="color:${clr}">${arrow} ${changePct>=0?'+':''}${changePct}%</span></div>`;
   };
 
   // VIX from Yahoo Finance live data (fallback to FRED)
@@ -1591,12 +1768,10 @@ function renderLower(){
     if (sl.includes('nyt') || sl.includes('times')) return 'nyt';
     return 'other';
   };
-  const tickerCards = feed.map(n => {
-    const sc = srcClass(n.source);
-    const age = n.timestamp ? getAge(n.timestamp) : '';
-    const urlAttr = n.url ? ` data-url="${String(n.url).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"` : '';
-    return `<div class="tk-card ${n.urgent?'urgent':''} ${n.url?'clickable':''}"${urlAttr}><span class="tk-src ${sc}">${(n.source||'NEWS').substring(0,12)}</span><span class="tk-time">${age}</span><div class="tk-head">${cleanText(n.headline||'')}</div>${n.url?'<span class="tk-link">&#8599;</span>':''}</div>`;
-  }).join('');
+  if(expandedTickerId && !feed.some((item, index) => tickerItemId(item, index) === expandedTickerId)) expandedTickerId = null;
+  const tickerCards = feed.length
+    ? feed.map((n, index) => buildTickerCard(n, index, srcClass)).join('')
+    : `<div class="empty-state">No ticker items are available yet. Check source status, network access, or wait for the first sweep to complete.</div>`;
   const tickerDuration = Math.max(20, feed.length * 2.5);
 
   // Leverageable Ideas (LLM-only feature)
@@ -1624,8 +1799,8 @@ function renderLower(){
 
   const tickerPanel = `<div class="g-panel lp-ticker ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
       ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker')}
-      <div class="ticker-wrap" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${lowPerfMode ? '' : tickerCards}</div>
+      <div class="ticker-wrap ${expandedTickerId?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
+        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerId) ? '' : tickerCards}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel(`lp-osint ${pinnedLowerPanel==='osint'?'lp-pinned':''}`, 240, panelMeta.osint, true) : '';
@@ -1670,7 +1845,9 @@ function renderLower(){
 // === RIGHT RAIL ===
 function renderRight(){
   const mobile = isMobileLayout();
-  const signals=D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${s}</p></div>`).join('');
+  const signals=D.tSignals.length
+    ? D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${escapeHtml(s)}</p></div>`).join('')
+    : `<div class="empty-state">No cross-source signals were produced in the latest sweep.</div>`;
   const signalMetrics=[
     {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
     {l:'Air Theaters',v:D.air.length,p:60},
@@ -1744,8 +1921,8 @@ function renderRight(){
 }
 
 // === HELPERS ===
-function getAge(d){const ms=Date.now()-new Date(d).getTime();const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
-function cleanText(t){return String(t||'').replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'')}
+function getAge(d){const ts=new Date(d).getTime();if(!Number.isFinite(ts))return 'unknown';const ms=Math.max(0,Date.now()-ts);const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
+function cleanText(t){return String(t||'').replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'').trim()}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
 function feedFreshLabel(count){return `${count} items`;}
 
@@ -1801,14 +1978,14 @@ function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
   const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const whoItems=D.who.slice(0,4).map(w=>({channel:'WHO ALERT',text:w.title,date:w.date,isWho:true}));
   const osintItems=[...allPosts.slice(0,15),...whoItems];
-  const osintCards=osintItems.map(p=>{
+  const osintCards=osintItems.length ? osintItems.map(p=>{
     const isU=p.urgentFlags&&p.urgentFlags.length>0;
     const views=p.views?p.views>=1000?`${(p.views/1000).toFixed(0)}K`:p.views:'';
     const age=p.date?getAge(p.date):'';
     const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg" style="margin-right:2px">${f}</span>`).join('');
     const srcCls=p.isWho?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
-    return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${(p.channel||'OSINT').toUpperCase().substring(0,14)}</span>${views?`<span class="tk-src other">${views}</span>`:''}<span class="tk-time">${age}</span>${flags}<div class="tk-head">${cleanText((p.text||'').substring(0,160))}</div></div>`;
-  }).join('');
+    return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${escapeHtml((p.channel||'OSINT').toUpperCase().substring(0,14))}</span>${views?`<span class="tk-src other">${escapeHtml(views)}</span>`:''}<span class="tk-time">${escapeHtml(age)}</span>${flags}<div class="tk-head">${escapeHtml(cleanText((p.text||'').substring(0,160)))}</div></div>`;
+  }).join('') : `<div class="empty-state">No OSINT or WHO items are available yet.</div>`;
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
       <div class="sec-head">
@@ -1915,7 +2092,7 @@ function connectSSE(){
     try {
       const msg = JSON.parse(e.data);
       if (msg.type === 'update' && msg.data) {
-        D = msg.data;
+        D = normalizeDashboardData(msg.data);
         reinit();
         // Flash the topbar to indicate update
         const topbar = document.querySelector('.topbar');
@@ -1926,8 +2103,12 @@ function connectSSE(){
       } else if (msg.type === 'sweep_start') {
         const badge = document.querySelector('.alert-badge');
         if (badge) { badge.textContent = 'SWEEPING...'; badge.style.borderColor = 'var(--accent)'; }
+      } else if (msg.type === 'sweep_error') {
+        console.warn('[Crucix] Sweep error:', msg.error || 'unknown error');
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Crucix] Ignoring malformed SSE message:', err?.message || err);
+    }
   };
   es.onerror = () => {
     // Reconnect after 5s on error
@@ -1947,15 +2128,30 @@ function init(){
   document.getElementById('mapContainer').addEventListener('click',e=>{
     if(!e.target.closest('.map-popup')) closePopup();
   });
-  // Open article links from ticker cards
+  // Expand/collapse ticker cards. External links live inside the expanded details.
   document.addEventListener('click',e=>{
-    const card=e.target.closest('.tk-card[data-url]');
+    const card=e.target.closest('.lp-ticker .tk-card[data-ticker-id]');
     if(card){
-      const url=safeExternalUrl(card.dataset.url);
-      if(url) window.open(url,'_blank','noopener');
+      expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
+      renderLower();
     }
   });
   document.addEventListener('keydown',e=>{
+    const card=e.target.closest?.('.lp-ticker .tk-card[data-ticker-id]');
+    if(card && (e.key === 'Enter' || e.key === ' ')){
+      e.preventDefault();
+      expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
+      renderLower();
+      const targetId = expandedTickerId || card.dataset.tickerId;
+      const restored = [...document.querySelectorAll('.lp-ticker .tk-card[data-ticker-id]')].find(el => el.dataset.tickerId === targetId);
+      if(restored) restored.focus();
+      return;
+    }
+    if(e.key === 'Escape' && expandedTickerId){
+      expandedTickerId = null;
+      renderLower();
+      return;
+    }
     if(e.key === 'Escape') closeGlossary();
   });
   applyPrimaryView();
@@ -1969,14 +2165,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (canProbeApi && !hasInlineData) {
     // Server mode: always fetch live data from API (ignore any stale inline D)
     fetch('/api/data')
-      .then(r => r.json())
-      .then(data => { D = data; init(); connectSSE(); })
-      .catch(() => {
+      .then(r => {
+        if(!r.ok) throw new Error(`API returned ${r.status}`);
+        return r.json();
+      })
+      .then(data => { D = normalizeDashboardData(data); init(); connectSSE(); })
+      .catch((err) => {
+        console.warn('[Crucix] Could not load /api/data:', err?.message || err);
         // Should not reach here — server routes to loading.html when no data
-        if (D && D.meta) { init(); connectSSE(); }
+        if (D && D.meta) { D = normalizeDashboardData(D); init(); connectSSE(); }
       });
   } else if (hasInlineData) {
     // File mode: use inline data
+    D = normalizeDashboardData(D);
     init();
   }
 });
