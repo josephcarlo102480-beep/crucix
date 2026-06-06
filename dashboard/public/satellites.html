@@ -49,10 +49,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .observer-marker{color:#ffb84c;font-size:22px;font-weight:bold;text-align:center;line-height:20px;text-shadow:0 0 8px rgba(255,184,76,0.6)}
 .passes-header{padding:8px 16px;font-size:10px;color:var(--accent);letter-spacing:0.08em;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 #passes{max-height:40vh;overflow-y:auto}
-.pass-item{padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:10px}
+.pass-item{padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:10px;cursor:pointer;transition:background 0.15s,border-color 0.15s}
+.pass-item:hover,.pass-item:focus{background:rgba(68,204,255,0.07);outline:none}
 .pass-item.overhead{background:rgba(100,240,200,0.08);border-left:2px solid var(--accent)}
 .pass-name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pass-detail{color:var(--dim);font-size:9px;margin-top:2px}
+.pass-look{color:var(--text);font-size:9px;margin-top:2px}
 .pass-empty{padding:8px 16px;font-size:9px;color:var(--dim)}
 .conj-header{padding:8px 16px;font-size:10px;color:var(--danger);letter-spacing:0.08em;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 #conjunctions{max-height:30vh;overflow-y:auto}
@@ -179,6 +181,7 @@ let pointLayer = null;
 let conjLayer = null;
 let allPaths = [];
 let allPoints = [];
+let upcomingPasses = [];
 
 // === Globe setup ===
 function initGlobe() {
@@ -636,15 +639,21 @@ function updatePositions() {
 }
 
 // === Popup ===
-function showSatPopup(pt) {
+function showSatPopup(pt, passInfo = null) {
   const popup = document.getElementById('satPopup');
   const title = popup.querySelector('.popup-title');
   const body = popup.querySelector('.popup-body');
+  const passRows = passInfo ? `
+    <div class="popup-row">Peak pass: <span>${passInfo.maxElTime.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
+    <div class="popup-row">Look: <span>${passInfo.bearing} (${passInfo.azimuth.toFixed(0)}° az), ${passInfo.maxEl.toFixed(0)}° above horizon</span></div>
+    <div class="popup-row">Track: <span>${azToBearing(passInfo.riseAz)} to ${passInfo.setAz == null ? 'ongoing' : azToBearing(passInfo.setAz)}</span></div>
+  ` : '';
 
   title.textContent = pt.name || 'Unknown';
   body.innerHTML = `
     <div class="popup-row">NORAD ID: <span>${pt.noradId || '?'}</span></div>
     <div class="popup-row">Category: <span>${(pt.category || '').toUpperCase()}</span></div>
+    ${passRows}
     <div class="popup-row">Altitude: <span>${pt.altitude?.toFixed(1) || '?'} km</span></div>
     <div class="popup-row">Velocity: <span>${pt.velocity?.toFixed(2) || '?'} km/s</span></div>
     <div class="popup-row">Lat: <span>${pt.actualLat?.toFixed(4) || '?'}</span></div>
@@ -664,6 +673,33 @@ function showSatPopup(pt) {
     if (!popup.contains(e.target)) close();
   };
   setTimeout(() => document.addEventListener('click', closeHandler), 100);
+}
+
+function findSatellitePoint(passInfo) {
+  const norad = String(passInfo?.noradId || '');
+  return allPoints.find(pt => String(pt.noradId || '') === norad)
+    || allPoints.find(pt => pt.name === passInfo?.name && pt.category === passInfo?.category)
+    || null;
+}
+
+function centerOnSatellitePass(idx) {
+  const passInfo = upcomingPasses[idx];
+  if (!passInfo) return;
+  const pt = findSatellitePoint(passInfo);
+  if (!pt) {
+    setStatus(`Could not locate ${passInfo.name || 'satellite'} on the current map`);
+    return;
+  }
+
+  if (viewMode === '3d' && globe3d) {
+    globe3d.controls().autoRotate = false;
+    globe3d.pointOfView({ lat: pt.lat, lng: pt.lng, altitude: 0.85 }, 1000);
+  } else {
+    globe.setView([pt.lat, pt.lng], 6, { animate: true });
+  }
+
+  showSatPopup(pt, passInfo);
+  setStatus(`Centered ${pt.name || 'satellite'} · look ${passInfo.bearing}, ${passInfo.maxEl.toFixed(0)}° above horizon at peak`);
 }
 
 // === Status ===
@@ -696,6 +732,10 @@ function azToBearing(azDeg) {
   return dirs[Math.round(((azDeg % 360) + 360) % 360 / 22.5) % 16];
 }
 
+function normalizeAz(azDeg) {
+  return ((azDeg % 360) + 360) % 360;
+}
+
 function computePasses() {
   const passes = [];
   const now = new Date();
@@ -713,6 +753,7 @@ function computePasses() {
       if (periodMin > 128) continue;
 
       let inPass = false, passMaxEl = 0, passMaxElTime = null, passMaxElAz = 0;
+      let riseTime = null, riseAz = 0, setTime = null, setAz = 0;
 
       for (let t = 0; t <= hoursAhead * 3600; t += stepSec) {
         const time = new Date(now.getTime() + t * 1000);
@@ -720,18 +761,26 @@ function computePasses() {
         if (!look) continue;
 
         if (look.elevation > 0) {
-          if (!inPass) { inPass = true; passMaxEl = 0; }
+          if (!inPass) {
+            inPass = true;
+            passMaxEl = 0;
+            riseTime = time;
+            riseAz = look.azimuth;
+          }
           if (look.elevation > passMaxEl) {
             passMaxEl = look.elevation;
             passMaxElTime = time;
             passMaxElAz = look.azimuth;
           }
         } else if (inPass) {
+          setTime = time;
+          setAz = look.azimuth;
           if (passMaxEl > 5) {
             passes.push({
-              name: tle.name, category: catName, color: cat.color,
+              name: tle.name, category: catName, color: cat.color, noradId: tle.satelliteId,
+              riseTime, riseAz: normalizeAz(riseAz), setTime, setAz: normalizeAz(setAz),
               maxElTime: passMaxElTime, maxEl: passMaxEl,
-              azimuth: passMaxElAz, bearing: azToBearing(passMaxElAz)
+              azimuth: normalizeAz(passMaxElAz), bearing: azToBearing(passMaxElAz)
             });
           }
           inPass = false;
@@ -739,31 +788,38 @@ function computePasses() {
       }
       if (inPass && passMaxEl > 5) {
         passes.push({
-          name: tle.name, category: catName, color: cat.color,
+          name: tle.name, category: catName, color: cat.color, noradId: tle.satelliteId,
+          riseTime, riseAz: normalizeAz(riseAz), setTime: null, setAz: null,
           maxElTime: passMaxElTime, maxEl: passMaxEl,
-          azimuth: passMaxElAz, bearing: azToBearing(passMaxElAz)
+          azimuth: normalizeAz(passMaxElAz), bearing: azToBearing(passMaxElAz)
         });
       }
     }
   }
 
   passes.sort((a, b) => a.maxElTime - b.maxElTime);
+  upcomingPasses = passes.slice(0, 30);
   renderPasses(passes);
 }
 
 function renderPasses(passes) {
   const el = document.getElementById('passes');
   if (passes.length === 0) {
+    upcomingPasses = [];
     el.innerHTML = '<div class="pass-empty">No upcoming passes</div>';
     return;
   }
-  el.innerHTML = passes.slice(0, 30).map(p => {
+  upcomingPasses = passes.slice(0, 30);
+  el.innerHTML = upcomingPasses.map((p, idx) => {
     const oh = p.maxEl > 60;
     const t = p.maxElTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const d = p.maxElTime.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    return `<div class="pass-item${oh ? ' overhead' : ''}">
+    const rise = azToBearing(p.riseAz);
+    const set = p.setAz == null ? 'ongoing' : azToBearing(p.setAz);
+    return `<div class="pass-item${oh ? ' overhead' : ''}" data-pass-idx="${idx}" role="button" tabindex="0" title="Center satellite on the map">
       <div class="pass-name" style="color:${p.color}">${p.name || 'Unknown'}</div>
-      <div class="pass-detail">${d} ${t} · El ${p.maxEl.toFixed(0)}° · ${p.bearing} (${p.azimuth.toFixed(0)}°)${oh ? ' · OVERHEAD' : ''}</div>
+      <div class="pass-detail">${d} ${t} · peak ${p.bearing} (${p.azimuth.toFixed(0)}° az)${oh ? ' · OVERHEAD' : ''}</div>
+      <div class="pass-look">Look ${p.bearing}, ${p.maxEl.toFixed(0)}° above horizon · track ${rise} to ${set}</div>
     </div>`;
   }).join('');
 }
@@ -1123,6 +1179,19 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('conjunctions').addEventListener('click', (e) => {
     const item = e.target.closest('.conj-item');
     if (item) centerOnConjunction(parseInt(item.dataset.conjIdx, 10));
+  });
+
+  // Pass click-to-center (event delegation)
+  document.getElementById('passes').addEventListener('click', (e) => {
+    const item = e.target.closest('.pass-item[data-pass-idx]');
+    if (item) centerOnSatellitePass(parseInt(item.dataset.passIdx, 10));
+  });
+  document.getElementById('passes').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('.pass-item[data-pass-idx]');
+    if (!item) return;
+    e.preventDefault();
+    centerOnSatellitePass(parseInt(item.dataset.passIdx, 10));
   });
 
   // Auto-update positions every 15 seconds

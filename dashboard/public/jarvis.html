@@ -61,9 +61,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .alert-badge{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(255,95,99,0.4);color:#fff;background:linear-gradient(135deg,rgba(255,95,99,0.2),rgba(255,95,99,0.08))}
 .guide-btn{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(68,204,255,0.28);color:var(--accent2);background:rgba(68,204,255,0.07);cursor:pointer;transition:all 0.2s}
 .guide-btn:hover{border-color:rgba(68,204,255,0.5);background:rgba(68,204,255,0.12);color:#d9f7ff}
+.fullscreen-btn{min-width:96px}
+.fullscreen-btn:disabled{opacity:0.45;cursor:not-allowed}
+.fullscreen-btn.warn{border-color:rgba(255,184,76,0.38);color:var(--warn);background:rgba(255,184,76,0.08)}
 .perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
 .perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
-.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
+.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.fullscreen-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* HERO */
 .hero-strip{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -702,6 +705,11 @@ function escapeHtml(value){
 
 function escapeAttr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
 
+function closestTarget(eventOrTarget, selector){
+  const target = eventOrTarget?.target || eventOrTarget;
+  return target && typeof target.closest === 'function' ? target.closest(selector) : null;
+}
+
 function showAppError(message, detail=''){
   console.error('[Crucix Dashboard]', message, detail);
   let panel = document.getElementById('appErrorPanel');
@@ -827,6 +835,59 @@ function renderRegionControls(){
   mapRegionBar.style.display = 'flex';
 }
 
+function getFullscreenElement(){
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function isFullscreenAvailable(){
+  const root = document.documentElement;
+  return !!(
+    document.fullscreenEnabled ||
+    document.webkitFullscreenEnabled ||
+    root.requestFullscreen ||
+    root.webkitRequestFullscreen
+  );
+}
+
+function updateFullscreenControl(){
+  const btn = document.getElementById('fullscreenToggle');
+  if(!btn) return;
+  const active = !!getFullscreenElement();
+  const available = isFullscreenAvailable();
+  btn.disabled = !available;
+  btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  btn.title = available ? (active ? 'Exit full screen' : 'Enter full screen') : 'Full screen is unavailable in this browser';
+  btn.innerHTML = `${active ? 'EXIT' : 'FULL'} <span class="v">SCREEN</span>`;
+  if(active) btn.classList.remove('warn');
+}
+
+async function toggleFullscreen(){
+  if(!isFullscreenAvailable()) return;
+  let requestFailed = false;
+  try {
+    if(getFullscreenElement()){
+      if(document.exitFullscreen) await document.exitFullscreen();
+      else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } else {
+      const root = document.documentElement;
+      if(root.requestFullscreen) await root.requestFullscreen();
+      else if(root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+    }
+  } catch (err) {
+    requestFailed = true;
+    console.warn('[Crucix Dashboard] Full screen request failed', err);
+    const btn = document.getElementById('fullscreenToggle');
+    if(btn){
+      btn.classList.add('warn');
+      btn.title = err?.message || 'Full screen was blocked by this browser or preview frame';
+      btn.innerHTML = 'BLOCKED <span class="v">SCREEN</span>';
+      setTimeout(updateFullscreenControl, 2200);
+    }
+  } finally {
+    if(!requestFailed) updateFullscreenControl();
+  }
+}
+
 function renderTopbar(){
   const mobile = isMobileLayout();
   const ts = new Date(D.meta.timestamp);
@@ -844,9 +905,11 @@ function renderTopbar(){
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <button class="meta-pill perf-pill focusable" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
+      <button class="meta-pill perf-pill fullscreen-btn focusable" id="fullscreenToggle" onclick="toggleFullscreen()" aria-pressed="false">FULL <span class="v">SCREEN</span></button>
       <button class="guide-btn focusable" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
     </div>`;
   renderRegionControls();
+  updateFullscreenControl();
 }
 
 function renderHero(){
@@ -1000,6 +1063,8 @@ function bindMapLifecycleEvents(){
   mapLifecycleBound = true;
   window.addEventListener('resize', () => syncResponsiveLayout());
   window.addEventListener('orientationchange', () => setTimeout(() => syncResponsiveLayout(true), 150));
+  document.addEventListener('fullscreenchange', updateFullscreenControl);
+  document.addEventListener('webkitfullscreenchange', updateFullscreenControl);
   document.addEventListener('visibilitychange', () => {
     if(!document.hidden) setTimeout(() => syncResponsiveLayout(true), 150);
   });
@@ -1420,7 +1485,10 @@ function showPopup(event,head,text,meta,lat,lng,alt){
   popup.querySelector('.pp-meta').textContent=meta||'';
   popup.classList.add('show');
 }
-function closePopup(){document.getElementById('mapPopup').classList.remove('show')}
+function closePopup(){
+  const popup = document.getElementById('mapPopup');
+  if(popup) popup.classList.remove('show');
+}
 
 // === MAP CONTROLS ===
 function toggleFlights() {
@@ -2203,18 +2271,18 @@ function init(){
   if (!booted) { runBoot(); booted = true; }
   // Close popup on click outside markers
   document.getElementById('mapContainer').addEventListener('click',e=>{
-    if(!e.target.closest('.map-popup')) closePopup();
+    if(!closestTarget(e, '.map-popup')) closePopup();
   });
   // Expand/collapse ticker cards. External links live inside the expanded details.
   document.addEventListener('click',e=>{
-    const card=e.target.closest('.lp-ticker .tk-card[data-ticker-id]');
+    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-id]');
     if(card){
       expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
       renderLower();
     }
   });
   document.addEventListener('keydown',e=>{
-    const card=e.target.closest?.('.lp-ticker .tk-card[data-ticker-id]');
+    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-id]');
     if(card && (e.key === 'Enter' || e.key === ' ')){
       e.preventDefault();
       expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
@@ -2549,7 +2617,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     rail.addEventListener('click', (e) => {
       // Sub-item click — fly to + select
-      const sub = e.target.closest('.sub-item');
+      const sub = closestTarget(e, '.sub-item');
       if (sub) {
         e.stopPropagation();
         selectSubItem(sub);
@@ -2557,14 +2625,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Layer item click — accordion toggle + filter
-      const item = e.target.closest('.layer-item[data-category]');
+      const item = closestTarget(e, '.layer-item[data-category]');
       if (item) {
         toggleAccordion(item);
         return;
       }
 
       // Sensor Grid header click — reset all
-      const hdr = e.target.closest('#sensorGridHeader');
+      const hdr = closestTarget(e, '#sensorGridHeader');
       if (hdr) {
         activeFilter = null;
         if (typeof globe !== 'undefined' && globe && allGlobePoints) {
@@ -2594,13 +2662,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     rail.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
-      const sub = e.target.closest('.sub-item');
+      const sub = closestTarget(e, '.sub-item');
       if (sub) {
         e.preventDefault();
         selectSubItem(sub);
         return;
       }
-      const item = e.target.closest('.layer-item[data-category]');
+      const item = closestTarget(e, '.layer-item[data-category]');
       if (item) {
         e.preventDefault();
         toggleAccordion(item);
