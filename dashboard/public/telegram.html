@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<!--
+  Crucix — Telegram OSINT Geoparse Layer (Module A, standalone page)
+  Isolated. Talks only to /api/telegram/*. Own Globe.gl instance (same CDN as
+  cctv.html / satellites.html). Does not touch jarvis.html / satellites.html.
+
+  Geoparsed pins are a LEAD-PLOTTING AID, not authoritative geolocation —
+  the confidence slider defaults to DEFAULT_CONFIDENCE; raise it to be stricter.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crucix — Telegram OSINT</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<style>
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
+  --border:rgba(68,204,255,0.14);--border-bright:rgba(68,204,255,0.35);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--cyan:#44ccff;
+  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);overflow:hidden}
+#wrap{display:flex;height:100vh}
+#sidebar{width:340px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:10}
+.logo{padding:14px 16px}
+.logo h1{font-size:14px;letter-spacing:0.15em;color:var(--cyan);margin:0}
+.logo .sub{font-size:10px;color:var(--dim);margin-top:4px}
+.back-link{display:block;padding:8px 16px;color:var(--accent);font-size:10px;text-decoration:none;border-top:1px solid var(--border);border-bottom:1px solid var(--border);letter-spacing:0.08em}
+.back-link:hover{background:rgba(100,240,200,0.08)}
+.controls{padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--dim)}
+.controls .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.controls b{color:var(--text);font-weight:400}
+.controls .hl{color:var(--cyan)}
+input[type=range]{width:100%;accent-color:var(--cyan)}
+#feed{flex:1;overflow-y:auto}
+.post{padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;cursor:default}
+.post.geo{cursor:pointer}
+.post.geo:hover{background:rgba(68,204,255,0.06)}
+.post .phead{display:flex;justify-content:space-between;gap:8px;margin-bottom:4px}
+.post .pch{color:var(--cyan);font-size:10px}
+.post .pts{color:var(--dim);font-size:9px;white-space:nowrap}
+.post .ptext{color:var(--text);line-height:1.5;white-space:pre-wrap;max-height:4.5em;overflow:hidden}
+.post .ptags{margin-top:5px;font-size:9px;color:var(--dim)}
+.post .tag{display:inline-block;border:1px solid var(--border-bright);color:var(--cyan);padding:1px 5px;margin-right:4px;border-radius:2px}
+.post .tag .c{color:var(--dim)}
+#status{padding:10px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);line-height:1.6}
+#status.warn{color:var(--warn)}
+#globe-container{flex:1;position:relative;overflow:hidden}
+#popup{position:absolute;display:none;z-index:50;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+#popup .ptitle{color:var(--cyan);font-weight:600;margin-bottom:4px;font-size:11px}
+#popup .pbody{color:var(--text);line-height:1.5;white-space:pre-wrap;max-height:180px;overflow:auto;margin:6px 0}
+#popup .pmeta{color:var(--dim);font-size:9px;margin-bottom:6px}
+#popup .prow{display:flex;gap:10px;margin-top:8px;align-items:center}
+#popup a{color:var(--cyan);font-size:10px;border:1px solid var(--border-bright);padding:4px 8px;text-decoration:none}
+#popup a:hover{background:rgba(68,204,255,0.1)}
+#popup .pclose{margin-left:auto;border:none;color:var(--dim);background:none;cursor:pointer;font-family:var(--mono)}
+.empty{padding:24px 16px;color:var(--dim);font-size:11px;text-align:center}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="sidebar">
+    <div class="logo"><h1>CRUCIX · TELEGRAM</h1><div class="sub">PUBLIC CHANNEL GEOPARSE · OSINT</div></div>
+    <a class="back-link" href="/">&larr; back to dashboard</a>
+    <div class="controls">
+      <div class="row"><span>Posts: <b id="cTotal">…</b> · Geo: <b class="hl" id="cGeo">…</b></span></div>
+      <div class="row"><span>Min confidence</span><b class="hl" id="cThresh"></b></div>
+      <input id="thresh" type="range" min="0" max="1" step="0.05" />
+      <div class="row" style="margin-top:8px"><span>Plotted now</span><b id="cPlotted">0</b></div>
+    </div>
+    <div id="feed"><div class="empty">loading…</div></div>
+    <div id="status">initializing…</div>
+  </div>
+  <div id="globe-container"><div id="popup"></div></div>
+</div>
+
+<script>
+// ─── Tunables ───
+const DEFAULT_CONFIDENCE = 0.65;   // pins below this are hidden by default
+const MAX_VISIBLE_POINTS = 1200;   // hard cap on plotted points
+const POLL_MS = 2 * 60 * 1000;     // poll cadence
+
+const API = '/api/telegram';
+const feedEl = document.getElementById('feed');
+const statusEl = document.getElementById('status');
+const popup = document.getElementById('popup');
+const threshEl = document.getElementById('thresh');
+const cThresh = document.getElementById('cThresh');
+const cTotal = document.getElementById('cTotal');
+const cGeo = document.getElementById('cGeo');
+const cPlotted = document.getElementById('cPlotted');
+
+let allPosts = [];
+let threshold = DEFAULT_CONFIDENCE;
+threshEl.value = String(threshold);
+cThresh.textContent = threshold.toFixed(2);
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function setStatus(m, cls){ statusEl.className = cls || ''; statusEl.innerHTML = m; }
+function fmtTs(ts){ return ts ? esc(ts.replace('T',' ').slice(0,16)) + ' UTC' : ''; }
+
+const globe = Globe()(document.getElementById('globe-container'))
+  .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+  .backgroundColor('#020408')
+  .pointLat('lat').pointLng('lon')
+  .pointColor(() => '#44ccff')
+  .pointAltitude(0.01)
+  .pointRadius(d => 0.12 + (d.confidence - 0.3) * 0.25)
+  .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#44ccff">${esc(d.place)} <span style="color:#6a8a82">c=${d.confidence}</span><br><span style="color:#e8f4f0">${esc((d.text||'').slice(0,90))}</span></div>`)
+  .onPointClick(showPost)
+  .pointsData([]);
+
+globe.pointOfView({ lat: 48, lng: 35, altitude: 2.2 });
+
+// Build the plotted points (one per post×geo above threshold), capped.
+function buildPoints(){
+  const pts = [];
+  for (const p of allPosts){
+    if (!p.geo) continue;
+    for (const g of p.geo){
+      if (g.confidence < threshold) continue;
+      pts.push({ lat: g.lat, lon: g.lon, place: g.place, confidence: g.confidence, post: p, text: p.text });
+      if (pts.length >= MAX_VISIBLE_POINTS) break;
+    }
+    if (pts.length >= MAX_VISIBLE_POINTS) break;
+  }
+  globe.pointsData(pts);
+  cPlotted.textContent = String(pts.length);
+}
+
+function postPopupHtml(p, place){
+  const link = p.link || '';
+  return `<div class="ptitle">${esc(p.channel)}${place ? ' · ' + esc(place) : ''}</div>
+    <div class="pmeta">${fmtTs(p.ts)}${p.views ? ' · ' + esc(p.views) + ' views' : ''}</div>
+    <div class="pbody">${esc(p.text || '(no text)')}</div>
+    <div class="prow">
+      ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">open on Telegram ↗</a>` : ''}
+      <button class="pclose" onclick="document.getElementById('popup').style.display='none'">✕</button>
+    </div>`;
+}
+
+function showPost(d, event){
+  const p = d.post || d;
+  popup.innerHTML = postPopupHtml(p, d.place);
+  popup.style.display = 'block';
+  const x = (event && event.clientX) || window.innerWidth/2;
+  const y = (event && event.clientY) || window.innerHeight/2;
+  const rect = popup.getBoundingClientRect();
+  popup.style.left = Math.min(x + 12, window.innerWidth - rect.width - 12) + 'px';
+  popup.style.top = Math.min(y + 12, window.innerHeight - rect.height - 12) + 'px';
+}
+
+function renderFeed(){
+  if (!allPosts.length){ feedEl.innerHTML = '<div class="empty">no posts</div>'; return; }
+  const frag = document.createDocumentFragment();
+  for (const p of allPosts){
+    const geo = (p.geo || []).filter(g => g.confidence >= threshold);
+    const div = document.createElement('div');
+    div.className = 'post' + (geo.length ? ' geo' : '');
+    const tags = geo.map(g => `<span class="tag">${esc(g.place)} <span class="c">${g.confidence}</span></span>`).join('');
+    div.innerHTML =
+      `<div class="phead"><span class="pch">${esc(p.channel)}</span><span class="pts">${fmtTs(p.ts)}</span></div>` +
+      `<div class="ptext">${esc(p.text || '(no text)')}</div>` +
+      (tags ? `<div class="ptags">${tags}</div>` : '');
+    if (geo.length){
+      div.addEventListener('click', (e) => {
+        const g = geo[0];
+        globe.pointOfView({ lat: g.lat, lng: g.lon, altitude: 1.0 }, 800);
+        showPost({ post: p, place: g.place }, { clientX: window.innerWidth/2, clientY: 120 });
+      });
+    }
+    frag.appendChild(div);
+  }
+  feedEl.innerHTML = '';
+  feedEl.appendChild(frag);
+}
+
+async function load(){
+  try {
+    const res = await fetch(API + '/posts');
+    if (res.status === 503){
+      setStatus('building gazetteer on the server… retrying', 'warn');
+      feedEl.innerHTML = '<div class="empty">loading gazetteer…</div>';
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok){ setStatus('error: ' + esc(data.error || res.status), 'warn'); return; }
+    allPosts = data.posts || [];
+    cTotal.textContent = data.count;
+    cGeo.textContent = data.geolocated;
+    setStatus(`${data.count} posts · ${data.geolocated} geolocated<br>updated ${fmtTs(data.updated)}`);
+    buildPoints();
+    renderFeed();
+  } catch (err){
+    setStatus('request failed: ' + esc(err.message), 'warn');
+  }
+}
+
+threshEl.addEventListener('input', () => {
+  threshold = parseFloat(threshEl.value);
+  cThresh.textContent = threshold.toFixed(2);
+  buildPoints();
+  renderFeed();
+});
+
+load();
+setInterval(load, POLL_MS);
+</script>
+</body>
+</html>
