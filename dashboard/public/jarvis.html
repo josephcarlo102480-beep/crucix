@@ -407,6 +407,19 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 </style>
 </head>
 <body>
+<!-- Crucix module navigation (added: links to standalone OSINT module pages) -->
+<style>
+#moduleNav{position:fixed;right:14px;bottom:14px;z-index:900;display:flex;gap:6px;align-items:center;padding:7px 9px;background:var(--panel);border:1px solid var(--border-bright);backdrop-filter:blur(12px);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;box-shadow:0 8px 24px rgba(0,0,0,0.45)}
+#moduleNav .nav-label{color:var(--dim);margin-right:2px}
+#moduleNav a{color:var(--accent);text-decoration:none;padding:3px 7px;border:1px solid var(--border);transition:all .2s}
+#moduleNav a:hover{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+</style>
+<nav id="moduleNav" aria-label="Crucix modules">
+  <span class="nav-label">Modules</span>
+  <a href="/telegram.html">Telegram</a>
+  <a href="/cctv.html">CCTV</a>
+  <a href="/sanctions.html">Sanctions</a>
+</nav>
 <div id="boot">
   <div class="logo-ring"><span class="logo-text">CRUCIX</span></div>
   <div id="bootLines"></div>
