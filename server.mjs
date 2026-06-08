@@ -27,6 +27,7 @@ import {
 // --- Isolated OSINT modules (ported from OSIRIS) ---
 import sanctionsRouter from './services/sanctions/sanctionsRouter.mjs';
 import { warmCache as warmSanctionsCache } from './services/sanctions/ofacSanctions.mjs';
+import cctvRouter from './services/cctv/cctvRouter.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -149,6 +150,7 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 
 // --- Isolated OSINT module routers (ported from OSIRIS) ---
 app.use('/api/sanctions', sanctionsRouter);
+app.use('/api/cctv', cctvRouter);
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {

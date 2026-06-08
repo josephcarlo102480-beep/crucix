@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<!--
+  Crucix — Public CCTV Camera Layer (Module B, standalone page)
+  Isolated. Talks only to /api/cctv/*. Own Globe.gl instance (same CDN as
+  satellites.html). Does not touch jarvis.html/satellites.html.
+
+  PERFORMANCE GUARD: 2,000+ cameras. Points only render when the camera of
+  view (altitude) is below CAMERA_ALTITUDE_THRESHOLD, i.e. zoomed in. Tune
+  the constant below.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crucix — CCTV</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<style>
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
+  --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
+  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
+  --cctv:#ff8c42;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);overflow:hidden}
+#wrap{display:flex;height:100vh}
+#sidebar{width:260px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:10}
+.logo{padding:16px}
+.logo h1{font-size:14px;letter-spacing:0.15em;color:var(--cctv);margin:0}
+.logo .sub{font-size:10px;color:var(--dim);margin-top:4px}
+.back-link{display:block;padding:8px 16px;color:var(--accent2);font-size:10px;text-decoration:none;border-top:1px solid var(--border);border-bottom:1px solid var(--border);letter-spacing:0.08em}
+.back-link:hover{background:rgba(68,204,255,0.08)}
+.info{padding:12px 16px;font-size:10px;color:var(--dim);line-height:1.7}
+.info b{color:var(--text);font-weight:400}
+.info .hl{color:var(--cctv)}
+#status{padding:12px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);margin-top:auto;line-height:1.6}
+#globe-container{flex:1;position:relative;overflow:hidden}
+#popup{position:absolute;display:none;z-index:50;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:340px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+#popup .ptitle{color:var(--cctv);font-weight:600;margin-bottom:4px;font-size:12px}
+#popup .pmeta{color:var(--dim);margin-bottom:8px;font-size:10px}
+#popup img{max-width:316px;max-height:200px;display:block;background:#000;border:1px solid var(--border)}
+#popup .pmsg{color:var(--dim);font-size:10px;padding:8px 0}
+#popup .prow{display:flex;gap:10px;margin-top:8px;align-items:center}
+#popup a,#popup button{color:var(--accent);font-family:var(--mono);font-size:10px;background:none;border:1px solid var(--border-bright);padding:5px 8px;cursor:pointer;text-decoration:none}
+#popup a:hover,#popup button:hover{background:rgba(100,240,200,0.1)}
+#popup .pclose{margin-left:auto;border:none;color:var(--dim)}
+.iframe-wrap{position:relative;width:316px;height:178px;background:#000;border:1px solid var(--border)}
+.iframe-wrap iframe{width:100%;height:100%;border:0}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="sidebar">
+    <div class="logo"><h1>CRUCIX · CCTV</h1><div class="sub">PUBLIC TRAFFIC CAMERAS</div></div>
+    <a class="back-link" href="/">&larr; back to dashboard</a>
+    <a class="back-link" href="/satellites.html">satellites &rarr;</a>
+    <div class="info">
+      <div><b>Cameras loaded:</b> <span class="hl" id="camCount">…</span></div>
+      <div style="margin-top:8px"><b class="hl">Zoom in</b> to reveal camera points. They are hidden at low zoom to keep the globe responsive.</div>
+      <div style="margin-top:8px"><b>Visible now:</b> <span id="visCount">0</span></div>
+      <div style="margin-top:8px">Click a dot for the live image / stream.</div>
+    </div>
+    <div id="status">initializing…</div>
+  </div>
+  <div id="globe-container">
+    <div id="popup"></div>
+  </div>
+</div>
+
+<script>
+// ─── Performance guard: render camera points only when zoomed past this
+//     altitude (Globe.gl camera distance in globe radii; lower = closer). ───
+const CAMERA_ALTITUDE_THRESHOLD = 0.9;
+// Hard cap on simultaneously-rendered points (defensive, even when zoomed).
+const MAX_VISIBLE_POINTS = 1500;
+
+const API = '/api/cctv';
+const statusEl = document.getElementById('status');
+const camCountEl = document.getElementById('camCount');
+const visCountEl = document.getElementById('visCount');
+const popup = document.getElementById('popup');
+
+let allCameras = [];
+let currentAltitude = 2.5;
+let lastCenter = { lat: 0, lng: 0 };
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function setStatus(m){ statusEl.innerHTML = m; }
+
+const globe = Globe()(document.getElementById('globe-container'))
+  .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+  .backgroundColor('#020408')
+  .pointLat('lat')
+  .pointLng('lng')
+  .pointColor(() => '#ff8c42')
+  .pointAltitude(0.001)
+  .pointRadius(0.12)
+  .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#ff8c42">${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`)
+  .onPointClick(showCamera)
+  .pointsData([]);
+
+// Track camera altitude + center to drive the viewport gate.
+globe.controls().addEventListener('change', () => {
+  const pov = globe.pointOfView();
+  currentAltitude = pov.altitude;
+  lastCenter = { lat: pov.lat, lng: pov.lng };
+  scheduleRefresh();
+});
+
+let refreshTimer = null;
+function scheduleRefresh(){
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; updateVisiblePoints(); }, 120);
+}
+
+// Decide which points to actually feed to the globe.
+function updateVisiblePoints(){
+  if (currentAltitude > CAMERA_ALTITUDE_THRESHOLD){
+    if (globe.pointsData().length) globe.pointsData([]);
+    visCountEl.textContent = '0 (zoom in)';
+    return;
+  }
+  // Zoomed in: show cameras near the current view center, capped.
+  const c = lastCenter;
+  // Angular window scales with altitude so it feels natural.
+  const win = Math.max(6, currentAltitude * 40);
+  const visible = [];
+  for (const cam of allCameras){
+    if (Math.abs(cam.lat - c.lat) > win) continue;
+    let dLng = Math.abs(cam.lng - c.lng); if (dLng > 180) dLng = 360 - dLng;
+    if (dLng > win) continue;
+    visible.push(cam);
+    if (visible.length >= MAX_VISIBLE_POINTS) break;
+  }
+  globe.pointsData(visible);
+  visCountEl.textContent = String(visible.length);
+}
+
+function popupHtml(cam){
+  const meta = `${esc(cam.city)}, ${esc(cam.country)} · ${esc(cam.source)}`;
+  const isStream = cam.stream_type === 'iframe' || cam.stream_type === 'hls';
+  let media;
+  if (isStream && cam.stream_url){
+    media = `<div class="iframe-wrap"><iframe src="${esc(cam.stream_url)}" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
+  } else if (cam.feed_url){
+    // Try direct first; fall back to the Pi proxy on error.
+    media = `<img id="camImg" src="${esc(cam.feed_url)}" alt="loading…"
+              onerror="this.onerror=null;this.src='${API}/snapshot?id=${encodeURIComponent(cam.id)}&t='+Date.now()" />`;
+  } else if (cam.external_url){
+    media = `<div class="pmsg">No embeddable feed. Open externally below.</div>`;
+  } else {
+    media = `<div class="pmsg">No feed available.</div>`;
+  }
+  const ext = cam.external_url || cam.feed_url || cam.stream_url || '';
+  return `<div class="ptitle">${esc(cam.name)}</div>
+    <div class="pmeta">${meta}</div>
+    ${media}
+    <div class="prow">
+      ${!isStream && (cam.feed_url) ? `<button onclick="refreshImg('${esc(cam.id)}','${esc(cam.feed_url)}')">↻ refresh</button>` : ''}
+      ${ext ? `<a href="${esc(ext)}" target="_blank" rel="noopener">open ↗</a>` : ''}
+      <button class="pclose" onclick="document.getElementById('popup').style.display='none'">✕</button>
+    </div>`;
+}
+
+window.refreshImg = function(id, feedUrl){
+  const img = document.getElementById('camImg');
+  if (!img) return;
+  const bust = (feedUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+  img.onerror = function(){ this.onerror=null; this.src = API + '/snapshot?id=' + encodeURIComponent(id) + '&t=' + Date.now(); };
+  img.src = feedUrl + bust;
+};
+
+function showCamera(cam, event){
+  popup.innerHTML = popupHtml(cam);
+  popup.style.display = 'block';
+  const x = (event && event.clientX) || window.innerWidth/2;
+  const y = (event && event.clientY) || window.innerHeight/2;
+  const rect = popup.getBoundingClientRect();
+  popup.style.left = Math.min(x + 12, window.innerWidth - rect.width - 12) + 'px';
+  popup.style.top = Math.min(y + 12, window.innerHeight - rect.height - 12) + 'px';
+}
+
+async function loadCameras(){
+  setStatus('fetching cameras…');
+  try {
+    const res = await fetch(API + '/cameras');
+    const data = await res.json();
+    allCameras = (data.cameras || []).filter(c => typeof c.lat === 'number' && typeof c.lng === 'number');
+    camCountEl.textContent = allCameras.length.toLocaleString();
+    const srcCount = Object.keys(data.sources || {}).length;
+    setStatus(`${allCameras.length.toLocaleString()} cameras · ${srcCount} sources<br>updated ${esc((data.updated||'').replace('T',' ').slice(0,19))} UTC`);
+    updateVisiblePoints();
+  } catch (err){
+    setStatus('<span style="color:#ff5f63">load failed: ' + esc(err.message) + '</span>');
+  }
+}
+
+// Initial camera POV (zoomed out — points hidden until user zooms).
+globe.pointOfView({ lat: 30, lng: 0, altitude: 2.5 });
+loadCameras();
+// Refresh the (static) location set daily.
+setInterval(loadCameras, 12 * 60 * 60 * 1000);
+</script>
+</body>
+</html>
