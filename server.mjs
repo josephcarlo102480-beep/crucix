@@ -28,6 +28,7 @@ import {
 import sanctionsRouter from './services/sanctions/sanctionsRouter.mjs';
 import { warmCache as warmSanctionsCache } from './services/sanctions/ofacSanctions.mjs';
 import cctvRouter from './services/cctv/cctvRouter.mjs';
+import telegramRouter, { warmTelegram } from './services/telegram/telegramRouter.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -151,6 +152,7 @@ app.use(express.static(join(ROOT, 'dashboard/public')));
 // --- Isolated OSINT module routers (ported from OSIRIS) ---
 app.use('/api/sanctions', sanctionsRouter);
 app.use('/api/cctv', cctvRouter);
+app.use('/api/telegram', telegramRouter);
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
@@ -370,6 +372,11 @@ async function start() {
     // Warm the OFAC SDN sanctions cache on boot (fire-and-forget).
     warmSanctionsCache()
       .then(ok => console.log(`[Crucix] Sanctions SDN cache ${ok ? 'warmed' : 'warm-up failed (will retry on first query)'}`))
+      .catch(() => {});
+
+    // Warm the Telegram geoparse gazetteer + kick the first scrape (fire-and-forget).
+    warmTelegram()
+      .then(ok => console.log(`[Crucix] Telegram gazetteer ${ok ? 'warmed' : 'warm-up failed (will retry on first query)'}`))
       .catch(() => {});
 
     // Try to load existing data first for instant display (await so dashboard shows immediately)
