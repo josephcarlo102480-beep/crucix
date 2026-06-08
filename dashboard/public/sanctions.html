@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<!--
+  Crucix — OFAC SDN Sanctions Search (Module C, standalone panel)
+  Isolated page. Talks only to /api/sanctions/*. No globe layer in v1.
+  Palette matches satellites.html. Does not touch jarvis.html/satellites.html.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crucix — Sanctions (OFAC SDN)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
+  --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
+  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--mono)}
+body{display:flex;flex-direction:column;min-height:100vh}
+header{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+header h1{font-size:15px;letter-spacing:0.15em;color:var(--accent);margin:0}
+header .sub{font-size:10px;color:var(--dim)}
+.back-link{margin-left:auto;color:var(--accent2);font-size:10px;text-decoration:none;letter-spacing:0.08em}
+.back-link:hover{text-decoration:underline}
+main{flex:1;max-width:880px;width:100%;margin:0 auto;padding:24px}
+.searchbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.searchbar input[type=text]{flex:1;min-width:240px;background:var(--glass);border:1px solid var(--border-bright);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none}
+.searchbar input[type=text]:focus{border-color:var(--accent)}
+.searchbar select,.searchbar button{background:var(--panel);border:1px solid var(--border-bright);color:var(--accent);font-family:var(--mono);font-size:11px;padding:10px 12px;cursor:pointer}
+.searchbar button:hover{background:rgba(100,240,200,0.1)}
+.hint{font-size:10px;color:var(--dim);margin:10px 2px}
+#status{font-size:10px;color:var(--dim);margin:8px 2px;min-height:14px}
+#status.warn{color:var(--warn)}
+#status.err{color:var(--danger)}
+.results{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--panel);border:1px solid var(--border);padding:12px 14px}
+.card .row1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.card .name{color:var(--text);font-size:13px;font-weight:600}
+.card .badge{font-size:9px;letter-spacing:0.08em;padding:2px 6px;border:1px solid var(--border-bright);color:var(--accent2);text-transform:uppercase}
+.card .badge.person{color:var(--accent)}
+.card .badge.vessel,.card .badge.airplane{color:var(--warn)}
+.card .badge.organization,.card .badge.company,.card .badge.legalentity{color:var(--accent2)}
+.card .meta{font-size:10px;color:var(--dim);margin-top:6px;line-height:1.6}
+.card .meta b{color:var(--text);font-weight:400}
+.card .aliases{font-size:10px;color:var(--dim);margin-top:6px}
+.card .aliases span{color:var(--accent);opacity:0.85}
+.empty{color:var(--dim);font-size:11px;padding:24px 0;text-align:center}
+.spinner{display:inline-block;width:10px;height:10px;border:2px solid var(--border-bright);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>CRUCIX · SANCTIONS</h1>
+  <span class="sub">OFAC SDN · OpenSanctions us_ofac_sdn</span>
+  <a class="back-link" href="/">&larr; back to dashboard</a>
+</header>
+<main>
+  <form class="searchbar" id="form" autocomplete="off">
+    <input id="q" type="text" placeholder="Search name, alias, vessel, aircraft… (min 4 chars)" />
+    <select id="schema" title="Entity type filter">
+      <option value="">Any type</option>
+      <option value="Person">Person</option>
+      <option value="Organization">Organization</option>
+      <option value="Company">Company</option>
+      <option value="Vessel">Vessel</option>
+      <option value="Airplane">Aircraft</option>
+      <option value="LegalEntity">Legal entity</option>
+    </select>
+    <button type="submit">SEARCH</button>
+  </form>
+  <div class="hint">Case-insensitive full-text match across name + aliases. Source data refreshed every 24h.</div>
+  <div id="status"></div>
+  <div class="results" id="results"></div>
+</main>
+
+<script>
+const API = '/api/sanctions';
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const qEl = document.getElementById('q');
+const schemaEl = document.getElementById('schema');
+
+function setStatus(msg, cls){ statusEl.className = cls || ''; statusEl.innerHTML = msg || ''; }
+
+function badgeClass(schema){ return (schema || '').toLowerCase().replace(/[^a-z]/g,''); }
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function renderResults(data){
+  resultsEl.innerHTML = '';
+  const list = data.results || [];
+  if (!list.length){ resultsEl.innerHTML = '<div class="empty">No matching SDN entries.</div>'; return; }
+  for (const e of list){
+    const card = document.createElement('div');
+    card.className = 'card';
+    const aliases = (e.aliases || []).slice(0, 8);
+    const countries = (e.countries || []).join(', ');
+    const programs = (e.programs || []).join(', ');
+    card.innerHTML =
+      '<div class="row1">' +
+        '<span class="name">' + esc(e.name) + '</span>' +
+        '<span class="badge ' + badgeClass(e.schema) + '">' + esc(e.schema) + '</span>' +
+      '</div>' +
+      '<div class="meta">' +
+        (countries ? '<div><b>Countries:</b> ' + esc(countries) + '</div>' : '') +
+        (programs ? '<div><b>Programs:</b> ' + esc(programs) + '</div>' : '') +
+        (e.sanctions ? '<div><b>Sanctions:</b> ' + esc(e.sanctions) + '</div>' : '') +
+        (e.id ? '<div><b>ID:</b> ' + esc(e.id) + '</div>' : '') +
+      '</div>' +
+      (aliases.length ? '<div class="aliases">aka ' + aliases.map(a => '<span>' + esc(a) + '</span>').join(', ') + '</div>' : '');
+    resultsEl.appendChild(card);
+  }
+}
+
+async function runSearch(){
+  const q = qEl.value.trim();
+  const schema = schemaEl.value;
+  if (q.length < 4){ setStatus('Enter at least 4 characters.', 'warn'); return; }
+  setStatus('<span class="spinner"></span> searching…');
+  resultsEl.innerHTML = '';
+  try {
+    const url = API + '/search?q=' + encodeURIComponent(q) + (schema ? '&schema=' + encodeURIComponent(schema) : '');
+    const res = await fetch(url);
+    if (res.status === 503){ setStatus('Index still loading on the server — try again in a few seconds.', 'warn'); return; }
+    const data = await res.json();
+    if (!res.ok){ setStatus(esc(data.error || ('HTTP ' + res.status)), 'err'); return; }
+    setStatus(data.total + ' result' + (data.total === 1 ? '' : 's') + ' · ' + esc(data.source));
+    renderResults(data);
+  } catch (err){
+    setStatus('Request failed: ' + esc(err.message), 'err');
+  }
+}
+
+document.getElementById('form').addEventListener('submit', e => { e.preventDefault(); runSearch(); });
+
+// Readiness probe on load.
+(async () => {
+  try {
+    const res = await fetch(API + '/status');
+    const s = await res.json();
+    if (s.ready) setStatus('Index ready · ' + s.count.toLocaleString() + ' entries loaded.');
+    else setStatus('Index warming up on the server…', 'warn');
+  } catch { /* ignore */ }
+})();
+</script>
+</body>
+</html>

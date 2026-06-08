@@ -24,6 +24,9 @@ import {
   formatTelegramBrief,
   formatTelegramStatus,
 } from './lib/bot/messages.mjs';
+// --- Isolated OSINT modules (ported from OSIRIS) ---
+import sanctionsRouter from './services/sanctions/sanctionsRouter.mjs';
+import { warmCache as warmSanctionsCache } from './services/sanctions/ofacSanctions.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -143,6 +146,9 @@ function initializeIntegrations() {
 // === Express Server ===
 const app = express();
 app.use(express.static(join(ROOT, 'dashboard/public')));
+
+// --- Isolated OSINT module routers (ported from OSIRIS) ---
+app.use('/api/sanctions', sanctionsRouter);
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
@@ -358,6 +364,11 @@ async function start() {
 
   httpServer.on('listening', async () => {
     console.log(`[Crucix] Server running on http://localhost:${port}`);
+
+    // Warm the OFAC SDN sanctions cache on boot (fire-and-forget).
+    warmSanctionsCache()
+      .then(ok => console.log(`[Crucix] Sanctions SDN cache ${ok ? 'warmed' : 'warm-up failed (will retry on first query)'}`))
+      .catch(() => {});
 
     // Try to load existing data first for instant display (await so dashboard shows immediately)
     try {
