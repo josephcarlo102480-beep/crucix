@@ -28,6 +28,7 @@
     "npm": ">=10"
   },
   "dependencies": {
+    "cheerio": "^1.2.0",
     "express": "^5.1.0",
     "satellite.js": "^7.0.0"
   },
