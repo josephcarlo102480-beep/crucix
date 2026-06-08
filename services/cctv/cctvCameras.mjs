@@ -17,6 +17,13 @@
  *     feed_url?, stream_url?, stream_type?, external_url? }
  */
 
+// ═══ Tunable: cap on the assembled global camera set ═══
+// The raw set is ~3,400 cameras (mostly long tails of ASFINAG/TfL), which is
+// far more than a phone client needs. We round-robin across sources and keep
+// the first MAX_CAMERAS so every source stays represented (global spread)
+// while the bulky sources get trimmed. Bump this to widen coverage.
+const MAX_CAMERAS = 400;
+
 // ═══ stealthFetch (ported from src/lib/stealthFetch.ts) ═══
 // NOTE: in OSIRIS the "residential IP" generator's output is never injected
 // into the outgoing headers, so the real behaviour is User-Agent rotation
@@ -697,6 +704,41 @@ export async function fetchCamerasForRegions(opts = {}) {
   return { cameras, sources, regions: regionsToFetch };
 }
 
+/**
+ * Cap the assembled set to `max`, round-robin by source so the global spread
+ * is preserved and only the long tail of bulky sources is dropped. Returns
+ * { cameras, sources } recomputed from the capped list.
+ */
+function capCameras(cameras, max) {
+  if (cameras.length <= max) {
+    const sources = {};
+    for (const c of cameras) sources[c.source] = (sources[c.source] || 0) + 1;
+    return { cameras, sources };
+  }
+  const bySource = new Map();
+  for (const c of cameras) {
+    const k = c.source || '?';
+    if (!bySource.has(k)) bySource.set(k, []);
+    bySource.get(k).push(c);
+  }
+  const buckets = [...bySource.values()];
+  const out = [];
+  for (let i = 0; out.length < max; i++) {
+    let added = false;
+    for (const b of buckets) {
+      if (i < b.length) {
+        out.push(b[i]);
+        added = true;
+        if (out.length >= max) break;
+      }
+    }
+    if (!added) break; // all buckets exhausted
+  }
+  const sources = {};
+  for (const c of out) sources[c.source] = (sources[c.source] || 0) + 1;
+  return { cameras: out, sources };
+}
+
 // ═══ 12h assembled-list cache for the global set ═══
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 let allCache = null;       // { fetchedAt, cameras, sources }
@@ -712,9 +754,11 @@ export async function getAllCameras() {
 
   allInflight = (async () => {
     try {
-      const { cameras, sources } = await fetchCamerasForRegions({ region: 'all' });
+      const assembled = await fetchCamerasForRegions({ region: 'all' });
       // If we got almost nothing (all upstreams down), keep any prior snapshot.
-      if (cameras.length < 50 && allCache) return allCache;
+      if (assembled.cameras.length < 50 && allCache) return allCache;
+      // Cap to MAX_CAMERAS, preserving a global spread across sources.
+      const { cameras, sources } = capCameras(assembled.cameras, MAX_CAMERAS);
       const loaded = { fetchedAt: Date.now(), cameras, sources };
       allCache = loaded;
       return loaded;

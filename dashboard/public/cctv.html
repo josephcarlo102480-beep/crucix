@@ -4,9 +4,9 @@
   Isolated. Talks only to /api/cctv/*. Own Globe.gl instance (same CDN as
   satellites.html). Does not touch jarvis.html/satellites.html.
 
-  PERFORMANCE GUARD: 2,000+ cameras. Points only render when the camera of
-  view (altitude) is below CAMERA_ALTITUDE_THRESHOLD, i.e. zoomed in. Tune
-  the constant below.
+  The backend caps the global set (~400 cameras, MAX_CAMERAS in
+  cctvCameras.mjs), so all cameras render on load at the default zoom —
+  no viewport gating. MAX_VISIBLE_POINTS below is the client-side cap.
 -->
 <html lang="en">
 <head>
@@ -58,7 +58,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
     <a class="back-link" href="/satellites.html">satellites &rarr;</a>
     <div class="info">
       <div><b>Cameras loaded:</b> <span class="hl" id="camCount">…</span></div>
-      <div style="margin-top:8px"><b class="hl">Zoom in</b> to reveal camera points. They are hidden at low zoom to keep the globe responsive.</div>
+      <div style="margin-top:8px">All cameras are shown on load. Drag to rotate, scroll/pinch to zoom.</div>
       <div style="margin-top:8px"><b>Visible now:</b> <span id="visCount">0</span></div>
       <div style="margin-top:8px">Click a dot for the live image / stream.</div>
     </div>
@@ -70,11 +70,10 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 </div>
 
 <script>
-// ─── Performance guard: render camera points only when zoomed past this
-//     altitude (Globe.gl camera distance in globe radii; lower = closer). ───
-const CAMERA_ALTITUDE_THRESHOLD = 0.9;
-// Hard cap on simultaneously-rendered points (defensive, even when zoomed).
-const MAX_VISIBLE_POINTS = 1500;
+// ─── The backend now caps the global set (~400 cameras), so we render them
+//     all immediately at the default zoom — no viewport gate needed. ───
+// Hard cap on rendered points; keep at/above the backend MAX_CAMERAS (400).
+const MAX_VISIBLE_POINTS = 500;
 
 const API = '/api/cctv';
 const statusEl = document.getElementById('status');
@@ -83,8 +82,6 @@ const visCountEl = document.getElementById('visCount');
 const popup = document.getElementById('popup');
 
 let allCameras = [];
-let currentAltitude = 2.5;
-let lastCenter = { lat: 0, lng: 0 };
 
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function setStatus(m){ statusEl.innerHTML = m; }
@@ -96,44 +93,15 @@ const globe = Globe()(document.getElementById('globe-container'))
   .pointLng('lng')
   .pointColor(() => '#ff8c42')
   .pointAltitude(0.001)
-  .pointRadius(0.12)
+  .pointRadius(0.18)
   .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#ff8c42">${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`)
   .onPointClick(showCamera)
   .pointsData([]);
 
-// Track camera altitude + center to drive the viewport gate.
-globe.controls().addEventListener('change', () => {
-  const pov = globe.pointOfView();
-  currentAltitude = pov.altitude;
-  lastCenter = { lat: pov.lat, lng: pov.lng };
-  scheduleRefresh();
-});
-
-let refreshTimer = null;
-function scheduleRefresh(){
-  if (refreshTimer) return;
-  refreshTimer = setTimeout(() => { refreshTimer = null; updateVisiblePoints(); }, 120);
-}
-
-// Decide which points to actually feed to the globe.
+// Render all loaded cameras at once (capped). The set is small enough now
+// that no viewport gating is needed — they show on load, at any zoom.
 function updateVisiblePoints(){
-  if (currentAltitude > CAMERA_ALTITUDE_THRESHOLD){
-    if (globe.pointsData().length) globe.pointsData([]);
-    visCountEl.textContent = '0 (zoom in)';
-    return;
-  }
-  // Zoomed in: show cameras near the current view center, capped.
-  const c = lastCenter;
-  // Angular window scales with altitude so it feels natural.
-  const win = Math.max(6, currentAltitude * 40);
-  const visible = [];
-  for (const cam of allCameras){
-    if (Math.abs(cam.lat - c.lat) > win) continue;
-    let dLng = Math.abs(cam.lng - c.lng); if (dLng > 180) dLng = 360 - dLng;
-    if (dLng > win) continue;
-    visible.push(cam);
-    if (visible.length >= MAX_VISIBLE_POINTS) break;
-  }
+  const visible = allCameras.slice(0, MAX_VISIBLE_POINTS);
   globe.pointsData(visible);
   visCountEl.textContent = String(visible.length);
 }
@@ -197,8 +165,8 @@ async function loadCameras(){
   }
 }
 
-// Initial camera POV (zoomed out — points hidden until user zooms).
-globe.pointOfView({ lat: 30, lng: 0, altitude: 2.5 });
+// Initial POV — global view; all camera points are visible immediately.
+globe.pointOfView({ lat: 30, lng: 10, altitude: 2.5 });
 loadCameras();
 // Refresh the (static) location set daily.
 setInterval(loadCameras, 12 * 60 * 60 * 1000);
