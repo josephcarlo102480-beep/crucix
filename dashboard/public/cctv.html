@@ -72,10 +72,12 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
     </div>
     <div id="status">initializing…</div>
   </div>
-  <div id="globe-container">
-    <div id="popup"></div>
-  </div>
+  <div id="globe-container"></div>
 </div>
+<!-- IMPORTANT: keep #popup OUTSIDE #globe-container — Globe.gl wipes its mount
+     element's children on init, which would delete the popup. It is
+     position:fixed, so DOM location here is fine. -->
+<div id="popup"></div>
 
 <script>
 // ─── The backend now caps the global set (~400 cameras), so we render them
@@ -100,8 +102,8 @@ const globe = Globe()(document.getElementById('globe-container'))
   .pointLat('lat')
   .pointLng('lng')
   .pointColor(() => '#ff8c42')
-  .pointAltitude(0.001)
-  .pointRadius(0.18)
+  .pointAltitude(0.012)
+  .pointRadius(0.34)
   .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#ff8c42">${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`)
   .onPointClick(showCamera)
   .pointsData([]);
