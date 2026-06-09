@@ -37,7 +37,15 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 .info .hl{color:var(--cctv)}
 #status{padding:12px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);margin-top:auto;line-height:1.6}
 #globe-container{flex:1;position:relative;overflow:hidden}
-#popup{position:absolute;display:none;z-index:50;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:340px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+/* position:fixed so it's viewport-relative and never clipped by the
+   globe container's overflow:hidden. */
+#popup{position:fixed;display:none;z-index:200;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:340px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+/* On phones/narrow screens, show it as a centered modal so a tap anywhere
+   always brings up a fully-visible popup. */
+@media (max-width:760px){
+  #popup{left:50%!important;top:50%!important;transform:translate(-50%,-50%);width:92vw;max-width:92vw}
+  #popup img,#popup .iframe-wrap{max-width:100%!important;width:100%!important}
+}
 #popup .ptitle{color:var(--cctv);font-weight:600;margin-bottom:4px;font-size:12px}
 #popup .pmeta{color:var(--dim);margin-bottom:8px;font-size:10px}
 #popup img{max-width:316px;max-height:200px;display:block;background:#000;border:1px solid var(--border)}
@@ -204,11 +212,16 @@ function showCamera(cam, event){
   popup.innerHTML = popupHtml(cam);
   popup.style.display = 'block';
   if (feedKind(cam) === 'hls') setupHls(cam.stream_url);
+  // On phones the CSS centers the popup as a modal; don't fight it.
+  if (window.innerWidth <= 760){ popup.style.left = ''; popup.style.top = ''; return; }
+  // Desktop: place near the cursor, clamped to the viewport (position:fixed,
+  // so clientX/clientY map directly — no offset-parent math needed).
+  popup.style.transform = 'none';
   const x = (event && event.clientX) || window.innerWidth/2;
   const y = (event && event.clientY) || window.innerHeight/2;
   const rect = popup.getBoundingClientRect();
-  popup.style.left = Math.min(x + 12, window.innerWidth - rect.width - 12) + 'px';
-  popup.style.top = Math.min(y + 12, window.innerHeight - rect.height - 12) + 'px';
+  popup.style.left = Math.max(8, Math.min(x + 12, window.innerWidth - rect.width - 12)) + 'px';
+  popup.style.top = Math.max(8, Math.min(y + 12, window.innerHeight - rect.height - 12)) + 'px';
 }
 
 async function loadCameras(){
