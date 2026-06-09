@@ -47,7 +47,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 #popup a:hover,#popup button:hover{background:rgba(100,240,200,0.1)}
 #popup .pclose{margin-left:auto;border:none;color:var(--dim)}
 .iframe-wrap{position:relative;width:316px;height:178px;background:#000;border:1px solid var(--border)}
-.iframe-wrap iframe{width:100%;height:100%;border:0}
+.iframe-wrap iframe,.iframe-wrap video{width:100%;height:100%;border:0;display:block;object-fit:cover;background:#000}
 </style>
 </head>
 <body>
@@ -106,43 +106,104 @@ function updateVisiblePoints(){
   visCountEl.textContent = String(visible.length);
 }
 
+// Classify a camera into how its feed must be displayed.
+function feedKind(cam){
+  if (cam.stream_type === 'iframe' && cam.stream_url) return 'iframe';
+  if (cam.stream_type === 'hls' && cam.stream_url) return 'hls';
+  if (cam.feed_url) return 'image';      // static JPEG/PNG snapshot (via proxy)
+  if (cam.external_url) return 'external';
+  return 'none';
+}
+
+function snapshotUrl(id){ return API + '/snapshot?id=' + encodeURIComponent(id) + '&t=' + Date.now(); }
+
 function popupHtml(cam){
   const meta = `${esc(cam.city)}, ${esc(cam.country)} · ${esc(cam.source)}`;
-  const isStream = cam.stream_type === 'iframe' || cam.stream_type === 'hls';
-  let media;
-  if (isStream && cam.stream_url){
+  const kind = feedKind(cam);
+  let media = '';
+  if (kind === 'iframe'){
     media = `<div class="iframe-wrap"><iframe src="${esc(cam.stream_url)}" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
-  } else if (cam.feed_url){
-    // Try direct first; fall back to the Pi proxy on error.
-    media = `<img id="camImg" src="${esc(cam.feed_url)}" alt="loading…"
-              onerror="this.onerror=null;this.src='${API}/snapshot?id=${encodeURIComponent(cam.id)}&t='+Date.now()" />`;
-  } else if (cam.external_url){
-    media = `<div class="pmsg">No embeddable feed. Open externally below.</div>`;
+  } else if (kind === 'hls'){
+    media = `<div class="iframe-wrap"><video id="camVideo" controls autoplay muted playsinline></video></div>`;
+  } else if (kind === 'image'){
+    // Proxy-first: the Pi fetches server-side, sidestepping CORS/hotlink/Referer.
+    // On failure, swap in a graceful "feed unavailable" placeholder.
+    media = `<img id="camImg" src="${snapshotUrl(cam.id)}" alt="loading feed…"
+              onerror="cctvImgFailed(this)" />`;
+  } else if (kind === 'external'){
+    media = `<div class="pmsg">No embeddable feed — open the source below.</div>`;
   } else {
-    media = `<div class="pmsg">No feed available.</div>`;
+    media = `<div class="pmsg">No feed available for this camera.</div>`;
   }
-  const ext = cam.external_url || cam.feed_url || cam.stream_url || '';
+  // Best link-out target for "open ↗".
+  const ext = cam.external_url || cam.stream_url || cam.feed_url || '';
   return `<div class="ptitle">${esc(cam.name)}</div>
-    <div class="pmeta">${meta}</div>
-    ${media}
+    <div class="pmeta">${meta} <span style="opacity:.6">· ${esc(cam.stream_type || 'image')}</span></div>
+    <div id="camMedia">${media}</div>
     <div class="prow">
-      ${!isStream && (cam.feed_url) ? `<button onclick="refreshImg('${esc(cam.id)}','${esc(cam.feed_url)}')">↻ refresh</button>` : ''}
+      ${kind === 'image' ? `<button onclick="cctvRefresh('${esc(cam.id)}')">↻ refresh</button>` : ''}
       ${ext ? `<a href="${esc(ext)}" target="_blank" rel="noopener">open ↗</a>` : ''}
       <button class="pclose" onclick="document.getElementById('popup').style.display='none'">✕</button>
     </div>`;
 }
 
-window.refreshImg = function(id, feedUrl){
+// Graceful fallback when a proxied image fails to load.
+window.cctvImgFailed = function(img){
+  const wrap = document.getElementById('camMedia');
+  if (wrap) wrap.innerHTML = '<div class="pmsg">⚠ Feed unavailable right now. Use “open ↗” to try the source directly.</div>';
+};
+
+window.cctvRefresh = function(id){
   const img = document.getElementById('camImg');
   if (!img) return;
-  const bust = (feedUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
-  img.onerror = function(){ this.onerror=null; this.src = API + '/snapshot?id=' + encodeURIComponent(id) + '&t=' + Date.now(); };
-  img.src = feedUrl + bust;
+  img.onerror = function(){ cctvImgFailed(img); };
+  img.src = snapshotUrl(id);
 };
+
+// Lazy-load hls.js once, then play the stream into the <video> element.
+let hlsLoading = null;
+function loadHlsLib(){
+  if (window.Hls) return Promise.resolve(true);
+  if (hlsLoading) return hlsLoading;
+  hlsLoading = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+  return hlsLoading;
+}
+
+async function setupHls(streamUrl){
+  const video = document.getElementById('camVideo');
+  if (!video) return;
+  // Native HLS (Safari/iOS) — important since the user is usually on a phone.
+  if (video.canPlayType('application/vnd.apple.mpegurl')){
+    video.src = streamUrl;
+    return;
+  }
+  const ok = await loadHlsLib();
+  if (ok && window.Hls && window.Hls.isSupported()){
+    const hls = new window.Hls({ liveDurationInfinity: true });
+    hls.on(window.Hls.Events.ERROR, (e, data) => {
+      if (data && data.fatal){
+        const wrap = document.getElementById('camMedia');
+        if (wrap) wrap.innerHTML = '<div class="pmsg">⚠ Stream unavailable right now. Use “open ↗” to view the source.</div>';
+      }
+    });
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+  } else {
+    const wrap = document.getElementById('camMedia');
+    if (wrap) wrap.innerHTML = '<div class="pmsg">⚠ HLS not supported here. Use “open ↗” to view the stream.</div>';
+  }
+}
 
 function showCamera(cam, event){
   popup.innerHTML = popupHtml(cam);
   popup.style.display = 'block';
+  if (feedKind(cam) === 'hls') setupHls(cam.stream_url);
   const x = (event && event.clientX) || window.innerWidth/2;
   const y = (event && event.clientY) || window.innerHeight/2;
   const rect = popup.getBoundingClientRect();

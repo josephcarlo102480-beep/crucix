@@ -34,7 +34,22 @@ router.get('/cameras', async (req, res) => {
   }
 });
 
-// GET /api/cctv/snapshot?id=<id> — stream a camera's current image via the Pi.
+// Detect an image from its leading magic bytes (JPEG/PNG/GIF/WebP/BMP). Some
+// upstreams serve image bytes as application/octet-stream or with no type, so
+// content-type alone isn't enough; sniffing also catches HTML/JSON error
+// bodies returned with a 200 status.
+function sniffImageType(buf) {
+  if (buf.length < 4) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  return null;
+}
+
+// GET /api/cctv/snapshot?id=<id> — fetch a camera's current image via the Pi
+// (avoids browser CORS/hotlink/Referer/mixed-content issues entirely).
 router.get('/snapshot', async (req, res) => {
   const id = String(req.query.id || '').trim();
   if (!id) return res.status(400).json({ error: 'Missing id' });
@@ -53,26 +68,33 @@ router.get('/snapshot', async (req, res) => {
     return res.status(415).json({ error: 'Camera has no proxyable image feed', external_url: cam.external_url || url || null });
   }
 
+  // Some upstreams require a same-origin Referer to serve the frame.
+  let referer;
+  try { referer = new URL(cam.external_url || url).origin + '/'; } catch { /* ignore */ }
+
   try {
-    const upstream = await stealthFetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!upstream.ok || !upstream.body) {
+    const upstream = await stealthFetch(url, {
+      signal: AbortSignal.timeout(12000),
+      redirect: 'follow',
+      headers: referer ? { Referer: referer } : undefined,
+    });
+    if (!upstream.ok) {
       return res.status(502).json({ error: `Upstream HTTP ${upstream.status}` });
     }
-    const ct = upstream.headers.get('content-type') || 'image/jpeg';
-    if (!/^image\//i.test(ct)) {
-      return res.status(415).json({ error: `Upstream is not an image (${ct})` });
+    // Buffer (snapshots are small) so we can sniff and reject error bodies.
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    const ctHeader = (upstream.headers.get('content-type') || '').toLowerCase();
+    const sniffed = sniffImageType(buf);
+    const isImage = sniffed || /^image\//.test(ctHeader);
+    if (!isImage || buf.length < 100) {
+      return res.status(415).json({
+        error: `Upstream is not an image (${ctHeader || 'no type'}, ${buf.length}b)`,
+        external_url: cam.external_url || null,
+      });
     }
-    res.set('Content-Type', ct);
+    res.set('Content-Type', sniffed || ctHeader || 'image/jpeg');
     res.set('Cache-Control', 'no-store');
-    // Stream the Web ReadableStream body through to the client.
-    const reader = upstream.body.getReader();
-    res.on('close', () => reader.cancel().catch(() => {}));
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      res.write(Buffer.from(value));
-    }
-    res.end();
+    res.send(buf);
   } catch (e) {
     if (!res.headersSent) res.status(502).json({ error: 'Snapshot fetch failed', detail: e?.message || String(e) });
     else res.end();
