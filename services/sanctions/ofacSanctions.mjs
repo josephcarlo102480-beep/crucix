@@ -225,3 +225,29 @@ export async function warmCache() {
     return false;
   }
 }
+
+/**
+ * Snapshot of the cached list for briefing-style consumers (sweep source).
+ * Returns null when the list has never loaded. `recent` is the newest
+ * designations by first_seen, so the sweep can surface fresh additions.
+ */
+export function cacheSnapshot(sampleLimit = 10) {
+  if (!cache) return null;
+  const recent = [...cache.entries]
+    .filter((e) => e.first_seen)
+    .sort((a, b) => String(b.first_seen).localeCompare(String(a.first_seen)))
+    .slice(0, sampleLimit)
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: e.schema,
+      programs: e.programs,
+      countries: e.countries,
+      firstSeen: e.first_seen,
+    }));
+  return {
+    fetchedAt: new Date(cache.fetchedAt).toISOString(),
+    entryCount: cache.entries.length,
+    recent,
+  };
+}

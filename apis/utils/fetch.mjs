@@ -1,7 +1,7 @@
 // Shared fetch utility with timeout, retries, and error handling
 
 export async function safeFetch(url, opts = {}) {
-  const { timeout = 15000, retries = 1, headers = {} } = opts;
+  const { timeout = 15000, retries = 1, retryDelayMs, headers = {} } = opts;
   let lastError;
   for (let i = 0; i <= retries; i++) {
     const controller = new AbortController();
@@ -19,8 +19,8 @@ export async function safeFetch(url, opts = {}) {
       try { return JSON.parse(text); } catch { return { rawText: text.slice(0, 500) }; }
     } catch (e) {
       lastError = e;
-      // GDELT needs 5s between requests, others are fine with shorter delays
-      if (i < retries) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+      // Rate-limited APIs (e.g. GDELT: 1 req / 5s) need a longer gap before retrying
+      if (i < retries) await new Promise(r => setTimeout(r, retryDelayMs ?? 2000 * (i + 1)));
     } finally {
       clearTimeout(timer);
     }

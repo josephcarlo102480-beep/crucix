@@ -15,10 +15,14 @@ export async function searchEvents(query = '', opts = {}) {
     timespan = '24h',       // e.g. "24h", "7d", "3m"
     format = 'json',
     sortBy = 'DateDesc',    // DateDesc, DateAsc, ToneDesc, ToneAsc
+    timeout,
+    retries,
+    retryDelayMs,
   } = opts;
 
   // If no query, use broad geopolitical terms
-  const q = query || 'conflict OR crisis OR military OR sanctions OR war OR economy';
+  // GDELT rejects OR'd terms unless the group is parenthesized
+  const q = query || '(conflict OR crisis OR military OR sanctions OR war OR economy)';
   const params = new URLSearchParams({
     query: q,
     mode,
@@ -28,7 +32,7 @@ export async function searchEvents(query = '', opts = {}) {
     sort: sortBy,
   });
 
-  return safeFetch(`${BASE}/doc/doc?${params}`);
+  return safeFetch(`${BASE}/doc/doc?${params}`, { timeout, retries, retryDelayMs });
 }
 
 // Get tone/sentiment timeline for a topic
@@ -60,9 +64,11 @@ export async function geoEvents(query = '', opts = {}) {
     timespan = '24h',
     format = 'GeoJSON',
     maxPoints = 500,
+    timeout,
+    retries,
   } = opts;
 
-  const q = query || 'conflict OR military OR protest OR explosion';
+  const q = query || '(conflict OR military OR protest OR explosion)';
   const params = new URLSearchParams({
     query: q,
     mode,
@@ -71,7 +77,7 @@ export async function geoEvents(query = '', opts = {}) {
     maxpoints: String(maxPoints),
   });
 
-  return safeFetch(`${BASE}/geo/geo?${params}`);
+  return safeFetch(`${BASE}/geo/geo?${params}`, { timeout, retries });
 }
 
 // Compact article for briefing
@@ -89,15 +95,40 @@ function compactArticle(a) {
 // GDELT rate limit: 1 request per 5 seconds
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// GDELT signals throttling two ways: HTTP 429, or HTTP 200 with a plain-text
+// "Please limit requests to one every 5 seconds" body (which safeFetch
+// surfaces as rawText since it isn't JSON). Both must count as throttled —
+// the 200+text variant otherwise silently yields an empty briefing.
+function isThrottled(res) {
+  return /limit requests|HTTP 429/i.test(String(res?.error || res?.rawText || ''));
+}
+
+// One attempt + one properly-spaced retry (≥5s per GDELT's policy; the old
+// 2s retry guaranteed a second 429). Throws on persistent throttle so the
+// sweep records a real failure instead of empty data.
+async function gdeltFetch(fn, label) {
+  let res = await fn();
+  if (isThrottled(res)) {
+    await delay(6500);
+    res = await fn();
+  }
+  if (isThrottled(res)) throw new Error(`GDELT ${label} rate limited (1 req / 5s) — persisted after spaced retry`);
+  if (res?.error) throw new Error(`GDELT ${label} failed: ${res.error}`);
+  return res;
+}
+
 // Briefing mode — get top global events summary (sequential due to rate limit)
+// Budget: the sweep kills any source at 30s; single attempts are kept short
+// so the worst case (search retry + gap + geo) stays inside it.
 export async function briefing() {
   // Single broad query to stay within rate limits
-  const all = await searchEvents(
-    'conflict OR military OR economy OR crisis OR war OR sanctions OR tariff OR strike OR outbreak',
-    { maxRecords: 50, timespan: '24h' }
-  );
+  const all = await gdeltFetch(() => searchEvents(
+    '(conflict OR military OR economy OR crisis OR war OR sanctions OR tariff OR strike OR outbreak)',
+    { maxRecords: 50, timespan: '24h', timeout: 12000, retries: 0 }
+  ), 'search');
+  if (!Array.isArray(all?.articles)) throw new Error('GDELT search returned unexpected payload');
 
-  const articles = (all?.articles || []).map(compactArticle);
+  const articles = all.articles.map(compactArticle);
 
   // Categorize by keyword matching in titles
   const categorize = (keywords) => articles.filter(a =>
@@ -108,7 +139,7 @@ export async function briefing() {
   await delay(5500);
   let geoPoints = [];
   try {
-    const geo = await geoEvents('conflict OR military OR protest OR crisis', { maxPoints: 30, timespan: '24h' });
+    const geo = await geoEvents('(conflict OR military OR protest OR crisis)', { maxPoints: 30, timespan: '24h', timeout: 10000, retries: 0 });
     geoPoints = (geo?.features || []).filter(f => f.geometry?.coordinates).map(f => ({
       lat: f.geometry.coordinates[1],
       lon: f.geometry.coordinates[0],
