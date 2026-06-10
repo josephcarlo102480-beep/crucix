@@ -118,7 +118,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .layer-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);margin-bottom:4px;cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
 .layer-item:hover{border-color:rgba(100,240,200,0.3);box-shadow:0 0 8px rgba(100,240,200,0.15)}
 .layer-item.active-filter{border-color:rgba(100,240,200,0.6);box-shadow:0 0 12px rgba(100,240,200,0.3);background:rgba(100,240,200,0.08)}
-.layer-item .layer-chevron{margin-left:auto;padding-left:8px;font-size:10px;color:var(--dim);transition:transform 0.25s ease}
+.layer-item .layer-chevron{padding-left:8px;font-size:10px;color:var(--dim);transition:transform 0.25s ease}
 .layer-item.expanded .layer-chevron{transform:rotate(90deg);color:var(--accent)}
 .layer-sub-items{max-height:0;overflow:hidden;transition:max-height 0.3s ease}
 .layer-item.expanded+.layer-sub-items{max-height:600px}
@@ -141,7 +141,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .ldot.space{background:#e0b0ff;box-shadow:0 0 6px rgba(224,176,255,0.4)}
 .layer-name{font-size:12px;font-weight:500}
 .layer-sub{font-size:10px;color:var(--dim)}
-.layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
+.layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);margin-left:auto;padding-left:10px;white-space:nowrap}
 .nuke-ok{padding:8px;border:1px solid rgba(100,240,200,0.15);background:rgba(100,240,200,0.04);font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
 .site-row{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:11px;display:flex;justify-content:space-between}
 .site-row.nuke-clickable{cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
@@ -407,19 +407,12 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 </style>
 </head>
 <body>
-<!-- Crucix module navigation (added: links to standalone OSINT module pages) -->
+<!-- Crucix module navigation (links to standalone OSINT module pages; rendered inside the topbar so it never covers panel content) -->
 <style>
-#moduleNav{position:fixed;right:14px;bottom:14px;z-index:900;display:flex;gap:6px;align-items:center;padding:7px 9px;background:var(--panel);border:1px solid var(--border-bright);backdrop-filter:blur(12px);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;box-shadow:0 8px 24px rgba(0,0,0,0.45)}
-#moduleNav .nav-label{color:var(--dim);margin-right:2px}
-#moduleNav a{color:var(--accent);text-decoration:none;padding:3px 7px;border:1px solid var(--border);transition:all .2s}
-#moduleNav a:hover{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+.module-links{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase}
+.module-links a{color:var(--accent);text-decoration:none;padding:4px 8px;border:1px solid var(--border);transition:all .2s}
+.module-links a:hover,.module-links a:focus-visible{color:var(--bg);background:var(--accent);border-color:var(--accent)}
 </style>
-<nav id="moduleNav" aria-label="Crucix modules">
-  <span class="nav-label">Modules</span>
-  <a href="/telegram.html">Telegram</a>
-  <a href="/cctv.html">CCTV</a>
-  <a href="/sanctions.html">Sanctions</a>
-</nav>
 <div id="boot">
   <div class="logo-ring"><span class="logo-text">CRUCIX</span></div>
   <div id="bootLines"></div>
@@ -911,6 +904,11 @@ function renderTopbar(){
     <div class="top-left">
       <span class="brand">CRUCIX MONITOR</span>
       <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
+      <nav class="module-links" aria-label="Crucix modules">
+        <a href="/telegram.html">Telegram</a>
+        <a href="/cctv.html">CCTV</a>
+        <a href="/sanctions.html">Sanctions</a>
+      </nav>
     </div>
     ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
@@ -2118,11 +2116,13 @@ function runBoot(){
   tl.to('#scanline',{opacity:1,duration:0.8},4.3);
   tl.to('#main',{opacity:1,duration:0.6},3.9);
   tl.call(()=>{
-    gsap.from('.g-panel,.topbar,.map-container',{opacity:0,y:20,scale:0.97,duration:0.5,stagger:0.06,ease:'power2.out'});
-    setTimeout(()=>gsap.from('.layer-item,.site-row,.econ-row',{opacity:0,x:-12,duration:0.25,stagger:0.03,ease:'power1.out'}),500);
-    setTimeout(()=>gsap.from('.ic',{opacity:0,y:12,duration:0.25,stagger:0.03,ease:'power1.out'}),600);
-    setTimeout(()=>gsap.from('.mc',{opacity:0,y:8,duration:0.25,stagger:0.04,ease:'power1.out'}),800);
-    setTimeout(()=>gsap.from('.idea-card',{opacity:0,x:12,duration:0.3,stagger:0.06,ease:'power1.out'}),900);
+    // Guard each selector — empty data (e.g. LLM disabled → no .idea-card) makes GSAP warn on missing targets
+    const fromIf=(sel,vars)=>{if(document.querySelector(sel))gsap.from(sel,vars)};
+    fromIf('.g-panel,.topbar,.map-container',{opacity:0,y:20,scale:0.97,duration:0.5,stagger:0.06,ease:'power2.out'});
+    setTimeout(()=>fromIf('.layer-item,.site-row,.econ-row',{opacity:0,x:-12,duration:0.25,stagger:0.03,ease:'power1.out'}),500);
+    setTimeout(()=>fromIf('.ic',{opacity:0,y:12,duration:0.25,stagger:0.03,ease:'power1.out'}),600);
+    setTimeout(()=>fromIf('.mc',{opacity:0,y:8,duration:0.25,stagger:0.04,ease:'power1.out'}),800);
+    setTimeout(()=>fromIf('.idea-card',{opacity:0,x:12,duration:0.3,stagger:0.06,ease:'power1.out'}),900);
     setTimeout(()=>{
       document.querySelectorAll('.mbar span,.smb span').forEach(bar=>{const w=bar.style.width;bar.style.width='0%';gsap.to(bar,{width:w,duration:1,ease:'power2.out'})});
       document.querySelectorAll('.spark-bar').forEach(bar=>{const h=bar.style.height;bar.style.height='0%';gsap.to(bar,{height:h,duration:0.8,ease:'power2.out'})});

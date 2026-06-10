@@ -539,9 +539,14 @@ export async function synthesize(data) {
     }))
   };
 
-  const health = Object.entries(data.sources).map(([name, src]) => ({
-    n: name, err: Boolean(src.error), stale: Boolean(src.stale)
-  }));
+  // Sources that fail outright land in data.errors (not data.sources) —
+  // include them or the dashboard reports "No failed sources" next to 27/29.
+  const health = [
+    ...Object.entries(data.sources).map(([name, src]) => ({
+      n: name, err: Boolean(src.error), stale: Boolean(src.stale)
+    })),
+    ...(data.errors || []).map(e => ({ n: e.name, err: true, stale: false })),
+  ];
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
