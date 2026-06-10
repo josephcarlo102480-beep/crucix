@@ -2,6 +2,12 @@
 set -euo pipefail
 
 APP_DIR="/home/joseph/Crucix"
+# Match the port the server will actually use: explicit $PORT wins, then the
+# project .env (server-side, .env does NOT override an exported PORT), then
+# the config default. A mismatch here used to spawn a duplicate server.
+if [ -z "${PORT:-}" ]; then
+  PORT="$(grep -oP '^PORT=\K[0-9]+' "${APP_DIR}/.env" 2>/dev/null || true)"
+fi
 PORT="${PORT:-3117}"
 URL="http://localhost:${PORT}"
 LOG_DIR="${APP_DIR}/runs"
