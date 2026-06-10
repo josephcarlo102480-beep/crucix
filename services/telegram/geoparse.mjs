@@ -66,6 +66,15 @@ export const STOPLIST = new Set([
   // Arabic function words
   'في', 'من', 'الى', 'إلى', 'على', 'عن', 'مع', 'لا', 'ما', 'هذا', 'هذه',
   'ان', 'أن', 'التي', 'الذي', 'و', 'ثم', 'قد',
+  // Media outlets that collide with gazetteer entries. Seen live: "CNN" is an
+  // alternate name of Kannur, India (airport code), and "Al-Mayadeen
+  // correspondent" pinned the Syrian city Al Mayādīn. In news text these are
+  // almost always the outlet, not the place. Hyphenated forms are single
+  // tokens (tokenizer keeps '-'), so list both variants.
+  'cnn', 'bbc', 'tass', 'reuters', 'sputnik', 'afp', 'dpa',
+  'al-mayadeen', 'al mayadeen', 'mayadeen',
+  'al-jazeera', 'al jazeera', 'al-arabiya', 'al arabiya',
+  'al-masirah', 'al masirah', 'sky news', 'fox news',
 ]);
 
 let index = null;       // Map<normKey, candidate[]>
