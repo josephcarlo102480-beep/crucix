@@ -43,6 +43,13 @@ const MAX_NGRAM_WORDS = 4;
 // Single-word matches shorter than this are ignored in any script — kills
 // 2-letter prepositions ("of", "по", "في") that collide with tiny towns.
 const MIN_SINGLE_WORD_LEN = 3;
+// Cyrillic has no capitalization signal we can lean on (TG posts are full of
+// sentence-initial caps) and GeoNames alternate names collide hard with
+// 3-letter Slavic function words: Так→Tak (Thailand), Час→Chas (India),
+// Там→Tame (Colombia), Але→Alès (France) — all observed live. Requiring 4+
+// chars for single Cyrillic words kills that class. Cost: a few real 3-char
+// names (Уфа, Рим) — acceptable for a lead-plotting aid.
+const MIN_SINGLE_WORD_LEN_CYRILLIC = 4;
 
 /**
  * Place names that collide with common words. Extend freely. These are
@@ -56,6 +63,7 @@ export const STOPLIST = new Set([
   // verbs / nouns that are also GeoNames towns
   'same', 'why', 'split', 'most', 'both', 'will', 'can', 'may', 'deal',
   'sale', 'bath', 'eye', 'hull', 'reading', 'mobile', 'nice', 'march',
+  'police', 'most',
   'august', 'best', 'general', 'born', 'die', 'good', 'hope', 'home',
   'man', 'men', 'state', 'union', 'central', 'industry', 'progress',
   'liberty', 'eight', 'two', 'three', 'four', 'five', 'six', 'seven',
@@ -63,6 +71,16 @@ export const STOPLIST = new Set([
   'в', 'и', 'на', 'по', 'под', 'за', 'от', 'до', 'не', 'что', 'как', 'это',
   'для', 'без', 'со', 'об', 'или', 'но', 'да', 'же', 'то', 'его', 'она',
   'они', 'мы', 'вы', 'из', 'у', 'к', 'с', 'о', 'а', 'та', 'він', 'це', 'над',
+  // 4+ char Slavic words that are GeoNames alternate names of real cities —
+  // every one observed pinning live posts: Года→Gōdo (Japan), Саме→Sama
+  // (Spain), Море→Mora (Sweden), Нови/Новый→Novi (US), Такой→Tāki (Japan),
+  // Матам→Matam (Senegal).
+  // (3-char ones like Так/Час/Там/Але are handled by the Cyrillic min-length.)
+  'года', 'году', 'сама', 'саме', 'само', 'море', 'нови', 'новий', 'матам',
+  'новый', 'новая', 'новое', 'новые', 'такой', 'такая', 'такое', 'такие',
+  // Common nouns that are Cyrillic alternates of European towns, constant in
+  // war reporting: Мост(а/у)→Most (Czechia), Полиция→Police (Poland).
+  'мост', 'моста', 'мосту', 'мосты', 'полиция', 'полиции', 'поліция', 'поліції',
   // Arabic function words
   'في', 'من', 'الى', 'إلى', 'على', 'عن', 'مع', 'لا', 'ما', 'هذا', 'هذه',
   'ان', 'أن', 'التي', 'الذي', 'و', 'ثم', 'قد',
@@ -71,7 +89,7 @@ export const STOPLIST = new Set([
   // correspondent" pinned the Syrian city Al Mayādīn. In news text these are
   // almost always the outlet, not the place. Hyphenated forms are single
   // tokens (tokenizer keeps '-'), so list both variants.
-  'cnn', 'bbc', 'tass', 'reuters', 'sputnik', 'afp', 'dpa',
+  'cnn', 'bbc', 'tass', 'reuters', 'sputnik', 'afp', 'dpa', 'max',
   'al-mayadeen', 'al mayadeen', 'mayadeen',
   'al-jazeera', 'al jazeera', 'al-arabiya', 'al arabiya',
   'al-masirah', 'al masirah', 'sky news', 'fox news',
@@ -143,6 +161,9 @@ function indexableName(s) {
 
 const LATIN_RE = /^[\p{Script=Latin}\p{M}\p{N}\s'.-]+$/u;
 function isLatin(s) { return LATIN_RE.test(s); }
+
+const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
+function hasCyrillic(s) { return CYRILLIC_RE.test(s); }
 
 // ── gazetteer parse + index build ────────────────────────────────────────
 function buildIndex(txt) {
@@ -286,6 +307,7 @@ export function geoparseText(text) {
       const key = span.map((t) => t.norm).join(' ');
       if (!key || STOPLIST.has(key)) continue;
       if (n === 1 && key.length < MIN_SINGLE_WORD_LEN) continue;
+      if (n === 1 && key.length < MIN_SINGLE_WORD_LEN_CYRILLIC && hasCyrillic(span[0].raw)) continue;
       const candidates = index.get(key);
       if (!candidates) continue;
 

@@ -52,7 +52,9 @@ input[type=range]{width:100%;accent-color:var(--cyan)}
 #status{padding:10px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);line-height:1.6}
 #status.warn{color:var(--warn)}
 #globe-container{flex:1;position:relative;overflow:hidden}
-#popup{position:absolute;display:none;z-index:50;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+/* position:fixed so it's viewport-relative (clientX/clientY map directly)
+   and never clipped by the globe container's overflow:hidden. */
+#popup{position:fixed;display:none;z-index:200;background:var(--panel);border:1px solid var(--border-bright);padding:12px;font-size:11px;max-width:360px;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
 #popup .ptitle{color:var(--cyan);font-weight:600;margin-bottom:4px;font-size:11px}
 #popup .pbody{color:var(--text);line-height:1.5;white-space:pre-wrap;max-height:180px;overflow:auto;margin:6px 0}
 #popup .pmeta{color:var(--dim);font-size:9px;margin-bottom:6px}
@@ -77,8 +79,12 @@ input[type=range]{width:100%;accent-color:var(--cyan)}
     <div id="feed"><div class="empty">loading…</div></div>
     <div id="status">initializing…</div>
   </div>
-  <div id="globe-container"><div id="popup"></div></div>
+  <div id="globe-container"></div>
 </div>
+<!-- IMPORTANT: keep #popup OUTSIDE #globe-container — Globe.gl wipes its mount
+     element's children on init, which would delete the popup. It is
+     position:fixed, so DOM location here is fine. (Same fix as cctv.html.) -->
+<div id="popup"></div>
 
 <script>
 // ─── Tunables ───
@@ -101,7 +107,7 @@ let threshold = DEFAULT_CONFIDENCE;
 threshEl.value = String(threshold);
 cThresh.textContent = threshold.toFixed(2);
 
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function setStatus(m, cls){ statusEl.className = cls || ''; statusEl.innerHTML = m; }
 function fmtTs(ts){ return ts ? esc(ts.replace('T',' ').slice(0,16)) + ' UTC' : ''; }
 
@@ -152,8 +158,8 @@ function showPost(d, event){
   const x = (event && event.clientX) || window.innerWidth/2;
   const y = (event && event.clientY) || window.innerHeight/2;
   const rect = popup.getBoundingClientRect();
-  popup.style.left = Math.min(x + 12, window.innerWidth - rect.width - 12) + 'px';
-  popup.style.top = Math.min(y + 12, window.innerHeight - rect.height - 12) + 'px';
+  popup.style.left = Math.max(8, Math.min(x + 12, window.innerWidth - rect.width - 12)) + 'px';
+  popup.style.top = Math.max(8, Math.min(y + 12, window.innerHeight - rect.height - 12)) + 'px';
 }
 
 function renderFeed(){
@@ -187,6 +193,7 @@ async function load(){
     if (res.status === 503){
       setStatus('building gazetteer on the server… retrying', 'warn');
       feedEl.innerHTML = '<div class="empty">loading gazetteer…</div>';
+      setTimeout(load, 10 * 1000); // retry soon instead of waiting for the next poll
       return;
     }
     const data = await res.json();
