@@ -105,19 +105,9 @@ async function fetchTfLCameras() {
   } catch { return []; }
 }
 
-// ── US-WEST: WSDOT Washington State (~500) ──
-async function fetchWSDOTCameras() {
-  try {
-    const res = await stealthFetch('https://data.wsdot.wa.gov/log/public/cameras.json', { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data || []).map((cam) => ({
-      id: `wsdot-${cam.CameraID}`, lat: cam.CameraLocation?.Latitude, lng: cam.CameraLocation?.Longitude,
-      name: cam.Title || 'WSDOT Camera', city: 'Washington', country: 'US',
-      feed_url: cam.ImageURL || '', source: 'WSDOT',
-    })).filter((c) => c.lat && c.lng && c.feed_url);
-  } catch { return []; }
-}
+// ── US-WEST: WSDOT removed 2026-06 — data.wsdot.wa.gov/log/public/cameras.json
+//    404s; the replacement WSDOT traveler API requires a registered access
+//    code, so there is no keyless endpoint to port to. ──
 
 // ── US-WEST: Caltrans California Districts ──
 async function fetchCaltransCameras() {
@@ -143,38 +133,28 @@ async function fetchCaltransCameras() {
 async function fetchCanadaCameras() {
   const cams = [];
 
-  // Ottawa MTO Highway Cameras
+  // Ontario 511 (MTO) highway cameras — same vendor/schema as Alberta 511:
+  // PascalCase fields, image frame per view at Views[].Url (~900 cameras).
   try {
     const res = await stealthFetch('https://511on.ca/api/v2/get/cameras', { signal: AbortSignal.timeout(10000) });
     if (res.ok) {
       const data = await res.json();
       for (const cam of (data || [])) {
-        if (!cam.latitude || !cam.longitude) continue;
+        const view = (cam.Views || []).find((v) => v.Status === 'Enabled' && v.Url) || cam.Views?.[0];
+        if (!cam.Latitude || !cam.Longitude || !view?.Url) continue;
         cams.push({
-          id: `on-${cam.id || cams.length}`, lat: cam.latitude, lng: cam.longitude,
-          name: cam.description || cam.name || 'Ontario Camera', city: 'Ontario', country: 'Canada',
-          feed_url: cam.imageUrl || cam.url || '', source: '511 Ontario',
+          id: `on-${cam.Id ?? cams.length}`, lat: cam.Latitude, lng: cam.Longitude,
+          name: cam.Location || cam.Roadway || 'Ontario Camera', city: 'Ontario', country: 'Canada',
+          feed_url: view.Url, source: '511 Ontario',
         });
       }
     }
   } catch { /* silent */ }
 
-  // Ville de Montréal cameras
-  try {
-    const res = await stealthFetch('https://ville.montreal.qc.ca/circulation/sites/ville.montreal.qc.ca.circulation/files/cameras.json', { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json();
-      for (const cam of (data || [])) {
-        cams.push({
-          id: `mtl-${cams.length}`, lat: cam.latitude || cam.lat, lng: cam.longitude || cam.lng,
-          name: cam.description || cam.name || 'Montréal Camera', city: 'Montréal', country: 'Canada',
-          feed_url: cam.url || cam.imageUrl || '', source: 'Ville MTL',
-        });
-      }
-    }
-  } catch { /* silent */ }
+  // Ville de Montréal removed 2026-06 — ville.montreal.qc.ca cameras.json
+  // endpoint is gone (301 to a portal page, no JSON replacement found).
 
-  // Curated Ottawa/Toronto cameras from known public feeds
+  // Curated Ottawa cameras from known public feeds
   const curated = [
     { id: 'ott-1', lat: 45.4215, lng: -75.6972, name: 'Parliament Hill / Wellington', city: 'Ottawa', country: 'Canada', feed_url: 'https://traffic.ottawa.ca/map/camera?id=1', source: 'Ottawa' },
     { id: 'ott-2', lat: 45.4231, lng: -75.6831, name: 'Rideau / Sussex', city: 'Ottawa', country: 'Canada', feed_url: 'https://traffic.ottawa.ca/map/camera?id=2', source: 'Ottawa' },
@@ -184,9 +164,9 @@ async function fetchCanadaCameras() {
     { id: 'ott-6', lat: 45.3484, lng: -75.7580, name: 'Fallowfield / Woodroffe', city: 'Ottawa', country: 'Canada', feed_url: 'https://traffic.ottawa.ca/map/camera?id=6', source: 'Ottawa' },
     { id: 'ott-7', lat: 45.4012, lng: -75.6518, name: 'Hwy 417 / Vanier Pkwy', city: 'Ottawa', country: 'Canada', feed_url: 'https://traffic.ottawa.ca/map/camera?id=7', source: 'Ottawa' },
     { id: 'ott-8', lat: 45.4475, lng: -75.4822, name: 'Innes / Orleans Blvd', city: 'Ottawa', country: 'Canada', feed_url: 'https://traffic.ottawa.ca/map/camera?id=8', source: 'Ottawa' },
-    { id: 'tor-1', lat: 43.6532, lng: -79.3832, name: 'Yonge / Dundas Square', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
-    { id: 'tor-2', lat: 43.6426, lng: -79.3871, name: 'CN Tower / Lakeshore', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
-    { id: 'tor-3', lat: 43.6711, lng: -79.3868, name: 'Bloor / Yonge', city: 'Toronto', country: 'Canada', feed_url: 'https://511on.ca/api/v2/get/cameras', source: '511 Ontario' },
+    // (Curated tor-1..3 removed 2026-06: their feed_url pointed at the 511on
+    // JSON list API, not an image — every click 415'd. Real Toronto coverage
+    // now comes from the Ontario 511 fetch above.)
   ];
   cams.push(...curated);
 
@@ -209,26 +189,12 @@ async function fetchCanadaCameras() {
   return cams.filter((c) => c.lat && c.lng);
 }
 
-// ── US-CENTRAL: Chicago, Houston, Dallas, Denver ──
+// ── US-CENTRAL: IDOT removed 2026-06 — travelmidwest.com cameraReport.json
+//    now returns an empty session-scoped report ({"reportTables":[]}), no
+//    keyless camera list left to fetch. Fetcher kept (empty) so the region
+//    key stays valid for getRegionsForBounds(). ──
 async function fetchUSCentralCameras() {
-  const cams = [];
-  // Illinois DOT
-  try {
-    const res = await stealthFetch('https://www.travelmidwest.com/lmiga/cameraReport.json', { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json();
-      for (const cam of (data?.cameraReports || data || []).slice(0, 800)) {
-        if (!cam.latitude || !cam.longitude) continue;
-        cams.push({
-          id: `ildot-${cams.length}`, lat: cam.latitude, lng: cam.longitude,
-          name: cam.cameraName || cam.description || 'IDOT Camera', city: 'Illinois', country: 'US',
-          feed_url: cam.imageUrl || cam.url || '', source: 'IDOT',
-        });
-      }
-    }
-  } catch { /* silent */ }
-
-  return cams.filter((c) => c.lat && c.lng);
+  return [];
 }
 
 // ── US-EAST: OH, DC, Florida, Georgia ──
@@ -268,44 +234,18 @@ async function fetchUSEastCameras() {
       source: 'Cincinnati, OH',
     },
   );
-  // Florida 511
-  try {
-    const res = await stealthFetch('https://fl511.com/api/v2/cameras', { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json();
-      for (const cam of (data || []).slice(0, 800)) {
-        if (!cam.latitude || !cam.longitude) continue;
-        cams.push({
-          id: `fl-${cams.length}`, lat: cam.latitude, lng: cam.longitude,
-          name: cam.description || 'FL-511 Camera', city: 'Florida', country: 'US',
-          feed_url: cam.imageUrl || '', source: 'FL-511',
-        });
-      }
-    }
-  } catch { /* silent */ }
+  // Florida 511 removed 2026-06 — fl511.com/api/v2/cameras 404s and the
+  // v2/get/cameras variant rejects keyless requests ("Invalid Key").
 
   return cams.filter((c) => c.lat && c.lng);
 }
 
-// ── EUROPE: Netherlands, Germany, France ──
+// ── EUROPE ──
 async function fetchEuropeCameras() {
   const cams = [];
 
-  // Netherlands Rijkswaterstaat
-  try {
-    const res = await stealthFetch('https://opendata.ndw.nu/cameras.json', { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json();
-      for (const cam of (data || []).slice(0, 1000)) {
-        if (!cam.lat || !cam.lng) continue;
-        cams.push({
-          id: `nl-${cams.length}`, lat: cam.lat, lng: cam.lng,
-          name: cam.name || 'NL Camera', city: 'Netherlands', country: 'NL',
-          feed_url: cam.imageUrl || '', source: 'RWS',
-        });
-      }
-    }
-  } catch { /* silent */ }
+  // Netherlands RWS removed 2026-06 — opendata.ndw.nu/cameras.json 404s
+  // (NDW moved its open data; no direct camera-image JSON found to port to).
 
   cams.push(...await fetchAsfinagCameras());
 
@@ -598,7 +538,7 @@ async function fetchJapanCameras() {
 const REGION_FETCHERS = {
   'middle-east': fetchMiddleEastCameras,
   'uk': fetchTfLCameras,
-  'us-west': async () => [...await fetchWSDOTCameras(), ...await fetchCaltransCameras()],
+  'us-west': fetchCaltransCameras,
   'us-east': fetchUSEastCameras,
   'us-central': fetchUSCentralCameras,
   'canada': fetchCanadaCameras,
@@ -755,6 +695,12 @@ export async function getAllCameras() {
   allInflight = (async () => {
     try {
       const assembled = await fetchCamerasForRegions({ region: 'all' });
+      // One-line per-source census so dead upstreams are visible in the log
+      // (every fetcher swallows its own errors silently).
+      const census = Object.entries(assembled.sources)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k}:${v}`).join(' ');
+      console.log(`[cctv] assembled ${assembled.cameras.length} raw cameras — ${census || 'NO SOURCES RESPONDED'}`);
       // If we got almost nothing (all upstreams down), keep any prior snapshot.
       if (assembled.cameras.length < 50 && allCache) return allCache;
       // Cap to MAX_CAMERAS, preserving a global spread across sources.

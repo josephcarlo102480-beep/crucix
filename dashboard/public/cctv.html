@@ -56,6 +56,17 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 #popup .pclose{margin-left:auto;border:none;color:var(--dim)}
 .iframe-wrap{position:relative;width:316px;height:178px;background:#000;border:1px solid var(--border)}
 .iframe-wrap iframe,.iframe-wrap video{width:100%;height:100%;border:0;display:block;object-fit:cover;background:#000}
+.media-img{position:relative;width:316px;max-width:100%}
+.live-badge{position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:var(--danger);font-size:9px;letter-spacing:0.1em;padding:2px 6px;border:1px solid var(--danger);pointer-events:none}
+/* "N cameras here" disambiguation chooser, shown when dots overlap. */
+.cl-head{color:var(--dim);font-size:10px;margin-bottom:6px}
+.cl-list{display:flex;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;margin-bottom:10px;border:1px solid var(--border);padding:4px}
+.cl-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;background:none;border:1px solid transparent;color:var(--text);font-family:var(--mono);font-size:10px;padding:4px 6px;cursor:pointer}
+.cl-item:hover{background:rgba(100,240,200,0.08)}
+.cl-item.active{border-color:var(--border-bright);background:rgba(255,140,66,0.12)}
+.cl-item .cl-name{color:var(--text)}
+.cl-item.active .cl-name{color:var(--cctv)}
+.cl-item .cl-src{color:var(--dim);font-size:9px}
 </style>
 </head>
 <body>
@@ -68,7 +79,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
       <div><b>Cameras loaded:</b> <span class="hl" id="camCount">…</span></div>
       <div style="margin-top:8px">All cameras are shown on load. Drag to rotate, scroll/pinch to zoom.</div>
       <div style="margin-top:8px"><b>Visible now:</b> <span id="visCount">0</span></div>
-      <div style="margin-top:8px">Click a dot for the live image / stream.</div>
+      <div style="margin-top:8px">Click a dot for the live feed. Where several overlap, a picker lists them all.</div>
     </div>
     <div id="status">initializing…</div>
   </div>
@@ -92,8 +103,16 @@ const visCountEl = document.getElementById('visCount');
 const popup = document.getElementById('popup');
 
 let allCameras = [];
+let liveTimer = null;          // auto-refresh interval for snapshot (JPEG) feeds
+let hlsPlayer = null;          // active hls.js instance (destroyed on close/switch)
+let currentCluster = [];       // cameras overlapping the last clicked dot
+const CLUSTER_PX = 22;         // screen distance (px) that counts as "same spot"
+// Live-ish refresh cadence for JPEG feeds. Most traffic cams only update
+// every minute+; this also matches the server-side snapshot cache TTL, so
+// faster polling here would just replay cached frames.
+const SNAPSHOT_REFRESH_MS = 5000;
 
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function setStatus(m){ statusEl.innerHTML = m; }
 
 const globe = Globe()(document.getElementById('globe-container'))
@@ -107,6 +126,9 @@ const globe = Globe()(document.getElementById('globe-container'))
   .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#ff8c42">${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`)
   .onPointClick(showCamera)
   .pointsData([]);
+
+// Allow closer zoom than the default so clustered dots physically spread apart.
+globe.controls().minDistance = 110;
 
 // Render all loaded cameras at once (capped). The set is small enough now
 // that no viewport gating is needed — they show on load, at any zoom.
@@ -127,6 +149,80 @@ function feedKind(cam){
 
 function snapshotUrl(id){ return API + '/snapshot?id=' + encodeURIComponent(id) + '&t=' + Date.now(); }
 
+// Rough planar degree-distance (good enough to reject far / back-of-globe points).
+function angDistDeg(a, b){
+  const mLat = (a.lat + b.lat) / 2 * Math.PI / 180;
+  const dLat = a.lat - b.lat;
+  const dLng = (a.lng - b.lng) * Math.cos(mLat);
+  return Math.hypot(dLat, dLng);
+}
+
+// Find every camera that projects to nearly the same screen pixel as `cam`,
+// so overlapping/clustered dots can be disambiguated in the popup. Sorted
+// nearest-first; always includes `cam` itself.
+function getNearby(cam){
+  let c0;
+  try { c0 = globe.getScreenCoords(cam.lat, cam.lng, 0.012); } catch { return [cam]; }
+  if (!c0) return [cam];
+  const near = [];
+  for (const o of allCameras){
+    if (angDistDeg(cam, o) > 6) continue;        // skip far points / opposite face
+    let c;
+    try { c = globe.getScreenCoords(o.lat, o.lng, 0.012); } catch { continue; }
+    if (!c) continue;
+    const d = Math.hypot(c.x - c0.x, c.y - c0.y);
+    if (d <= CLUSTER_PX) near.push({ cam: o, d });
+  }
+  near.sort((a, b) => a.d - b.d);
+  return near.length ? near.map(x => x.cam) : [cam];
+}
+
+// Chooser shown at the top of the popup when several dots overlap.
+function clusterChooserHtml(activeId){
+  if (currentCluster.length <= 1) return '';
+  const items = currentCluster.map(c =>
+    `<button class="cl-item${c.id === activeId ? ' active' : ''}" data-cam-id="${esc(c.id)}">
+       <span class="cl-name">${esc(c.name)}</span>
+       <span class="cl-src">${esc(c.city)}, ${esc(c.country)} · ${esc(c.source)}</span>
+     </button>`).join('');
+  return `<div class="cl-head">${currentCluster.length} cameras here — pick one:</div><div class="cl-list">${items}</div>`;
+}
+
+// Switch the popup to another camera in the same cluster (no reposition).
+window.selectClusterCam = function(id){
+  const cam = currentCluster.find(c => c.id === id) || allCameras.find(c => c.id === id);
+  if (!cam) return;
+  renderCameraInto(cam);
+};
+
+// Live-ish playback for JPEG feeds: reload the snapshot on an interval,
+// double-buffered so a failed/slow frame keeps the last good image.
+function startLive(id){
+  stopLive();
+  liveTimer = setInterval(() => {
+    const img = document.getElementById('camImg');
+    if (!img){ stopLive(); return; }            // popup closed or feed errored out
+    const next = new Image();
+    next.onload = () => { const cur = document.getElementById('camImg'); if (cur === img) img.src = next.src; };
+    next.src = snapshotUrl(id);                  // on error: keep the last good frame
+  }, SNAPSHOT_REFRESH_MS);
+}
+function stopLive(){ if (liveTimer){ clearInterval(liveTimer); liveTimer = null; } }
+// hls.js keeps fetching live segments until destroyed — closing the popup or
+// switching cameras without this leaks an active loader per HLS open.
+function destroyHlsPlayer(){ if (hlsPlayer){ try { hlsPlayer.destroy(); } catch { /* already dead */ } hlsPlayer = null; } }
+window.cctvClose = function(){ stopLive(); destroyHlsPlayer(); popup.style.display = 'none'; };
+
+// Render a camera's popup body in place and (re)start its feed.
+function renderCameraInto(cam){
+  stopLive();
+  destroyHlsPlayer();
+  popup.innerHTML = popupHtml(cam);
+  const kind = feedKind(cam);
+  if (kind === 'hls') setupHls(cam.stream_url);
+  if (kind === 'image') startLive(cam.id);
+}
+
 function popupHtml(cam){
   const meta = `${esc(cam.city)}, ${esc(cam.country)} · ${esc(cam.source)}`;
   const kind = feedKind(cam);
@@ -137,9 +233,10 @@ function popupHtml(cam){
     media = `<div class="iframe-wrap"><video id="camVideo" controls autoplay muted playsinline></video></div>`;
   } else if (kind === 'image'){
     // Proxy-first: the Pi fetches server-side, sidestepping CORS/hotlink/Referer.
+    // The frame auto-refreshes (see startLive) so static-JPEG feeds play live-ish.
     // On failure, swap in a graceful "feed unavailable" placeholder.
-    media = `<img id="camImg" src="${snapshotUrl(cam.id)}" alt="loading feed…"
-              onerror="cctvImgFailed(this)" />`;
+    media = `<div class="media-img"><img id="camImg" src="${snapshotUrl(cam.id)}" alt="loading feed…"
+              onerror="cctvImgFailed(this)" /><span class="live-badge">● LIVE</span></div>`;
   } else if (kind === 'external'){
     media = `<div class="pmsg">No embeddable feed — open the source below.</div>`;
   } else {
@@ -147,13 +244,14 @@ function popupHtml(cam){
   }
   // Best link-out target for "open ↗".
   const ext = cam.external_url || cam.stream_url || cam.feed_url || '';
-  return `<div class="ptitle">${esc(cam.name)}</div>
+  return `${clusterChooserHtml(cam.id)}<div class="ptitle">${esc(cam.name)}</div>
     <div class="pmeta">${meta} <span style="opacity:.6">· ${esc(cam.stream_type || 'image')}</span></div>
     <div id="camMedia">${media}</div>
+    ${kind === 'image' ? `<div class="pmsg" style="padding:4px 0">Live snapshot — refreshes every ${(SNAPSHOT_REFRESH_MS/1000)}s.</div>` : ''}
     <div class="prow">
-      ${kind === 'image' ? `<button onclick="cctvRefresh('${esc(cam.id)}')">↻ refresh</button>` : ''}
+      ${kind === 'image' ? `<button data-action="refresh" data-cam-id="${esc(cam.id)}">↻ refresh</button>` : ''}
       ${ext ? `<a href="${esc(ext)}" target="_blank" rel="noopener">open ↗</a>` : ''}
-      <button class="pclose" onclick="document.getElementById('popup').style.display='none'">✕</button>
+      <button class="pclose" data-action="close">✕</button>
     </div>`;
 }
 
@@ -169,6 +267,18 @@ window.cctvRefresh = function(id){
   img.onerror = function(){ cctvImgFailed(img); };
   img.src = snapshotUrl(id);
 };
+
+// One delegated listener instead of inline onclick handlers — camera ids come
+// from upstream APIs and must never be interpolated into JS-in-attribute
+// strings (HTML entity escaping does not protect that context).
+popup.addEventListener('click', (e) => {
+  const item = e.target.closest('.cl-item');
+  if (item){ selectClusterCam(item.dataset.camId); return; }
+  const act = e.target.closest('[data-action]');
+  if (!act) return;
+  if (act.dataset.action === 'refresh') cctvRefresh(act.dataset.camId);
+  else if (act.dataset.action === 'close') cctvClose();
+});
 
 // Lazy-load hls.js once, then play the stream into the <video> element.
 let hlsLoading = null;
@@ -194,8 +304,10 @@ async function setupHls(streamUrl){
     return;
   }
   const ok = await loadHlsLib();
+  if (!video.isConnected) return; // popup re-rendered while hls.js was loading
   if (ok && window.Hls && window.Hls.isSupported()){
     const hls = new window.Hls({ liveDurationInfinity: true });
+    hlsPlayer = hls;
     hls.on(window.Hls.Events.ERROR, (e, data) => {
       if (data && data.fatal){
         const wrap = document.getElementById('camMedia');
@@ -211,9 +323,10 @@ async function setupHls(streamUrl){
 }
 
 function showCamera(cam, event){
-  popup.innerHTML = popupHtml(cam);
+  // Group all dots stacked under the click so the user can pick the exact one.
+  currentCluster = getNearby(cam);
+  renderCameraInto(cam);
   popup.style.display = 'block';
-  if (feedKind(cam) === 'hls') setupHls(cam.stream_url);
   // On phones the CSS centers the popup as a modal; don't fight it.
   if (window.innerWidth <= 760){ popup.style.left = ''; popup.style.top = ''; return; }
   // Desktop: place near the cursor, clamped to the viewport (position:fixed,

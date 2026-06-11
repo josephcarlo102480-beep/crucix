@@ -7,10 +7,11 @@
  *   GET /api/cctv/cameras            → { cameras, count, sources, updated }
  *   GET /api/cctv/snapshot?id=<id>   → streams a camera's current image
  *
- * The snapshot proxy is provided as a CORS/hotlink fallback — many feed URLs
- * are plain-HTTP or block cross-origin loads, which the browser cannot fetch
- * directly from the dashboard. The frontend prefers the direct URL and falls
- * back to this proxy.
+ * The snapshot proxy exists because many feed URLs are plain-HTTP or block
+ * cross-origin/hotlinked loads, which the browser cannot fetch directly from
+ * the dashboard. The frontend is proxy-first for image feeds; a short
+ * server-side cache (SNAP_TTL_MS) keeps the auto-refreshing popup from
+ * hammering upstreams.
  */
 
 import { Router } from 'express';
@@ -48,11 +49,24 @@ function sniffImageType(buf) {
   return null;
 }
 
+// Per-camera snapshot micro-cache: the popup auto-refreshes every few seconds
+// (and several clients may watch the same camera), but most traffic cams only
+// update their frame every minute or more — no point re-fetching upstream.
+const SNAP_TTL_MS = 5000;
+const snapCache = new Map(); // id -> { at, buf, type }
+
 // GET /api/cctv/snapshot?id=<id> — fetch a camera's current image via the Pi
 // (avoids browser CORS/hotlink/Referer/mixed-content issues entirely).
 router.get('/snapshot', async (req, res) => {
   const id = String(req.query.id || '').trim();
   if (!id) return res.status(400).json({ error: 'Missing id' });
+
+  const cached = snapCache.get(id);
+  if (cached && Date.now() - cached.at < SNAP_TTL_MS) {
+    res.set('Content-Type', cached.type);
+    res.set('Cache-Control', 'no-store');
+    return res.send(cached.buf);
+  }
 
   let cam;
   try {
@@ -92,7 +106,10 @@ router.get('/snapshot', async (req, res) => {
         external_url: cam.external_url || null,
       });
     }
-    res.set('Content-Type', sniffed || ctHeader || 'image/jpeg');
+    const type = sniffed || ctHeader || 'image/jpeg';
+    if (snapCache.size > 300) snapCache.clear(); // crude bound; set is ~400 cams
+    snapCache.set(id, { at: Date.now(), buf, type });
+    res.set('Content-Type', type);
     res.set('Cache-Control', 'no-store');
     res.send(buf);
   } catch (e) {
