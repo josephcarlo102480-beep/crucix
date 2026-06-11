@@ -711,6 +711,9 @@ function setStatus(msg) {
   document.getElementById('status').textContent = msg;
 }
 
+// Satellite names come from a public API — escape them before innerHTML use.
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 // === Pass Predictions ===
 function computeLookAngles(satrec, time) {
   try {
@@ -821,7 +824,7 @@ function renderPasses(passes) {
     const rise = azToBearing(p.riseAz);
     const set = p.setAz == null ? 'ongoing' : azToBearing(p.setAz);
     return `<div class="pass-item${oh ? ' overhead' : ''}" data-pass-idx="${idx}" role="button" tabindex="0" title="Center satellite on the map">
-      <div class="pass-name" style="color:${p.color}">${p.name || 'Unknown'}</div>
+      <div class="pass-name" style="color:${p.color}">${esc(p.name) || 'Unknown'}</div>
       <div class="pass-detail">${d} ${t} · peak ${p.bearing} (${p.azimuth.toFixed(0)}° az)${oh ? ' · OVERHEAD' : ''}</div>
       <div class="pass-look">Look ${p.bearing}, ${p.maxEl.toFixed(0)}° above horizon · track ${rise} to ${set}</div>
     </div>`;
@@ -830,6 +833,28 @@ function renderPasses(passes) {
 
 // === Conjunction Predictions ===
 let allConjunctions = [];
+
+// Tunables. LEO-LEO closing speeds reach ~15 km/s, so between 30 s coarse
+// samples a pair can close/open by ~±225 km — CAPTURE_KM must cover that so
+// the refine pass can recover the true minimum near any coarse dip.
+const CONJ_HOURS = 12;
+const CONJ_COARSE_STEP_S = 30;
+const CONJ_THRESHOLD_KM = 50;     // report closest approaches under this
+const CONJ_CAPTURE_KM = 300;      // coarse dips under this get refined
+const CONJ_BAND_MARGIN_KM = 30;   // slack on the apogee/perigee screen
+
+let conjRunId = 0; // bumped on every (re)compute; stale async runs bail out
+
+// Perigee/apogee radius (km from Earth's center) straight from the mean
+// elements — a pair's separation can never be smaller than the radial gap
+// between their orbit shells, so non-overlapping bands are skipped outright.
+function orbitalRadiusBand(satrec) {
+  const MU = 398600.4418;            // km^3/s^2
+  const n = satrec.no / 60;          // rad/min → rad/s
+  const a = Math.cbrt(MU / (n * n)); // semi-major axis, km
+  const e = satrec.ecco;
+  return { rp: a * (1 - e), ra: a * (1 + e) };
+}
 
 function propagateECI(satrec, time) {
   try {
@@ -848,7 +873,9 @@ function eciDistance(a, b) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
 }
 
-function computeConjunctions() {
+async function computeConjunctions() {
+  const runId = ++conjRunId;
+
   // Collect all visible satrecs into flat array
   const sats = [];
   for (const [catName, catData] of Object.entries(loadedCategories)) {
@@ -865,63 +892,111 @@ function computeConjunctions() {
     return;
   }
 
-  setStatus(`Computing conjunctions for ${sats.length} satellites...`);
-
-  const now = new Date();
-  const stepSec = 120; // 2-minute intervals
-  const hoursAhead = 12;
-  const thresholdKm = 50;
-
-  // Track closest approach per pair: key = "i-j", value = { minDist, time, ... }
-  const pairMap = new Map();
-
-  for (let t = 0; t <= hoursAhead * 3600; t += stepSec) {
-    const time = new Date(now.getTime() + t * 1000);
-
-    // Propagate all satellites to ECI at this timestep
-    const positions = [];
-    for (let i = 0; i < sats.length; i++) {
-      positions.push(propagateECI(sats[i].satrec, time));
-    }
-
-    // Compare all pairs
-    for (let i = 0; i < sats.length; i++) {
-      if (!positions[i]) continue;
-      for (let j = i + 1; j < sats.length; j++) {
-        if (!positions[j]) continue;
-        const dist = eciDistance(positions[i], positions[j]);
-        if (dist < thresholdKm) {
-          const key = `${i}-${j}`;
-          const existing = pairMap.get(key);
-          if (!existing || dist < existing.minDist) {
-            pairMap.set(key, { i, j, minDist: dist, time });
-          }
-        }
-      }
+  // 1. Altitude-band screening — drops most cross-constellation pairs
+  //    (e.g. Starlink ~550 km vs GPS ~20200 km) before any propagation.
+  const bands = sats.map((s) => orbitalRadiusBand(s.satrec));
+  const pairs = [];
+  const inPair = new Array(sats.length).fill(false);
+  for (let i = 0; i < sats.length; i++) {
+    for (let j = i + 1; j < sats.length; j++) {
+      const gap = Math.max(bands[i].rp, bands[j].rp) - Math.min(bands[i].ra, bands[j].ra);
+      if (gap > CONJ_THRESHOLD_KM + CONJ_BAND_MARGIN_KM) continue;
+      pairs.push([i, j]);
+      inPair[i] = inPair[j] = true;
     }
   }
 
-  // Build conjunction list with geodetic positions at closest approach
+  if (pairs.length === 0) {
+    allConjunctions = [];
+    renderConjunctions([]);
+    conjLayer.clearLayers();
+    setStatus(`No conjunctions geometrically possible — ${sats.length} satellites' orbit shells never come within ${CONJ_THRESHOLD_KM} km.`);
+    return;
+  }
+
+  // 2. Coarse scan — propagate only satellites that survived screening,
+  //    yielding to the event loop periodically so the UI never freezes.
+  const now = Date.now();
+  const steps = Math.floor(CONJ_HOURS * 3600 / CONJ_COARSE_STEP_S);
+  const best = new Map(); // pair index -> { dist, t } deepest coarse dip
+  for (let s = 0; s <= steps; s++) {
+    if (runId !== conjRunId) return; // superseded by a newer toggle
+    const time = new Date(now + s * CONJ_COARSE_STEP_S * 1000);
+    const pos = new Array(sats.length).fill(null);
+    for (let i = 0; i < sats.length; i++) {
+      if (inPair[i]) pos[i] = propagateECI(sats[i].satrec, time);
+    }
+    for (let k = 0; k < pairs.length; k++) {
+      const [i, j] = pairs[k];
+      if (!pos[i] || !pos[j]) continue;
+      const dist = eciDistance(pos[i], pos[j]);
+      if (dist < CONJ_CAPTURE_KM) {
+        const b = best.get(k);
+        if (!b || dist < b.dist) best.set(k, { dist, t: time.getTime() });
+      }
+    }
+    if (s % 60 === 59) {
+      setStatus(`Scanning ${pairs.length} pair(s) for conjunctions... ${Math.round(100 * s / steps)}%`);
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  // 3. Refine each coarse dip with 1 s sampling ± one coarse step, then a
+  //    parabolic fit — yields a true closest approach instead of whatever
+  //    separation happened to land on a sample instant.
   const conjunctions = [];
-  for (const [, entry] of pairMap) {
-    const posA = propagatePosition(sats[entry.i].satrec, entry.time);
-    const posB = propagatePosition(sats[entry.j].satrec, entry.time);
+  let processed = 0;
+  for (const [k, b] of best) {
+    if (runId !== conjRunId) return;
+    if (++processed % 25 === 0) await new Promise((r) => setTimeout(r, 0));
+
+    const [i, j] = pairs[k];
+    const w = CONJ_COARSE_STEP_S * 1000;
+    const samples = new Map();
+    let minDist = Infinity, minT = b.t;
+    for (let t = b.t - w; t <= b.t + w; t += 1000) {
+      const pa = propagateECI(sats[i].satrec, new Date(t));
+      const pb = propagateECI(sats[j].satrec, new Date(t));
+      if (!pa || !pb) continue;
+      const d = eciDistance(pa, pb);
+      samples.set(t, d);
+      if (d < minDist) { minDist = d; minT = t; }
+    }
+    if (!Number.isFinite(minDist)) continue;
+
+    // Parabolic vertex through the 1 s neighbours for sub-second precision.
+    const d0 = samples.get(minT - 1000), d1 = minDist, d2 = samples.get(minT + 1000);
+    if (d0 !== undefined && d2 !== undefined) {
+      const denom = d0 - 2 * d1 + d2;
+      if (denom > 1e-9) {
+        const frac = 0.5 * (d0 - d2) / denom;
+        const dv = d1 - ((d0 - d2) * (d0 - d2)) / (8 * denom);
+        if (Math.abs(frac) <= 1 && dv >= 0) { minT += frac * 1000; minDist = dv; }
+      }
+    }
+    if (minDist > CONJ_THRESHOLD_KM) continue;
+
+    const time = new Date(minT);
+    const posA = propagatePosition(sats[i].satrec, time);
+    const posB = propagatePosition(sats[j].satrec, time);
     if (!posA || !posB) continue;
 
-    // Midpoint for map display
+    // Midpoint for map display — wrap-aware so a pair straddling the
+    // antimeridian doesn't put the marker on the wrong side of the planet.
     const midLat = (posA.lat + posB.lat) / 2;
-    const midLng = (posA.lng + posB.lng) / 2;
+    let midLng = (posA.lng + posB.lng) / 2;
+    if (Math.abs(posA.lng - posB.lng) > 180) midLng = ((midLng + 360) % 360) - 180;
 
     let severity, severityClass;
-    if (entry.minDist < 10) { severity = 'CRITICAL'; severityClass = 'critical'; }
-    else if (entry.minDist < 25) { severity = 'WARNING'; severityClass = 'warning'; }
+    if (minDist < 10) { severity = 'CRITICAL'; severityClass = 'critical'; }
+    else if (minDist < 25) { severity = 'WARNING'; severityClass = 'warning'; }
     else { severity = 'WATCH'; severityClass = 'watch'; }
 
     conjunctions.push({
-      nameA: sats[entry.i].tle.name || 'Unknown',
-      nameB: sats[entry.j].tle.name || 'Unknown',
-      minDist: entry.minDist,
-      time: entry.time,
+      nameA: sats[i].tle.name || 'Unknown',
+      nameB: sats[j].tle.name || 'Unknown',
+      minDist,
+      time,
       altA: posA.alt,
       altB: posB.alt,
       latA: posA.lat, lngA: posA.lng,
@@ -931,13 +1006,14 @@ function computeConjunctions() {
     });
   }
 
+  if (runId !== conjRunId) return;
   conjunctions.sort((a, b) => a.minDist - b.minDist);
   allConjunctions = conjunctions;
   renderConjunctions(conjunctions);
   drawConjunctionMarkers();
   setStatus(conjunctions.length > 0
-    ? `Found ${conjunctions.length} conjunction(s) within 50km`
-    : `No conjunctions found. ${sats.length} satellites checked.`);
+    ? `Found ${conjunctions.length} conjunction(s) within ${CONJ_THRESHOLD_KM} km`
+    : `No conjunctions found. ${sats.length} satellites checked (${pairs.length} pairs scanned).`);
 }
 
 function renderConjunctions(conjunctions) {
@@ -951,7 +1027,7 @@ function renderConjunctions(conjunctions) {
     const d = c.time.toLocaleDateString([], { month: 'short', day: 'numeric' });
     const distColor = c.severityClass === 'critical' ? '#ff5f63' : c.severityClass === 'warning' ? '#ff9800' : '#ffeb3b';
     return `<div class="conj-item ${c.severityClass}" data-conj-idx="${idx}">
-      <div class="conj-names" style="color:${distColor}">${c.nameA} / ${c.nameB}</div>
+      <div class="conj-names" style="color:${distColor}">${esc(c.nameA)} / ${esc(c.nameB)}</div>
       <div class="conj-detail">${d} ${t} · ${c.minDist.toFixed(1)} km · ${c.severity}</div>
       <div class="conj-detail">Alt: ${c.altA.toFixed(0)} km / ${c.altB.toFixed(0)} km</div>
     </div>`;
@@ -1030,7 +1106,7 @@ function init3DGlobe() {
       hit.appendChild(dot);
       const tip = document.createElement('div');
       tip.style.cssText = 'position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:6px;background:rgba(6,14,22,0.95);border:1px solid rgba(100,240,200,0.3);padding:8px 10px;font-family:IBM Plex Mono,monospace;font-size:10px;color:#e8f4f0;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:9999;';
-      tip.innerHTML = `<div style="color:${d.color3d || '#fff'};font-weight:600;margin-bottom:4px">${d.name || 'Unknown'}</div>`
+      tip.innerHTML = `<div style="color:${d.color3d || '#fff'};font-weight:600;margin-bottom:4px">${esc(d.name) || 'Unknown'}</div>`
         + `<div style="color:#6a8a82">NORAD: <span style="color:#e8f4f0">${d.noradId || '?'}</span></div>`
         + `<div style="color:#6a8a82">Alt: <span style="color:#e8f4f0">${d.altKm?.toFixed(1) || '?'} km</span></div>`
         + `<div style="color:#6a8a82">Vel: <span style="color:#e8f4f0">${d.velocity?.toFixed(2) || '?'} km/s</span></div>`
@@ -1200,6 +1276,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-update positions every 15 seconds
   setInterval(updatePositions, 15000);
+
+  // Ground tracks are built ±25 min around their compute time; without this,
+  // dots walk off the end of their drawn tracks after ~25 minutes.
+  setInterval(() => {
+    const cats = Object.keys(loadedCategories);
+    if (!cats.length) return;
+    for (const catName of cats) computeTracksAndPositions(catName);
+    updateGlobe();
+  }, 15 * 60 * 1000);
 
   // Resize 3D globe on window resize
   window.addEventListener('resize', () => {
