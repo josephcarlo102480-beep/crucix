@@ -220,21 +220,24 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 | `AISSTREAM_API_KEY` | Maritime AIS vessel tracking | [aisstream.io](https://aisstream.io/) — free |
 | `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
 
-### LLM Provider (optional, for AI-enhanced ideas)
+### LLM Provider (optional, for AI-enhanced ideas and Ask AI)
 
-Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`
+Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, `ollama`
 
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
-| `openai` | `LLM_API_KEY` | gpt-5.4 |
+| `openai` | `LLM_API_KEY` or `OPENAI_API_KEY` | gpt-5.5 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
 | `minimax` | `LLM_API_KEY` | MiniMax-M2.5 |
 | `mistral` | `LLM_API_KEY` | mistral-large-latest |
+| `ollama` | None (local server) | llama3.1:8b |
 
 For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscription.
+
+The dashboard Ask AI panel is available when `LLM_PROVIDER=openai` and an OpenAI key is configured. It answers against the current Crucix dashboard snapshot and may use OpenAI web search for live outside context. Questions sent through Ask AI include the current dashboard snapshot in the OpenAI request.
 
 ### Telegram Bot + Alerts (optional)
 

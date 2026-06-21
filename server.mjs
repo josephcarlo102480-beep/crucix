@@ -13,6 +13,8 @@ import { fullBriefing } from './apis/briefing.mjs';
 import { synthesize, generateIdeas } from './dashboard/inject.mjs';
 import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
+import { answerDashboardQuestion, validateAskQuestion } from './lib/llm/ask.mjs';
+import { getSatellitePassContext } from './lib/space/satellitePasses.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
 import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
@@ -42,6 +44,7 @@ for (const dir of [RUNS_DIR, MEMORY_DIR, join(MEMORY_DIR, 'cold')]) {
 
 // === State ===
 let currentData = null;    // Current synthesized dashboard data
+let currentRaw = null;     // Raw unsynthesized sweep output (full source data for Ask AI)
 let lastSweepTime = null;  // Timestamp of last sweep
 let sweepStartedAt = null; // Timestamp when current/last sweep started
 let sweepInProgress = false;
@@ -84,7 +87,11 @@ function initializeIntegrations() {
   if (integrationsStarted) return;
   integrationsStarted = true;
 
-  if (llmProvider) console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
+  if (llmProvider?.isConfigured) {
+    console.log(`[Crucix] LLM enabled: ${llmProvider.name} (${llmProvider.model})`);
+  } else if (llmProvider) {
+    console.warn(`[Crucix] LLM provider "${llmProvider.name}" selected but credentials are missing. LLM features disabled.`);
+  }
   if (telegramAlerter.isConfigured) {
     console.log('[Crucix] Telegram alerts enabled');
 
@@ -147,6 +154,7 @@ function initializeIntegrations() {
 
 // === Express Server ===
 const app = express();
+app.use(express.json({ limit: '256kb' }));
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
 // --- Isolated OSINT module routers (ported from OSIRIS) ---
@@ -204,6 +212,50 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// API: ask the configured OpenAI model about the current dashboard, with web search.
+app.post('/api/ask', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+
+  if (!currentData) {
+    return res.status(503).json({ error: 'No data yet — first sweep in progress', sweepInProgress, sweepStartedAt });
+  }
+
+  const validation = validateAskQuestion(req.body?.question);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+
+  if (!llmProvider?.isConfigured) {
+    return res.status(503).json({ error: 'LLM is not configured. Set LLM_PROVIDER=openai and OPENAI_API_KEY or LLM_API_KEY.' });
+  }
+
+  if (llmProvider.name !== 'openai') {
+    return res.status(400).json({ error: 'Ask AI with internet search currently requires LLM_PROVIDER=openai.' });
+  }
+
+  try {
+    const result = await answerDashboardQuestion(llmProvider, currentData, validation.question, currentRaw);
+    res.json(result);
+  } catch (err) {
+    console.error('[Crucix] Ask AI failed:', err?.message || err);
+    res.status(502).json({ error: err?.message || 'Ask AI failed' });
+  }
+});
+
+// API: local satellite pass calculations used by Ask AI and the satellite tracker.
+app.get('/api/satellite-passes', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const zip = typeof req.query.zip === 'string' ? req.query.zip : '';
+    const hours = Number.parseInt(req.query.hours || '12', 10);
+    const result = await getSatellitePassContext(zip, {
+      hoursAhead: Number.isFinite(hours) ? Math.min(Math.max(hours, 1), 24) : 12,
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('[Crucix] Satellite pass calculation failed:', err?.message || err);
+    res.status(502).json({ error: err?.message || 'Satellite pass calculation failed' });
+  }
+});
+
 // API: available locales
 app.get('/api/locales', (req, res) => {
   res.json({
@@ -259,6 +311,7 @@ async function runSweepCycle() {
     const synthesized = await synthesize(rawData);
 
     // 4. Delta computation + memory
+    const previousIdeas = memory.getLastRun()?.ideas || [];
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
@@ -266,7 +319,6 @@ async function runSweepCycle() {
     if (llmProvider?.isConfigured) {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
-        const previousIdeas = memory.getLastRun()?.ideas || [];
         const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
         if (llmIdeas) {
           synthesized.ideas = llmIdeas;
@@ -285,6 +337,7 @@ async function runSweepCycle() {
       synthesized.ideas = [];
       synthesized.ideasSource = 'disabled';
     }
+    memory.updateLastRunIdeas(synthesized.ideas);
 
     // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
@@ -304,6 +357,7 @@ async function runSweepCycle() {
     memory.pruneAlertedSignals();
 
     currentData = synthesized;
+    currentRaw = rawData;
 
     // 6. Push to all connected browsers
     broadcast({ type: 'update', data: currentData });
@@ -331,6 +385,9 @@ async function start() {
   const discordStatus = config.discord?.botToken
     ? 'enabled'
     : config.discord?.webhookUrl ? 'webhook only' : 'disabled';
+  const llmStatus = llmProvider?.isConfigured
+    ? `${llmProvider.name} (${llmProvider.model})`
+    : config.llm.provider ? `${config.llm.provider} (missing credentials)` : 'disabled';
 
   const lines = [
     '           CRUCIX INTELLIGENCE ENGINE         ',
@@ -339,7 +396,7 @@ async function start() {
     `  Dashboard:  http://localhost:${port}`,
     `  Health:     http://localhost:${port}/api/health`,
     `  Refresh:    Every ${config.refreshIntervalMinutes} min`,
-    `  LLM:        ${config.llm.provider || 'disabled'}`,
+    `  LLM:        ${llmStatus}`,
     `  Telegram:   ${telegramStatus}`,
     `  Discord:    ${discordStatus}`,
   ];
@@ -396,7 +453,8 @@ async function start() {
     if (process.env.CRUCIX_NO_BROWSER !== '1') {
       const openCmd = process.platform === 'win32' ? 'cmd /c start ""' :
                       process.platform === 'darwin' ? 'open' : 'xdg-open';
-      exec(`${openCmd} "http://localhost:${port}"`, (err) => {
+      // timeout so a hung opener (e.g. xdg-open on a headless Pi) can't leave a stray child process
+      exec(`${openCmd} "http://localhost:${port}"`, { timeout: 5000 }, (err) => {
         if (err) console.log('[Crucix] Could not auto-open browser:', err.message);
       });
     }

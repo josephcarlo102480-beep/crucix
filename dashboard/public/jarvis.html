@@ -215,6 +215,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .right-delta .delta-list{max-height:200px}
 .lower .lp-macro{flex:1.7 1 360px}
 .lower .lp-ideas{flex:2.2 1 360px}
+.lower .lp-ask{flex:2.4 1 420px}
 .lower .lp-pinned{flex:2.8 1 420px;max-width:none}
 .lower-wide{width:100%}
 .metrics-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
@@ -264,6 +265,25 @@ body.view-map #lowerGrid{margin-top:10px}
 .idea-card .idea-text{font-size:10px;line-height:1.4;color:var(--dim)}
 .idea-card .idea-conf{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px}
 .disclosure{font-family:var(--mono);font-size:8px;color:rgba(106,138,130,0.6);line-height:1.4;padding:6px;border-top:1px solid rgba(255,255,255,0.04);margin-top:6px}
+
+/* ASK AI */
+.ask-log{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.2) transparent}
+.ask-msg{border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.025);padding:9px 10px}
+.ask-msg.user{border-color:rgba(100,240,200,0.16);background:rgba(100,240,200,0.045)}
+.ask-msg.error{border-color:rgba(255,95,99,0.25);background:rgba(255,95,99,0.06)}
+.ask-role{font-family:var(--mono);font-size:8px;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.ask-msg.user .ask-role{color:var(--accent)}
+.ask-text{font-size:11px;line-height:1.55;color:#d6e4df;white-space:pre-wrap;overflow-wrap:anywhere}
+.ask-meta{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;font-family:var(--mono);font-size:8px;color:var(--dim)}
+.ask-citations{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.ask-citation{display:block;padding:5px 7px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.045);color:var(--accent2);font-family:var(--mono);font-size:9px;line-height:1.4;text-decoration:none;overflow-wrap:anywhere}
+.ask-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;margin-top:10px}
+.ask-input{min-height:70px;resize:vertical;border:1px solid var(--border);background:rgba(0,0,0,0.24);color:var(--text);font-family:var(--sans);font-size:12px;line-height:1.45;padding:8px}
+.ask-input::placeholder{color:rgba(106,138,130,0.75)}
+.ask-submit,.ask-clear{border:1px solid rgba(100,240,200,0.25);background:rgba(100,240,200,0.08);color:var(--accent);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:0 12px;cursor:pointer}
+.ask-submit:disabled{opacity:0.45;cursor:not-allowed}
+.ask-clear{padding:4px 7px;color:var(--dim);background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.08)}
+.ask-input:focus-visible,.ask-submit:focus-visible,.ask-clear:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* NEWS TICKER */
 .ticker-wrap{overflow:hidden;max-height:320px;position:relative;border:1px solid rgba(100,240,200,0.08);background:rgba(0,0,0,0.15)}
@@ -371,7 +391,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .map-hint{font-size:8px;right:8px}
   .map-legend{left:8px;right:8px;bottom:8px;gap:4px}
   .leg-item{font-size:8px}
-  .lower .lp-ticker,.lower .lp-osint,.lower .lp-macro,.lower .lp-ideas{flex:1 1 100%;max-width:none}
+  .lower .lp-ticker,.lower .lp-osint,.lower .lp-macro,.lower .lp-ideas,.lower .lp-ask{flex:1 1 100%;max-width:none}
   .metrics-row{grid-template-columns:repeat(2,1fr)}
   .src-grid{grid-template-columns:repeat(2,1fr)}
   .glossary-panel{top:auto;right:0;left:0;bottom:0;width:100%;max-height:min(72vh,720px);border-left:none;border-right:none;border-bottom:none}
@@ -493,6 +513,8 @@ let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
 let expandedTickerId = null;
 let tickerMode = localStorage.getItem('crucix_ticker_mode') === 'pinned' ? 'pinned' : 'live';
 let pinnedTickerItems = loadPinnedTickerItems();
+let askMessages = [];
+let askInFlight = false;
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
@@ -1831,6 +1853,86 @@ function buildTickerCard(item, index, srcClass){
     </div>`;
 }
 
+async function submitAskAI(event){
+  event.preventDefault();
+  if(askInFlight) return;
+
+  const input = document.getElementById('askInput');
+  const question = cleanText(input?.value || '').trim();
+  if(!question) return;
+
+  askMessages.push({role:'user', text: question, at: new Date().toISOString()});
+  askInFlight = true;
+  if(input) input.value = '';
+  renderLower();
+
+  try{
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || `Ask AI returned ${res.status}`);
+    askMessages.push({
+      role:'assistant',
+      text: data.answer || 'No answer returned.',
+      citations: Array.isArray(data.citations) ? data.citations : [],
+      webSearches: Array.isArray(data.webSearches) ? data.webSearches : [],
+      model: data.model,
+      dashboardTimestamp: data.dashboardTimestamp,
+      at: data.generatedAt || new Date().toISOString(),
+    });
+  }catch(err){
+    askMessages.push({
+      role:'error',
+      text: err?.message || 'Ask AI failed.',
+      at: new Date().toISOString(),
+    });
+  }finally{
+    askInFlight = false;
+    askMessages = askMessages.slice(-12);
+    renderLower();
+  }
+}
+
+function clearAskAI(){
+  askMessages = [];
+  askInFlight = false;
+  renderLower();
+}
+
+function renderAskMessages(){
+  const messages = askMessages.slice(-10);
+  const empty = `<div class="empty-state">No questions in this session.</div>`;
+  const html = messages.length ? messages.map(renderAskMessage).join('') : empty;
+  const pending = askInFlight ? `<div class="ask-msg"><div class="ask-role">AI</div><div class="ask-text">Working...</div></div>` : '';
+  return `${html}${pending}`;
+}
+
+function renderAskMessage(message){
+  const roleLabel = message.role === 'user' ? 'You' : message.role === 'error' ? 'Error' : 'AI';
+  const citations = (message.citations || []).slice(0, 8);
+  const searches = (message.webSearches || []).filter(s => s.query).slice(0, 3);
+  return `<div class="ask-msg ${message.role === 'user' ? 'user' : message.role === 'error' ? 'error' : ''}">
+    <div class="ask-role">${roleLabel}</div>
+    <div class="ask-text">${formatAskText(message.text)}</div>
+    ${citations.length ? `<div class="ask-citations">${citations.map((citation, i) => {
+      const url = safeExternalUrl(citation.url);
+      return url ? `<a class="ask-citation" href="${escapeAttr(url)}" target="_blank" rel="noopener">[${i+1}] ${escapeHtml(citation.title || url)}</a>` : '';
+    }).join('')}</div>` : ''}
+    <div class="ask-meta">
+      ${message.model ? `<span>${escapeHtml(message.model)}</span>` : ''}
+      ${message.dashboardTimestamp ? `<span>Dashboard ${escapeHtml(getAge(message.dashboardTimestamp))}</span>` : ''}
+      ${searches.length ? `<span>Searches ${searches.length}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function formatAskText(text){
+  return escapeHtml(text || '').replace(/\n{3,}/g, '\n\n');
+}
+
 // === LOWER GRID ===
 function renderLower(){
   const mobile = isMobileLayout();
@@ -1900,7 +2002,8 @@ function renderLower(){
     ticker: `${tickerMode === 'pinned' ? 'Pinned feed' : 'Merged feed'} · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
     macro: `FRED · BLS · Yahoo Finance · ${currentSweepAge()}`,
     ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Pending'} · ${currentSweepAge()}`,
-    osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`
+    osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
+    ask: `Dashboard snapshot · web search · ${currentSweepAge()}`
   };
   const srcClass = s => {
     if (!s) return 'other';
@@ -1988,7 +2091,18 @@ function renderLower(){
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
+  const askActions = askMessages.length ? `<button type="button" class="ask-clear" onclick="clearAskAI()">Clear</button>` : '';
+  const askPanel = `<div class="g-panel lp-ask ${pinnedLowerPanel==='ask'?'lp-pinned':''}">
+      ${panelHead('Ask AI', panelMeta.ask, '<span class="ideas-src llm">GPT-5.5</span>', 'ask', askActions)}
+      <div class="ask-log" id="askLog">${renderAskMessages()}</div>
+      <form class="ask-form" onsubmit="submitAskAI(event)">
+        <textarea id="askInput" class="ask-input" maxlength="1200" placeholder="Ask about this sweep, a signal, or live context"></textarea>
+        <button type="submit" class="ask-submit" ${askInFlight?'disabled':''}>${askInFlight?'Wait':'Ask'}</button>
+      </form>
+      <div class="disclosure">AI answers may combine dashboard data, model knowledge, and web results. Verify important claims before acting.</div>
+    </div>`;
   const panels = [
+    { key:'ask', html:askPanel },
     { key:'ideas', html:ideasPanel },
     { key:'macro', html:macroPanel },
     { key:'ticker', html:tickerPanel },

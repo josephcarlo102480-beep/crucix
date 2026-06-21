@@ -2,6 +2,8 @@
 
 import "./apis/utils/env.mjs"; // Load .env first
 
+const llmProvider = process.env.LLM_PROVIDER || null;
+
 function parseIntegerEnv(name, fallback, { min = Number.NEGATIVE_INFINITY } = {}) {
   const raw = process.env[name];
   if (raw == null || raw === '') return fallback;
@@ -20,8 +22,8 @@ export default {
   refreshIntervalMinutes: parseIntegerEnv('REFRESH_INTERVAL_MINUTES', 15, { min: 1 }),
 
   llm: {
-    provider: process.env.LLM_PROVIDER || null, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama
-    apiKey: process.env.LLM_API_KEY || null,
+    provider: llmProvider, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama
+    apiKey: process.env.LLM_API_KEY || (llmProvider?.toLowerCase() === 'openai' ? process.env.OPENAI_API_KEY : null) || null,
     model: process.env.LLM_MODEL || null,
     baseUrl: process.env.OLLAMA_BASE_URL || null,
   },

@@ -50,4 +50,14 @@ describe('crucix.config', () => {
     assert.equal(config.refreshIntervalMinutes, 15);
     assert.equal(config.telegram.botPollingInterval, 5000);
   });
+
+  it('uses OPENAI_API_KEY as an OpenAI LLM fallback', async () => {
+    const config = await loadConfigWithEnv({
+      LLM_PROVIDER: 'openai',
+      LLM_API_KEY: null,
+      OPENAI_API_KEY: 'sk-openai-test',
+    });
+
+    assert.equal(config.llm.apiKey, 'sk-openai-test');
+  });
 });
