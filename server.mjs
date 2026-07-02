@@ -284,6 +284,16 @@ function broadcast(data) {
   }
 }
 
+// SSE keep-alive: sweeps are 15 min apart, long enough for proxies/tunnels to
+// drop an idle connection. A comment line every 30s keeps streams open.
+// unref() so importing this module (tests) doesn't hold the process alive.
+const sseHeartbeatTimer = setInterval(() => {
+  for (const client of sseClients) {
+    try { client.write(': keep-alive\n\n'); } catch { sseClients.delete(client); }
+  }
+}, 30_000);
+sseHeartbeatTimer.unref();
+
 // === Sweep Cycle ===
 async function runSweepCycle() {
   if (sweepInProgress) {
@@ -315,7 +325,11 @@ async function runSweepCycle() {
     const delta = memory.addRun(synthesized);
     synthesized.delta = delta;
 
-    // 5. LLM-powered trade ideas (LLM-only feature) — isolated so failures don't kill sweep
+    // 5. LLM-powered trade ideas — isolated so failures don't kill sweep.
+    // Falls back to rule-based generateIdeas() when the LLM is off or errors.
+    const ruleIdeas = () => {
+      try { return generateIdeas(synthesized); } catch { return []; }
+    };
     if (llmProvider?.isConfigured) {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
@@ -325,16 +339,17 @@ async function runSweepCycle() {
           synthesized.ideasSource = 'llm';
           console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
         } else {
-          synthesized.ideas = [];
+          synthesized.ideas = ruleIdeas();
           synthesized.ideasSource = 'llm-failed';
+          console.log(`[Crucix] LLM returned no ideas — rule-based fallback generated ${synthesized.ideas.length}`);
         }
       } catch (llmErr) {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = [];
+        synthesized.ideas = ruleIdeas();
         synthesized.ideasSource = 'llm-failed';
       }
     } else {
-      synthesized.ideas = [];
+      synthesized.ideas = ruleIdeas();
       synthesized.ideasSource = 'disabled';
     }
     memory.updateLastRunIdeas(synthesized.ideas);
@@ -476,6 +491,7 @@ async function shutdown(signal) {
   console.log(`[Crucix] Received ${signal}. Shutting down...`);
 
   if (sweepTimer) clearInterval(sweepTimer);
+  clearInterval(sseHeartbeatTimer);
   telegramAlerter.stopPolling?.();
   for (const client of sseClients) {
     try { client.end(); } catch { }

@@ -997,7 +997,7 @@ function renderHero(){
     <div class="hero-card hero-stat ${D.ideasSource === 'llm' ? 'good' : 'warn'}">
       <div class="hero-stat-label">Idea Engine</div>
       <div class="hero-stat-value">${D.ideas?.length || 0}</div>
-      <div class="hero-stat-sub">${D.ideasSource === 'llm' ? 'LLM-backed ideas active.' : D.ideasSource === 'disabled' ? 'LLM disabled, rules only.' : 'Idea generation pending or degraded.'}</div>
+      <div class="hero-stat-sub">${D.ideasSource === 'llm' ? 'LLM-backed ideas active.' : D.ideasSource === 'disabled' ? 'LLM disabled, rules only.' : 'LLM degraded — rule-based fallback.'}</div>
     </div>`;
 
   const note = document.getElementById('overviewNote');
@@ -2001,7 +2001,7 @@ function renderLower(){
   const panelMeta = {
     ticker: `${tickerMode === 'pinned' ? 'Pinned feed' : 'Merged feed'} · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
     macro: `FRED · BLS · Yahoo Finance · ${currentSweepAge()}`,
-    ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Pending'} · ${currentSweepAge()}`,
+    ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Rules fallback'} · ${currentSweepAge()}`,
     osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
     ask: `Dashboard snapshot · web search · ${currentSweepAge()}`
   };
@@ -2085,7 +2085,7 @@ function renderLower(){
         <div class="spark">${sparkHtml}</div>
       </div>
     </div>`;
-  const ideasBadge = D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.pending','PENDING')+'</span>';
+  const ideasBadge = D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.rulesFallback','RULES FALLBACK')+'</span>';
   const ideasPanel = `<div class="g-panel lp-ideas ${pinnedLowerPanel==='ideas'?'lp-pinned':''}">
       ${panelHead(t('panels.tradeIdeas','Leverageable Ideas'), panelMeta.ideas, ideasBadge, 'ideas')}
       ${ideasHtml}

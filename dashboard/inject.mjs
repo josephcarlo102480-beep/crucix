@@ -9,6 +9,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import * as satellite from 'satellite.js';
 import config from '../crucix.config.mjs';
 import { createLLMProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
@@ -151,13 +152,15 @@ async function fetchRSS(url, source) {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const xml = await res.text();
     const items = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    // RDF feeds (e.g. DW) use <item rdf:about="..."> and <dc:date> instead of plain <item>/<pubDate>
+    const itemRegex = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/g;
     let match;
     while ((match = itemRegex.exec(xml)) !== null) {
       const block = match[1];
       const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1] || '').trim();
       const link = sanitizeExternalUrl((block.match(/<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/link>/)?.[1] || '').trim());
-      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || '';
+      const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]
+        || block.match(/<dc:date>(.*?)<\/dc:date>/)?.[1] || '';
       if (title && title !== source) items.push({ title, date: pubDate, source, url: link || undefined });
     }
     return items;
@@ -479,23 +482,34 @@ export async function synthesize(data) {
 
   // Space/CelesTrak satellite data
   const spaceData = data.sources.Space || {};
-  // Approximate subsatellite position from TLE orbital elements
-  function estimateSatPosition(sat) {
-    if (!sat?.inclination || !sat?.epoch) return null;
-    const epoch = new Date(sat.epoch);
-    const now = new Date();
-    const elapsed = (now - epoch) / 1000;
-    const period = (sat.period || 92.7) * 60; // minutes to seconds
-    const orbits = elapsed / period;
-    const frac = orbits % 1;
-    const lat = sat.inclination * Math.sin(frac * 2 * Math.PI);
-    const lonShift = (elapsed / 86400) * 360;
-    const orbitLon = frac * 360;
-    const lon = ((orbitLon - lonShift) % 360 + 540) % 360 - 180;
-    return { lat: +lat.toFixed(2), lon: +lon.toFixed(2), name: sat.name };
+  // Subsatellite point via SGP4 — the Space source provides raw TLE lines (line1/line2),
+  // not orbital elements, so propagate with satellite.js like lib/space/satellitePasses.mjs.
+  function tleSubpoint(sat) {
+    if (!sat?.line1 || !sat?.line2) return null;
+    try {
+      const satrec = satellite.twoline2satrec(sat.line1, sat.line2);
+      const now = new Date();
+      const posVel = satellite.propagate(satrec, now);
+      if (!posVel?.position || typeof posVel.position === 'boolean' || satrec.error !== 0) return null;
+      const geo = satellite.eciToGeodetic(posVel.position, satellite.gstime(now));
+      const lat = satellite.radiansToDegrees(geo.latitude);
+      const lon = satellite.radiansToDegrees(geo.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return { lat: +lat.toFixed(2), lon: +(((lon % 360) + 540) % 360 - 180).toFixed(2), name: sat.name };
+    } catch {
+      return null;
+    }
   }
-  const issPos = estimateSatPosition(spaceData.iss);
-  const spaceStations = (spaceData.spaceStations || []).map(s => estimateSatPosition(s)).filter(Boolean);
+  const issPos = tleSubpoint(spaceData.iss);
+  const seenSats = new Set();
+  const spaceStations = [];
+  for (const sat of [spaceData.iss, ...(spaceData.spaceStations || [])]) {
+    const key = sat?.noradId ?? sat?.name;
+    if (key == null || seenSats.has(key)) continue;
+    seenSats.add(key);
+    const pos = tleSubpoint(sat);
+    if (pos) spaceStations.push(pos);
+  }
   const space = {
     totalNewObjects: spaceData.totalNewObjects || 0,
     militarySats: spaceData.militarySatellites || 0,
@@ -503,7 +517,7 @@ export async function synthesize(data) {
     constellations: spaceData.constellations || {},
     iss: spaceData.iss || null,
     issPosition: issPos,
-    stationPositions: spaceStations.slice(0, 5),
+    stationPositions: spaceStations.slice(0, 6), // ISS + up to 5 stations
     recentLaunches: (spaceData.recentLaunches || []).slice(0, 10).map(l => ({
       name: l.name, country: l.country, epoch: l.epoch,
       apogee: l.apogee, perigee: l.perigee, type: l.objectType
@@ -697,17 +711,17 @@ async function cliInject() {
         V2.ideasSource = 'llm';
         console.log(`[LLM] Generated ${llmIdeas.length} ideas`);
       } else {
-        V2.ideas = [];
+        V2.ideas = generateIdeas(V2);
         V2.ideasSource = 'llm-failed';
-        console.log('[LLM] No ideas returned');
+        console.log('[LLM] No ideas returned — using rule-based fallback');
       }
     } catch (err) {
-      V2.ideas = [];
+      V2.ideas = generateIdeas(V2);
       V2.ideasSource = 'llm-failed';
-      console.log('[LLM] Idea generation failed:', err.message);
+      console.log('[LLM] Idea generation failed:', err.message, '— using rule-based fallback');
     }
   } else {
-    V2.ideas = [];
+    V2.ideas = generateIdeas(V2);
     V2.ideasSource = 'disabled';
   }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
