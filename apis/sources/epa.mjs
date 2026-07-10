@@ -5,12 +5,21 @@
 
 import { safeFetch } from '../utils/fetch.mjs';
 
-const BASE = 'https://enviro.epa.gov/enviro/efservice';
+const BASE = 'https://data.epa.gov/dmapservice';
+const RESULTS_TIMEOUT_MS = 16000;
+const LOCATIONS_TIMEOUT_MS = 8000;
+const RECENT_LOOKBACK_DAYS = 400;
+let lastSuccessfulBriefing = null;
 
-// RadNet analytical results endpoint
-const RADNET_ANALYTICAL = `${BASE}/RADNET_ANALYTICAL_RESULTS`;
-// RadNet auxiliary data
-const RADNET_AUX = `${BASE}/RADNET_AUX`;
+const ANALYTE_NAMES = {
+  ALPHA: 'GROSS ALPHA',
+  BETA: 'GROSS BETA',
+  I131: 'IODINE-131',
+  CS137: 'CESIUM-137',
+  CS134: 'CESIUM-134',
+  SR90: 'STRONTIUM-90',
+  H3: 'TRITIUM',
+};
 
 // Key US cities with RadNet monitoring stations
 const MONITORING_STATIONS = {
@@ -48,31 +57,31 @@ const THRESHOLDS = {
   'CESIUM-134': { normal: 0.001, elevated: 0.01, unit: 'pCi/m3' },
 };
 
-// Get recent RadNet analytical results (JSON)
+// Get recent RadNet laboratory results joined to their analysis and sample.
 export async function getAnalyticalResults(opts = {}) {
-  const { rows = 50, startRow = 0 } = opts;
+  const { rows = 100 } = opts;
+  const since = new Date(Date.now() - RECENT_LOOKBACK_DAYS * 86400_000).toISOString().slice(0, 10);
+  const path = [
+    'radnet.erm_analysis',
+    'left', 'radnet.erm_result', 'ana_num', 'equals', 'ana_num',
+    'left', 'radnet.erm_sample', 'samp_num', 'equals', 'samp_num',
+    'radnet.erm_result.result_date', 'greaterThan', since,
+    'sort', 'radnet.erm_result.result_date:desc',
+    `1:${Math.min(Math.max(Number(rows) || 100, 1), 250)}`,
+    'json',
+  ].join('/');
   return safeFetch(
-    `${RADNET_ANALYTICAL}/ROWS/${startRow}:${startRow + rows}/JSON`,
-    { timeout: 25000 }
+    `${BASE}/${path}`,
+    { timeout: RESULTS_TIMEOUT_MS, retries: 0 }
   );
 }
 
-// Get results filtered by state
-export async function getResultsByState(state, opts = {}) {
-  const { rows = 25, startRow = 0 } = opts;
+async function getLocations(locationNumbers) {
+  const ids = [...new Set(locationNumbers.filter(Number.isFinite))].slice(0, 250);
+  if (!ids.length) return [];
   return safeFetch(
-    `${RADNET_ANALYTICAL}/ANA_STATE/${state}/ROWS/${startRow}:${startRow + rows}/JSON`,
-    { timeout: 25000 }
-  );
-}
-
-// Get results filtered by analyte type
-export async function getResultsByAnalyte(analyte, opts = {}) {
-  const { rows = 25, startRow = 0 } = opts;
-  const encoded = encodeURIComponent(analyte);
-  return safeFetch(
-    `${RADNET_ANALYTICAL}/ANA_TYPE/${encoded}/ROWS/${startRow}:${startRow + rows}/JSON`,
-    { timeout: 25000 }
+    `${BASE}/radnet.erm_location/loc_num/in/${ids.join(',')}/1:${ids.length}/json`,
+    { timeout: LOCATIONS_TIMEOUT_MS, retries: 0 }
   );
 }
 
@@ -82,17 +91,19 @@ const CITY_COORDS = Object.fromEntries(
 );
 
 // Compact a reading for briefing output
-function compactReading(r) {
-  const city = (r.ANA_CITY || r.LOCATION || '').toUpperCase().trim();
+function compactReading(r, locations) {
+  const location = locations.get(Number(r.loc_num));
+  const city = String(location?.city_name || location?.station || '').toUpperCase().trim();
   const station = CITY_COORDS[city];
+  const result = Number(r.result_amount);
   return {
-    location: r.ANA_CITY || r.LOCATION || 'Unknown',
-    state: r.ANA_STATE || r.STATE || null,
-    analyte: r.ANA_TYPE || r.ANALYTE_NAME || null,
-    result: r.ANA_RESULT != null ? parseFloat(r.ANA_RESULT) : null,
-    unit: r.RESULT_UNIT || r.ANA_UNIT || null,
-    collectDate: r.COLLECT_DATE || r.SAMPLE_DATE || null,
-    medium: r.SAMPLE_TYPE || r.MEDIUM || null,
+    location: location?.city_name || location?.station || `Station ${r.loc_num || 'unknown'}`,
+    state: location?.state_abbr || null,
+    analyte: ANALYTE_NAMES[r.analyte_id] || r.analyte_id || null,
+    result: Number.isFinite(result) ? result : null,
+    unit: r.result_unit || null,
+    collectDate: r.result_date || r.collect_end || null,
+    medium: r.mat_id || null,
     lat: station?.lat || null,
     lon: station?.lon || null,
   };
@@ -103,6 +114,7 @@ function checkReading(reading) {
   if (reading.result === null || reading.result <= 0) return null;
   const threshold = THRESHOLDS[reading.analyte?.toUpperCase()];
   if (!threshold) return null;
+  if (String(reading.unit || '').toUpperCase() !== threshold.unit.toUpperCase()) return null;
 
   if (reading.result > threshold.elevated) {
     return {
@@ -128,35 +140,29 @@ export async function briefing() {
   const readings = [];
   const signals = [];
 
-  // Fetch recent analytical results (broad pull)
   const recentData = await getAnalyticalResults({ rows: 100 });
+  if (recentData?.error) {
+    const error = recentData.error;
+    if (lastSuccessfulBriefing) {
+      return {
+        ...lastSuccessfulBriefing,
+        timestamp: new Date().toISOString(),
+        stale: true,
+        error: `EPA refresh failed: ${error}`,
+      };
+    }
+    throw new Error(`EPA RadNet requests failed: ${error || 'unknown error'}`);
+  }
+
   const recentRecords = Array.isArray(recentData) ? recentData : [];
-
-  // Compact all readings
-  const allReadings = recentRecords.map(compactReading);
-  readings.push(...allReadings);
-
-  // Also try to pull key analytes specifically
-  const analyteResults = await Promise.all(
-    ['GROSS BETA', 'IODINE-131', 'CESIUM-137'].map(async analyte => {
-      const data = await getResultsByAnalyte(analyte, { rows: 20 });
-      const records = Array.isArray(data) ? data : [];
-      return { analyte, records: records.map(compactReading) };
-    })
+  const locationData = await getLocations(recentRecords.map(record => Number(record.loc_num)));
+  const locations = new Map(
+    (Array.isArray(locationData) ? locationData : []).map(location => [Number(location.loc_num), location])
   );
 
-  for (const { analyte, records } of analyteResults) {
-    // Add any records not already in our list
-    for (const r of records) {
-      if (!readings.some(existing =>
-        existing.location === r.location &&
-        existing.collectDate === r.collectDate &&
-        existing.analyte === r.analyte
-      )) {
-        readings.push(r);
-      }
-    }
-  }
+  // Compact all readings
+  const allReadings = recentRecords.map(record => compactReading(record, locations));
+  readings.push(...allReadings);
 
   // Check all readings against thresholds
   for (const reading of readings) {
@@ -193,7 +199,7 @@ export async function briefing() {
     ])
   );
 
-  return {
+  const result = {
     source: 'EPA RadNet',
     timestamp: new Date().toISOString(),
     totalReadings: readings.length,
@@ -201,11 +207,14 @@ export async function briefing() {
     stateSummary,
     signals: signals.length > 0
       ? signals
-      : ['All EPA RadNet readings within normal background levels'],
+      : ['No elevated EPA RadNet laboratory results detected in the latest available samples'],
     monitoredAnalytes: KEY_ANALYTES,
     thresholds: THRESHOLDS,
-    note: 'RadNet data may lag by hours to days. Near-real-time gamma data updates more frequently.',
+    locationWarning: locationData?.error ? `Location metadata unavailable: ${locationData.error}` : undefined,
+    note: 'EPA laboratory results are quality-controlled and may lag collection by days or weeks. Near-real-time gamma data are a separate RadNet dataset.',
   };
+  lastSuccessfulBriefing = result;
+  return result;
 }
 
 // Run standalone

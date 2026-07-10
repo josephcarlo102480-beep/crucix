@@ -105,6 +105,8 @@ docker compose up -d
 
 Dashboard at `http://localhost:3117`. Sweep data persists in `./runs/` via volume mount. Includes a health check endpoint.
 
+Docker binds Crucix beyond loopback inside the container. Set `CRUCIX_API_TOKEN` in `.env` to enable Ask AI for Docker or other network clients; the dashboard will request the token once and retain it only for the browser session. Without a token, data views remain available but the cost-bearing Ask AI endpoint stays disabled.
+
 ---
 
 ## What You Get
@@ -416,9 +418,14 @@ All settings are in `.env` with sensible defaults:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `HOST` | `127.0.0.1` | Server bind address; use `0.0.0.0` only when network access is intended |
 | `PORT` | `3117` | Dashboard server port |
 | `REFRESH_INTERVAL_MINUTES` | `15` | Auto-refresh interval |
-| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, or `mistral` |
+| `CRUCIX_API_TOKEN` | — | Required for Ask AI when `HOST` is not loopback |
+| `ASK_AI_RATE_LIMIT_MAX` | `6` | Ask AI requests allowed per rate-limit window |
+| `ASK_AI_RATE_LIMIT_WINDOW_MINUTES` | `10` | Ask AI rate-limit window |
+| `ASK_AI_MAX_CONCURRENT` | `2` | Maximum simultaneous Ask AI requests |
+| `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `ollama` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |

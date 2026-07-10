@@ -108,6 +108,7 @@ threshEl.value = String(threshold);
 cThresh.textContent = threshold.toFixed(2);
 
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeHttpUrl(raw){ try { const u = new URL(raw, location.href); return /^https?:$/.test(u.protocol) ? u.toString() : null; } catch { return null; } }
 function setStatus(m, cls){ statusEl.className = cls || ''; statusEl.innerHTML = m; }
 function fmtTs(ts){ return ts ? esc(ts.replace('T',' ').slice(0,16)) + ' UTC' : ''; }
 
@@ -141,7 +142,7 @@ function buildPoints(){
 }
 
 function postPopupHtml(p, place){
-  const link = p.link || '';
+  const link = safeHttpUrl(p.link || '');
   return `<div class="ptitle">${esc(p.channel)}${place ? ' · ' + esc(place) : ''}</div>
     <div class="pmeta">${fmtTs(p.ts)}${p.views ? ' · ' + esc(p.views) + ' views' : ''}</div>
     <div class="pbody">${esc(p.text || '(no text)')}</div>

@@ -1,10 +1,11 @@
 // Telegram — public channel intelligence from conflict zones and OSINT analysts
-// Primary mode: Bot API with TELEGRAM_BOT_TOKEN (getUpdates, getChat)
+// Primary mode: channel posts captured by the shared Telegram bot poller
 // Fallback mode: Scrape public channel web previews at https://t.me/s/{channel}
 // Monitors conflict zones (Ukraine, Middle East), geopolitics, and OSINT channels.
 
 import { safeFetch } from '../utils/fetch.mjs';
 import '../utils/env.mjs';
+import { getTelegramChannelMessages } from '../../lib/telegramUpdates.mjs';
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -78,43 +79,18 @@ const URGENT_KEYWORDS = [
 
 const botBase = () => `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`;
 
-// Get recent updates the bot has received
-export async function getUpdates(opts = {}) {
-  const { limit = 100, offset = 0 } = opts;
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  return safeFetch(`${botBase()}/getUpdates?${params}`);
-}
-
 // Get info about a chat/channel by username
 export async function getChat(chatId) {
   const params = new URLSearchParams({ chat_id: chatId.startsWith('@') ? chatId : `@${chatId}` });
   return safeFetch(`${botBase()}/getChat?${params}`);
 }
 
-// Compact a Bot API message for briefing output
-function compactBotMessage(msg) {
-  return {
-    text: msg.text || msg.caption || '',
-    date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
-    chat: msg.chat?.title || msg.chat?.username || 'unknown',
-    views: msg.views || 0,
-    hasMedia: !!(msg.photo || msg.video || msg.document),
-  };
-}
-
-// Fetch updates via Bot API and organize by channel
+// Read recent channel posts from the process-wide poller snapshot.
 async function fetchBotUpdates() {
-  const result = await getUpdates({ limit: 100 });
-  if (!result?.ok || !Array.isArray(result.result)) {
-    return { error: result?.description || 'Bot API request failed' };
-  }
-
-  const messages = result.result
-    .map(u => u.message || u.channel_post || u.edited_channel_post)
-    .filter(Boolean)
-    .map(compactBotMessage);
-
-  return { messages, count: messages.length };
+  const messages = getTelegramChannelMessages({ limit: 100 });
+  return messages.length
+    ? { messages, count: messages.length }
+    : { error: 'No channel posts captured by the bot poller yet', messages: [], count: 0 };
 }
 
 // ─── Web preview scraping fallback ──────────────────────────────────────────
@@ -285,7 +261,7 @@ export async function briefing() {
           totalMessages: botData.count,
           urgentPosts: urgent.slice(0, 10),
           topPosts: top,
-          note: 'Data from Bot API getUpdates. Bot must be added to channels to receive posts.',
+          note: 'Data captured by the shared Bot API poller. Bot must be added to channels to receive posts.',
         };
       }
       // If bot returned no messages, fall through to web scraping

@@ -113,6 +113,7 @@ const CLUSTER_PX = 22;         // screen distance (px) that counts as "same spot
 const SNAPSHOT_REFRESH_MS = 5000;
 
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeHttpUrl(raw){ try { const u = new URL(raw, location.href); return /^https?:$/.test(u.protocol) ? u.toString() : null; } catch { return null; } }
 function setStatus(m){ statusEl.innerHTML = m; }
 
 const globe = Globe()(document.getElementById('globe-container'))
@@ -140,8 +141,8 @@ function updateVisiblePoints(){
 
 // Classify a camera into how its feed must be displayed.
 function feedKind(cam){
-  if (cam.stream_type === 'iframe' && cam.stream_url) return 'iframe';
-  if (cam.stream_type === 'hls' && cam.stream_url) return 'hls';
+  if (cam.stream_type === 'iframe' && safeHttpUrl(cam.stream_url)) return 'iframe';
+  if (cam.stream_type === 'hls' && safeHttpUrl(cam.stream_url)) return 'hls';
   if (cam.feed_url) return 'image';      // static JPEG/PNG snapshot (via proxy)
   if (cam.external_url) return 'external';
   return 'none';
@@ -219,7 +220,7 @@ function renderCameraInto(cam){
   destroyHlsPlayer();
   popup.innerHTML = popupHtml(cam);
   const kind = feedKind(cam);
-  if (kind === 'hls') setupHls(cam.stream_url);
+  if (kind === 'hls') setupHls(safeHttpUrl(cam.stream_url));
   if (kind === 'image') startLive(cam.id);
 }
 
@@ -228,7 +229,7 @@ function popupHtml(cam){
   const kind = feedKind(cam);
   let media = '';
   if (kind === 'iframe'){
-    media = `<div class="iframe-wrap"><iframe src="${esc(cam.stream_url)}" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
+    media = `<div class="iframe-wrap"><iframe src="${esc(safeHttpUrl(cam.stream_url))}" sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="no-referrer" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
   } else if (kind === 'hls'){
     media = `<div class="iframe-wrap"><video id="camVideo" controls autoplay muted playsinline></video></div>`;
   } else if (kind === 'image'){
@@ -243,7 +244,7 @@ function popupHtml(cam){
     media = `<div class="pmsg">No feed available for this camera.</div>`;
   }
   // Best link-out target for "open ↗".
-  const ext = cam.external_url || cam.stream_url || cam.feed_url || '';
+  const ext = safeHttpUrl(cam.external_url || cam.stream_url || cam.feed_url || '');
   return `${clusterChooserHtml(cam.id)}<div class="ptitle">${esc(cam.name)}</div>
     <div class="pmeta">${meta} <span style="opacity:.6">· ${esc(cam.stream_type || 'image')}</span></div>
     <div id="camMedia">${media}</div>

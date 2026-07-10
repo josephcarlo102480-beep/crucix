@@ -624,6 +624,13 @@ export async function synthesize(data) {
   return V2;
 }
 
+export function serializeForInlineScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 // === Unified News Feed for Ticker ===
 function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   const feed = [];
@@ -726,7 +733,7 @@ async function cliInject() {
   }
   console.log(`Generated ${V2.ideas.length} leverageable ideas`);
 
-  const json = JSON.stringify(V2);
+  const json = serializeForInlineScript(V2);
   console.log('\n--- Synthesis ---');
   console.log('Size:', json.length, 'bytes | Air:', V2.air.length, '| Thermal:', V2.thermal.length,
     '| News:', V2.news.length, '| Ideas:', V2.ideas.length, '| Sources:', V2.health.length);

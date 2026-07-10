@@ -3,6 +3,7 @@
 // Serves the Jarvis dashboard, runs sweep cycle, pushes live updates via SSE
 
 import express from 'express';
+import { timingSafeEqual } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -53,9 +54,14 @@ const sseClients = new Set();
 let sweepTimer = null;
 let httpServer = null;
 let shuttingDown = false;
+let askRequestsInFlight = 0;
+const askRateBuckets = new Map();
 
 // === Delta/Memory ===
-const memory = new MemoryManager(RUNS_DIR);
+const memory = new MemoryManager(RUNS_DIR, {
+  thresholds: config.delta.thresholds,
+  maxBaselineAgeMs: config.refreshIntervalMinutes * 2.5 * 60 * 1000,
+});
 
 // === LLM + Telegram + Discord ===
 const llmProvider = createLLMProvider(config.llm);
@@ -154,6 +160,31 @@ function initializeIntegrations() {
 
 // === Express Server ===
 const app = express();
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://d3js.org https://unpkg.com https://cdn.jsdelivr.net",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: blob: http: https:",
+      "media-src 'self' blob: http: https:",
+      "connect-src 'self' http: https: ws: wss:",
+      "frame-src http: https:",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join('; '),
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'X-Frame-Options': 'DENY',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  });
+  next();
+});
 app.use(express.json({ limit: '256kb' }));
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
@@ -206,14 +237,70 @@ app.get('/api/health', (req, res) => {
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     llmEnabled: !!llmProvider?.isConfigured,
     llmProvider: llmProvider?.name || null,
+    askAiRequiresToken: !isLoopbackHost(config.host),
     telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
   });
 });
 
+function isLoopbackHost(host) {
+  return ['127.0.0.1', '::1', 'localhost'].includes(String(host || '').toLowerCase());
+}
+
+function tokensEqual(actual, expected) {
+  if (!actual || !expected) return false;
+  const actualBuffer = Buffer.from(String(actual));
+  const expectedBuffer = Buffer.from(String(expected));
+  return actualBuffer.length === expectedBuffer.length
+    && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function getRequestToken(req) {
+  const authorization = String(req.get('authorization') || '');
+  if (/^Bearer\s+/i.test(authorization)) return authorization.replace(/^Bearer\s+/i, '').trim();
+  return String(req.get('x-crucix-api-token') || '').trim();
+}
+
+function isAskRequestAuthorized(host, expectedToken, actualToken) {
+  return isLoopbackHost(host) || tokensEqual(actualToken, expectedToken);
+}
+
+function authorizeAskRequest(req, res, next) {
+  if (isLoopbackHost(config.host)) return next();
+  if (!config.api.token) {
+    return res.status(503).json({
+      error: 'Ask AI is disabled on non-loopback bindings until CRUCIX_API_TOKEN is configured.',
+    });
+  }
+  if (!isAskRequestAuthorized(config.host, config.api.token, getRequestToken(req))) {
+    return res.status(401).json({ error: 'A valid Crucix API token is required.' });
+  }
+  next();
+}
+
+function rateLimitAskRequest(req, res, next) {
+  const now = Date.now();
+  const windowMs = config.api.askRateLimitWindowMinutes * 60 * 1000;
+  const key = req.socket.remoteAddress || 'unknown';
+  const bucket = (askRateBuckets.get(key) || []).filter(timestamp => now - timestamp < windowMs);
+  if (bucket.length >= config.api.askRateLimitMax) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - bucket[0])) / 1000));
+    res.set('Retry-After', String(retryAfterSeconds));
+    return res.status(429).json({ error: 'Ask AI rate limit exceeded. Try again later.' });
+  }
+  bucket.push(now);
+  askRateBuckets.set(key, bucket);
+  if (askRateBuckets.size > 500) {
+    for (const [bucketKey, timestamps] of askRateBuckets) {
+      if (!timestamps.some(timestamp => now - timestamp < windowMs)) askRateBuckets.delete(bucketKey);
+    }
+  }
+  next();
+}
+
 // API: ask the configured OpenAI model about the current dashboard, with web search.
-app.post('/api/ask', async (req, res) => {
+app.post('/api/ask', authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
   if (!currentData) {
@@ -231,12 +318,20 @@ app.post('/api/ask', async (req, res) => {
     return res.status(400).json({ error: 'Ask AI with internet search currently requires LLM_PROVIDER=openai.' });
   }
 
+  if (askRequestsInFlight >= config.api.askMaxConcurrent) {
+    res.set('Retry-After', '5');
+    return res.status(429).json({ error: 'Ask AI is busy. Try again in a few seconds.' });
+  }
+
+  askRequestsInFlight++;
   try {
     const result = await answerDashboardQuestion(llmProvider, currentData, validation.question, currentRaw);
     res.json(result);
   } catch (err) {
     console.error('[Crucix] Ask AI failed:', err?.message || err);
     res.status(502).json({ error: err?.message || 'Ask AI failed' });
+  } finally {
+    askRequestsInFlight--;
   }
 });
 
@@ -379,7 +474,8 @@ async function runSweepCycle() {
 
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
-    if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
+    if (delta?.baselineReset) console.log('[Crucix] Delta baseline reset because the prior sweep was stale');
+    else if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
   } catch (err) {
@@ -395,6 +491,7 @@ async function start() {
   initializeIntegrations();
 
   const port = config.port;
+  const displayHost = isLoopbackHost(config.host) ? config.host : 'localhost';
 
   const telegramStatus = config.telegram.botToken ? 'enabled' : 'disabled';
   const discordStatus = config.discord?.botToken
@@ -408,8 +505,8 @@ async function start() {
     '           CRUCIX INTELLIGENCE ENGINE         ',
     '          Local Palantir · 29 Sources         ',
     null, // separator
-    `  Dashboard:  http://localhost:${port}`,
-    `  Health:     http://localhost:${port}/api/health`,
+    `  Dashboard:  http://${displayHost}:${port}`,
+    `  Health:     http://${displayHost}:${port}/api/health`,
     `  Refresh:    Every ${config.refreshIntervalMinutes} min`,
     `  LLM:        ${llmStatus}`,
     `  Telegram:   ${telegramStatus}`,
@@ -423,7 +520,7 @@ async function start() {
   );
   console.log(['', `  ╔${'═'.repeat(INNER)}╗`, ...out, `  ╚${'═'.repeat(INNER)}╝`].join('\n'));
 
-  httpServer = app.listen(port);
+  httpServer = app.listen(port, config.host);
 
   httpServer.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -439,7 +536,7 @@ async function start() {
   });
 
   httpServer.on('listening', async () => {
-    console.log(`[Crucix] Server running on http://localhost:${port}`);
+    console.log(`[Crucix] Server running on http://${displayHost}:${port} (bound to ${config.host})`);
 
     // Warm the OFAC SDN sanctions cache on boot (fire-and-forget).
     warmSanctionsCache()
@@ -533,6 +630,8 @@ if (isMain) {
 
 export {
   app,
+  isAskRequestAuthorized,
+  isLoopbackHost,
   runSweepCycle,
   shutdown,
   start,

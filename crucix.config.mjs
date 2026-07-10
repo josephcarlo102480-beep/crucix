@@ -18,8 +18,16 @@ function parseIntegerEnv(name, fallback, { min = Number.NEGATIVE_INFINITY } = {}
 }
 
 export default {
+  host: process.env.HOST || '127.0.0.1',
   port: parseIntegerEnv('PORT', 3117, { min: 0 }),
   refreshIntervalMinutes: parseIntegerEnv('REFRESH_INTERVAL_MINUTES', 15, { min: 1 }),
+
+  api: {
+    token: process.env.CRUCIX_API_TOKEN || null,
+    askRateLimitMax: parseIntegerEnv('ASK_AI_RATE_LIMIT_MAX', 6, { min: 1 }),
+    askRateLimitWindowMinutes: parseIntegerEnv('ASK_AI_RATE_LIMIT_WINDOW_MINUTES', 10, { min: 1 }),
+    askMaxConcurrent: parseIntegerEnv('ASK_AI_MAX_CONCURRENT', 2, { min: 1 }),
+  },
 
   llm: {
     provider: llmProvider, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama

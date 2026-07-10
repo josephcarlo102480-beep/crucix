@@ -35,11 +35,10 @@ const DEFAULT_CHANNELS = [
 ];
 
 function resolveChannels() {
-  const env = process.env.CRUCIX_TELEGRAM_CHANNELS;
-  if (env && env.trim()) {
-    return env.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-  return DEFAULT_CHANNELS;
+  const env = process.env.CRUCIX_TELEGRAM_CHANNELS || process.env.TELEGRAM_CHANNELS;
+  if (!env?.trim()) return DEFAULT_CHANNELS;
+  const extras = env.split(',').map((s) => s.trim()).filter(Boolean);
+  return [...new Set([...DEFAULT_CHANNELS, ...extras])];
 }
 
 // Apply channel config once at module load (env is read at boot).

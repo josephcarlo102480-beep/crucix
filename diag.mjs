@@ -70,7 +70,7 @@ const server = net.default.createServer();
 try {
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, () => { server.close(); resolve(); });
+    server.listen({ port, host: config.host }, () => { server.close(); resolve(); });
   });
   console.log(`✅ Port ${port} is available`);
 } catch (err) {

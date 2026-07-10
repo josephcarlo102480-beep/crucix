@@ -732,6 +732,15 @@ function escapeHtml(value){
 }
 
 function escapeAttr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
+function safeCssToken(value){ return String(value ?? '').toLowerCase().replace(/[^a-z0-9_-]/g,''); }
+function setTextWithBreaks(element, value){
+  const parts = String(value ?? '').split(/<br\s*\/?>/gi);
+  element.replaceChildren();
+  parts.forEach((part, index) => {
+    if(index) element.appendChild(document.createElement('br'));
+    element.appendChild(document.createTextNode(part));
+  });
+}
 
 function closestTarget(eventOrTarget, selector){
   const target = eventOrTarget?.target || eventOrTarget;
@@ -948,12 +957,13 @@ function renderTopbar(){
 function renderHero(){
   const hero = document.getElementById('heroStrip');
   const ds = D.delta?.summary || {};
+  const baselineReset = Boolean(D.delta?.baselineReset || ds.baselineReset);
   const tone = sourceHealthTone();
   const candidateChanges = [
     ...(D.delta?.signals?.new || []).slice(0, 2).map(s => ({ badge: 'NEW', text: s.reason || s.label || s.key })),
     ...(D.delta?.signals?.escalated || []).slice(0, 3).map(s => ({ badge: 'UP', text: `${s.label || s.key}: ${s.from} → ${s.to}` })),
   ].slice(0, 3);
-  const statusLine = ds.direction === 'risk-off' ? 'Risk is deteriorating across the latest sweep.' : ds.direction === 'risk-on' ? 'Pressure eased in the latest sweep.' : 'Latest sweep is mixed with no clean directional regime.';
+  const statusLine = baselineReset ? 'The prior sweep was too old for a meaningful comparison. Change alerts resume on the next sweep.' : ds.direction === 'risk-off' ? 'Risk is deteriorating across the latest sweep.' : ds.direction === 'risk-on' ? 'Pressure eased in the latest sweep.' : 'Latest sweep is mixed with no clean directional regime.';
   const critical = ds.criticalChanges || 0;
   const failures = (D.meta.sourcesQueried || 0) - (D.meta.sourcesOk || 0);
   const failedNames = (D.health || []).filter(s => s.err).slice(0, 4).map(s => s.n).join(' · ') || 'No failed sources';
@@ -962,13 +972,13 @@ function renderHero(){
   hero.innerHTML = `
     <div class="hero-card primary">
       <div class="hero-kicker">Sweep Brief</div>
-      <div class="hero-title">${ds.direction ? ds.direction.toUpperCase() : 'BASELINE'} REGIME</div>
+      <div class="hero-title">${baselineReset ? 'BASELINE RESET' : `${escapeHtml(ds.direction ? String(ds.direction).toUpperCase() : 'BASELINE')} REGIME`}</div>
       <div class="hero-sub">${statusLine} ${critical > 0 ? `Critical changes detected: ${critical}.` : 'No critical changes flagged.'}</div>
       <div class="hero-changes">
-        ${(candidateChanges.length ? candidateChanges : [{ badge:'INFO', text:'No material changes since the previous sweep.' }]).map(item => `
+        ${(candidateChanges.length ? candidateChanges : [{ badge:'INFO', text:baselineReset ? 'Stale comparison suppressed.' : 'No material changes since the previous sweep.' }]).map(item => `
           <div class="hero-change">
-            <span class="hero-change-badge">${item.badge}</span>
-            <div class="hero-change-text">${cleanText(String(item.text || ''))}</div>
+            <span class="hero-change-badge">${escapeHtml(item.badge)}</span>
+            <div class="hero-change-text">${escapeHtml(cleanText(String(item.text || '')))}</div>
           </div>`).join('')}
       </div>
       <div class="hero-foot">
@@ -982,7 +992,7 @@ function renderHero(){
     <div class="hero-card hero-stat ${tone}">
       <div class="hero-stat-label">Source Trust</div>
       <div class="hero-stat-value">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</div>
-      <div class="hero-stat-sub">${failedNames}</div>
+      <div class="hero-stat-sub">${escapeHtml(failedNames)}</div>
     </div>
     <div class="hero-card hero-stat ${critical > 0 ? 'danger' : 'good'}">
       <div class="hero-stat-label">Critical Delta</div>
@@ -1045,7 +1055,7 @@ function renderLeftRail(){
      ]}
   ];
   const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${s.site}"><span>${s.site}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
+  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}"><span>${escapeHtml(s.site)}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
   const usd=D.fred.find(f=>f.id==='DTWEXBGS');
@@ -1053,10 +1063,21 @@ function renderLeftRail(){
   const mort=D.fred.find(f=>f.id==='MORTGAGE30US');
   const claims=D.fred.find(f=>f.id==='ICSA');
 
+  const layersHtml = layers.map(l => {
+    const category = safeCssToken(l.cat || l.dot);
+    const dot = safeCssToken(l.dot);
+    const items = (l.items || []).map((it, idx) => {
+      const lat = Number.isFinite(+it.lat) ? +it.lat : 0;
+      const lon = Number.isFinite(+it.lon) ? +it.lon : 0;
+      return `<div class="sub-item focusable" tabindex="0" role="button" data-cat="${category}" data-idx="${idx}" data-lat="${lat}" data-lon="${lon}"><div class="sub-item-name" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</div><div class="sub-item-meta">${escapeHtml(it.status)}</div></div>`;
+    }).join('');
+    return `<div class="layer-item focusable" tabindex="0" role="button" aria-expanded="false" data-category="${category}"><div class="layer-left"><div class="ldot ${dot}"></div><div><div class="layer-name">${escapeHtml(l.name)}</div><div class="layer-sub">${escapeHtml(l.sub)}</div></div></div><div class="layer-count">${escapeHtml(l.count)}</div><span class="layer-chevron">&#9656;</span></div><div class="layer-sub-items" data-category="${category}">${items}</div>`;
+  }).join('');
+
   document.getElementById('leftRail').innerHTML=`
     <div class="g-panel">
       <div class="sec-head clickable" id="sensorGridHeader"><h3>${t('panels.sensorGrid','Sensor Grid')}</h3><span class="badge">${t('badges.live','LIVE')}</span></div>
-      ${layers.map(l=>`<div class="layer-item focusable" tabindex="0" role="button" aria-expanded="false" data-category="${l.cat||l.dot}"><div class="layer-left"><div class="ldot ${l.dot}"></div><div><div class="layer-name">${l.name}</div><div class="layer-sub">${l.sub}</div></div></div><div class="layer-count">${l.count}</div><span class="layer-chevron">&#9656;</span></div><div class="layer-sub-items" data-category="${l.cat||l.dot}">${(l.items||[]).map((it,idx)=>`<div class="sub-item focusable" tabindex="0" role="button" data-cat="${l.cat||l.dot}" data-idx="${idx}" data-lat="${it.lat}" data-lon="${it.lon}"><div class="sub-item-name" title="${it.name}">${it.name}</div><div class="sub-item-meta">${it.status}</div></div>`).join('')}</div>`).join('')}
+      ${layersHtml}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
@@ -1170,7 +1191,7 @@ function initGlobe(){
     .pointAltitude(d => d.alt || 0.01)
     .pointRadius(d => d.size || 0.3)
     .pointColor(d => d.color)
-    .pointLabel(d => `<b>${d.popHead||''}</b><br><span style="opacity:0.7">${d.popMeta||''}</span>`)
+    .pointLabel(d => `<b>${escapeHtml(d.popHead||'')}</b><br><span style="opacity:0.7">${escapeHtml(d.popMeta||'')}</span>`)
     .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
     .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
     // Arcs layer (flight corridors)
@@ -1514,7 +1535,7 @@ function showPopup(event,head,text,meta,lat,lng,alt){
   if(top<0) top=10;
   popup.style.left=left+'px';popup.style.top=top+'px';
   popup.querySelector('.pp-head').textContent=head||'';
-  popup.querySelector('.pp-text').innerHTML=text||'';
+  setTextWithBreaks(popup.querySelector('.pp-text'), text||'');
   popup.querySelector('.pp-meta').textContent=meta||'';
   popup.classList.add('show');
 }
@@ -1867,11 +1888,25 @@ async function submitAskAI(event){
   renderLower();
 
   try{
-    const res = await fetch('/api/ask', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({question}),
-    });
+    const request = (token='') => fetch('/api/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type':'application/json',
+          ...(token ? {'Authorization':`Bearer ${token}`} : {}),
+        },
+        body: JSON.stringify({question}),
+      });
+    let storedToken = '';
+    try { storedToken = sessionStorage.getItem('crucix_api_token') || ''; } catch {}
+    let res = await request(storedToken);
+    if(res.status === 401){
+      const enteredToken = window.prompt('Crucix API token');
+      if(enteredToken){
+        storedToken = enteredToken.trim();
+        try { sessionStorage.setItem('crucix_api_token', storedToken); } catch {}
+        res = await request(storedToken);
+      }
+    }
     const data = await res.json().catch(() => ({}));
     if(!res.ok) throw new Error(data.error || `Ask AI returned ${res.status}`);
     askMessages.push({
@@ -2033,13 +2068,13 @@ function renderLower(){
   const hasIdeas = D.ideas && D.ideas.length > 0;
   const ideasHtml = hasIdeas ? (D.ideas||[]).map(idea=>`
     <div class="idea-card">
-      <span class="idea-type ${(idea.type||'').toLowerCase()}">${(idea.type||'').toUpperCase()}</span>
-      ${idea.ticker ? `<span class="idea-horizon">${idea.ticker}</span>` : ''}
-      ${idea.horizon ? `<span class="idea-horizon">${idea.horizon}</span>` : ''}
-      <span class="idea-conf">${idea.confidence} confidence</span>
-      <div class="idea-title">${idea.title}</div>
-      <div class="idea-text">${idea.text||idea.rationale||''}</div>
-      ${idea.risk ? `<div class="idea-text" style="color:var(--warn);margin-top:3px">Risk: ${idea.risk}</div>` : ''}
+      <span class="idea-type ${safeCssToken(idea.type)}">${escapeHtml((idea.type||'').toUpperCase())}</span>
+      ${idea.ticker ? `<span class="idea-horizon">${escapeHtml(idea.ticker)}</span>` : ''}
+      ${idea.horizon ? `<span class="idea-horizon">${escapeHtml(idea.horizon)}</span>` : ''}
+      <span class="idea-conf">${escapeHtml(idea.confidence)} confidence</span>
+      <div class="idea-title">${escapeHtml(idea.title)}</div>
+      <div class="idea-text">${escapeHtml(idea.text||idea.rationale||'')}</div>
+      ${idea.risk ? `<div class="idea-text" style="color:var(--warn);margin-top:3px">Risk: ${escapeHtml(idea.risk)}</div>` : ''}
     </div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px">
       <div style="font-size:24px;margin-bottom:8px;opacity:0.3">&#9888;</div>
       <div>LLM NOT CONFIGURED</div>
@@ -2077,7 +2112,7 @@ function renderLower(){
         <div style="font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:4px;letter-spacing:1px">ENERGY + MACRO</div>
         <div class="metrics-row">${metrics.map(m=>{
           const sparkSvg = m.spark ? mkSparkSvg(m.spark, m.sparkUp) : '';
-          return `<div class="mc"><div class="ml">${m.l}</div><span class="mv">${m.v}${sparkSvg}</span><span class="ms">${m.s}</span><div class="mbar"><span style="width:${m.p}%"></span></div></div>`;
+          return `<div class="mc"><div class="ml">${escapeHtml(m.l)}</div><span class="mv">${escapeHtml(m.v)}${sparkSvg}</span><span class="ms">${escapeHtml(m.s)}</span><div class="mbar"><span style="width:${Math.min(Math.max(Number(m.p)||0,0),100)}%"></span></div></div>`;
         }).join('')}</div>
       </div>
       <div style="margin-top:6px">
@@ -2130,6 +2165,7 @@ function renderRight(){
   // DELTA PANEL — what changed since last sweep
   const delta = D.delta || {};
   const ds = delta.summary || {};
+  const baselineReset = Boolean(delta.baselineReset || ds.baselineReset);
   const hasDelta = ds.totalChanges > 0;
   const dirEmoji = {'risk-off':'&#9650;','risk-on':'&#9660;','mixed':'&#9670;'}[ds.direction]||'&#9670;';
   const dirClass = {'risk-off':'up','risk-on':'down','mixed':''}[ds.direction]||'';
@@ -2139,30 +2175,33 @@ function renderRight(){
   const deltaRows = [];
   function deltaDetail(s,type){
     const parts=[];
-    if(s.source)parts.push(`Source: ${s.source}`);
-    if(s.key)parts.push(`Key: ${s.key}`);
-    if(s.timestamp)parts.push(`Time: ${new Date(s.timestamp).toLocaleString()}`);
-    if(s.severity)parts.push(`Severity: ${s.severity.toUpperCase()}`);
-    if(type==='new'&&s.reason)parts.push(`Reason: ${s.reason}`);
-    if(s.from!==undefined)parts.push(`From: ${s.from} → To: ${s.to}`);
-    if(s.pctChange!==undefined)parts.push(`Change: ${s.pctChange>0?'+':''}${s.pctChange}%`);
-    else if(s.change!==undefined)parts.push(`Change: ${s.change>0?'+':''}${s.change}`);
-    if(s.url)parts.push(`<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--accent2)">${s.url}</a>`);
+    if(s.source)parts.push(`Source: ${escapeHtml(s.source)}`);
+    if(s.key)parts.push(`Key: ${escapeHtml(s.key)}`);
+    if(s.timestamp)parts.push(`Time: ${escapeHtml(new Date(s.timestamp).toLocaleString())}`);
+    if(s.severity)parts.push(`Severity: ${escapeHtml(String(s.severity).toUpperCase())}`);
+    if(type==='new'&&s.reason)parts.push(`Reason: ${escapeHtml(s.reason)}`);
+    if(s.from!==undefined)parts.push(`From: ${escapeHtml(s.from)} → To: ${escapeHtml(s.to)}`);
+    if(s.pctChange!==undefined)parts.push(`Change: ${s.pctChange>0?'+':''}${escapeHtml(s.pctChange)}%`);
+    else if(s.change!==undefined)parts.push(`Change: ${s.change>0?'+':''}${escapeHtml(s.change)}`);
+    const url = safeExternalUrl(s.url);
+    if(url)parts.push(`<a href="${escapeAttr(url)}" target="_blank" rel="noopener" style="color:var(--accent2)">${escapeHtml(url)}</a>`);
     return `<div class="delta-detail" style="display:none;padding:4px 8px 6px 24px;font-size:9px;color:var(--dim);line-height:1.6;border-bottom:1px solid rgba(255,255,255,0.03)">${parts.join('<br>')}</div>`;
   }
   for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new delta-expandable"><span class="delta-badge new">NEW</span><span class="delta-label">${s.reason||s.label||s.key}</span></div>${deltaDetail(s,'new')}`);
+    deltaRows.push(`<div class="delta-row new delta-expandable"><span class="delta-badge new">NEW</span><span class="delta-label">${escapeHtml(s.reason||s.label||s.key)}</span></div>${deltaDetail(s,'new')}`);
   }
   for(const s of escalated){
     const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
     const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
-    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${s.label}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>${deltaDetail(s,'up')}`);
+    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${escapeHtml(s.label)}</span><span class="delta-val">${escapeHtml(s.from)}→${escapeHtml(s.to)} (${escapeHtml(val)})</span></div>${deltaDetail(s,'up')}`);
   }
   for(const s of deescalated){
     const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge down">&#9660;</span><span class="delta-label">${s.label||s.key}</span><span class="delta-val">${s.from}→${s.to} (${val})</span></div>${deltaDetail(s,'down')}`);
+    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge down">&#9660;</span><span class="delta-label">${escapeHtml(s.label||s.key)}</span><span class="delta-val">${escapeHtml(s.from)}→${escapeHtml(s.to)} (${escapeHtml(val)})</span></div>${deltaDetail(s,'down')}`);
   }
-  const deltaHtml = hasDelta ? deltaRows.join('') : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${t('delta.noChanges','No changes since last sweep')}</div>`;
+  const deltaHtml = hasDelta
+    ? deltaRows.join('')
+    : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset ? 'Baseline reset after stale gap' : t('delta.noChanges','No changes since last sweep')}</div>`;
   const rightMeta = {
     delta: `Latest sweep ${currentSweepAge()} · ${ds.totalChanges || 0} total changes`,
     osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
@@ -2254,7 +2293,7 @@ function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
     const isU=p.urgentFlags&&p.urgentFlags.length>0;
     const views=p.views?p.views>=1000?`${(p.views/1000).toFixed(0)}K`:p.views:'';
     const age=p.date?getAge(p.date):'';
-    const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg" style="margin-right:2px">${f}</span>`).join('');
+    const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg" style="margin-right:2px">${escapeHtml(f)}</span>`).join('');
     const srcCls=p.isWho?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
     return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${escapeHtml((p.channel||'OSINT').toUpperCase().substring(0,14))}</span>${views?`<span class="tk-src other">${escapeHtml(views)}</span>`:''}<span class="tk-time">${escapeHtml(age)}</span>${flags}<div class="tk-head">${escapeHtml(cleanText((p.text||'').substring(0,160)))}</div></div>`;
   }).join('') : `<div class="empty-state">No OSINT or WHO items are available yet.</div>`;
@@ -2434,8 +2473,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const hasInlineData = !!(D && D.meta);
   const canProbeApi = location.protocol !== 'file:';
 
-  if (canProbeApi && !hasInlineData) {
-    // Server mode: always fetch live data from API (ignore any stale inline D)
+  if (canProbeApi) {
+    // Server mode: always fetch live data from API, even if static injection left inline data behind.
     fetch('/api/data')
       .then(r => {
         if(!r.ok) throw new Error(`API returned ${r.status}`);
@@ -2501,7 +2540,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusColor = nukeData?.anom ? 'var(--danger)' : 'var(--accent)';
         popup.innerHTML = `
           <div style="padding:12px;background:var(--panel);border:1px solid var(--border-bright);font-family:var(--mono);font-size:11px;max-width:280px">
-            <div style="color:var(--accent);font-weight:600;margin-bottom:6px">${site}</div>
+            <div style="color:var(--accent);font-weight:600;margin-bottom:6px">${escapeHtml(site)}</div>
             <div style="margin-bottom:4px">CPM: <span style="color:var(--accent)">${cpmVal}</span></div>
             <div style="margin-bottom:4px">Status: <span style="color:${statusColor}">${status}</span></div>
             <div style="margin-bottom:4px">Readings: ${nukeData?.n || 0}</div>
