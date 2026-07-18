@@ -15,10 +15,26 @@ describe('dashboard ticker expansion', () => {
   });
 
   it('supports click, keyboard expand, and escape collapse behavior', () => {
-    assert.match(html, /data-ticker-id/);
+    assert.match(html, /let expandedTickerKey = null/);
+    assert.match(html, /data-ticker-key/);
+    assert.match(html, /function toggleTickerDetails/);
     assert.match(html, /e\.key === 'Enter' \|\| e\.key === ' '/);
-    assert.match(html, /e\.key === 'Escape' && expandedTickerId/);
-    assert.match(html, /expandedTickerId = expandedTickerId === card\.dataset\.tickerId \? null : card\.dataset\.tickerId/);
+    assert.match(html, /e\.key === 'Escape' && expandedTickerKey/);
+    assert.match(html, /expandedTickerKey = expandedTickerKey === key \? null : key/);
+  });
+
+  it('pauses, widens, and restores the selected ticker item', () => {
+    assert.match(html, /\.lower \.lp-ticker\.ticker-expanded/);
+    assert.match(html, /\.ticker-wrap\.has-expanded \.ticker-track\{animation:none/);
+    assert.match(html, /function restoreTickerCard/);
+    assert.match(html, /scrollIntoView\(\{block:'nearest', inline:'nearest'\}\)/);
+  });
+
+  it('shows publisher, audience, and signal context in expanded details', () => {
+    assert.match(html, /tk-detail-label">Publisher/);
+    assert.match(html, /tk-detail-label">Views/);
+    assert.match(html, /tk-detail-label">Signals/);
+    assert.match(html, /tk-detail-label">Signal score/);
   });
 
   it('supports live and pinned ticker modes', () => {

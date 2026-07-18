@@ -212,6 +212,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .lower{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:flex-start}
 .lower .g-panel{min-width:0;box-sizing:border-box}
 .lower .lp-ticker{flex:1 1 240px;max-width:340px}
+.lower .lp-ticker.ticker-expanded{flex:2.8 1 520px;max-width:720px}
 .right-delta .delta-list{max-height:200px}
 .lower .lp-macro{flex:1.7 1 360px}
 .lower .lp-ideas{flex:2.2 1 360px}
@@ -510,7 +511,7 @@ let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let primaryView = localStorage.getItem('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
 let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
-let expandedTickerId = null;
+let expandedTickerKey = null;
 let tickerMode = localStorage.getItem('crucix_ticker_mode') === 'pinned' ? 'pinned' : 'live';
 let pinnedTickerItems = loadPinnedTickerItems();
 let askMessages = [];
@@ -811,7 +812,7 @@ function savePinnedTickerItems(){
 function setTickerMode(mode){
   tickerMode = mode === 'pinned' ? 'pinned' : 'live';
   localStorage.setItem('crucix_ticker_mode', tickerMode);
-  expandedTickerId = null;
+  expandedTickerKey = null;
   renderLower();
 }
 
@@ -1796,10 +1797,6 @@ function tickerItemKey(item){
   return `tk-${(hash >>> 0).toString(36)}`;
 }
 
-function tickerItemId(item, index){
-  return `ticker-${index}-${tickerItemKey(item)}`;
-}
-
 function tickerPinnedKeys(){
   return new Set(pinnedTickerItems.map(entry => entry.key));
 }
@@ -1815,7 +1812,7 @@ function toggleTickerPin(key){
   savePinnedTickerItems();
   if(tickerMode === 'pinned' && !pinnedTickerItems.length) tickerMode = 'live';
   localStorage.setItem('crucix_ticker_mode', tickerMode);
-  expandedTickerId = null;
+  expandedTickerKey = null;
   renderLower();
 }
 
@@ -1829,21 +1826,42 @@ function tickerSeverity(item){
   return item?.severity || item?.confidence || item?.status || (item?.urgent ? 'urgent' : '');
 }
 
-function buildTickerCard(item, index, srcClass){
-  const id = tickerItemId(item, index);
+function restoreTickerCard(key, focus=false){
+  if(!key) return;
+  requestAnimationFrame(() => {
+    const card = [...document.querySelectorAll('.lp-ticker .tk-card[data-ticker-key]')]
+      .find(element => element.dataset.tickerKey === key);
+    if(!card) return;
+    card.scrollIntoView({block:'nearest', inline:'nearest'});
+    if(focus) card.focus({preventScroll:true});
+  });
+}
+
+function toggleTickerDetails(key, focus=false){
+  if(!key) return;
+  expandedTickerKey = expandedTickerKey === key ? null : key;
+  renderLower();
+  restoreTickerCard(key, focus);
+}
+
+function buildTickerCard(item, srcClass){
   const key = tickerItemKey(item);
-  const isOpen = expandedTickerId === id;
+  const isOpen = expandedTickerKey === key;
   const isPinned = tickerPinnedKeys().has(key);
   const source = item?.source || item?.channel || item?.type || 'NEWS';
   const sc = srcClass(source);
   const headline = cleanText(item?.headline || item?.title || item?.text || 'Untitled feed item');
   const summary = cleanText(item?.summary || item?.description || item?.text || headline);
+  const publisher = cleanText(item?.publisher || item?.channel || '');
+  const views = Number(item?.views);
+  const signals = asArray(item?.urgentFlags).map(cleanText).filter(Boolean);
+  const score = Number(item?.score);
   const age = item?.timestamp || item?.date ? getAge(item.timestamp || item.date) : 'unknown';
   const type = item?.type || (item?.channel ? 'telegram' : 'news');
   const severity = tickerSeverity(item);
   const safeUrl = safeExternalUrl(item?.url);
   const raw = JSON.stringify(item || {}, null, 2);
-  return `<div class="tk-card ${item?.urgent?'urgent':''}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}" data-ticker-id="${escapeAttr(id)}" data-ticker-key="${escapeAttr(key)}">
+  return `<div class="tk-card ${item?.urgent?'urgent':''}" tabindex="0" role="button" aria-expanded="${isOpen?'true':'false'}" data-ticker-key="${escapeAttr(key)}">
       <div class="tk-line">
         <span class="tk-src ${sc}">${escapeHtml(String(source).substring(0,12) || 'NEWS')}</span>
         <span class="tk-src other">${escapeHtml(String(type).toUpperCase().substring(0,12))}</span>
@@ -1858,9 +1876,13 @@ function buildTickerCard(item, index, srcClass){
           <div class="tk-detail-label">Source</div><div>${escapeHtml(source)}</div>
           <div class="tk-detail-label">Type</div><div>${escapeHtml(type)}</div>
           <div class="tk-detail-label">Time</div><div>${escapeHtml(formatTickerDate(item))}</div>
+          ${publisher ? `<div class="tk-detail-label">Publisher</div><div>${escapeHtml(publisher)}</div>` : ''}
+          ${Number.isFinite(views) ? `<div class="tk-detail-label">Views</div><div>${escapeHtml(views.toLocaleString())}</div>` : ''}
           ${severity ? `<div class="tk-detail-label">Status</div><div>${escapeHtml(severity)}</div>` : ''}
           ${item?.region ? `<div class="tk-detail-label">Region</div><div>${escapeHtml(item.region)}</div>` : ''}
           ${item?.confidence ? `<div class="tk-detail-label">Confidence</div><div>${escapeHtml(item.confidence)}</div>` : ''}
+          ${signals.length ? `<div class="tk-detail-label">Signals</div><div>${escapeHtml(signals.join(', '))}</div>` : ''}
+          ${Number.isFinite(score) ? `<div class="tk-detail-label">Signal score</div><div>${escapeHtml(score)}</div>` : ''}
         </div>
         <div class="tk-summary">${escapeHtml(summary || 'No summary available for this item.')}</div>
         <div class="tk-actions">
@@ -2059,9 +2081,9 @@ function renderLower(){
     if (sl.includes('nyt') || sl.includes('times')) return 'nyt';
     return 'other';
   };
-  if(expandedTickerId && !feed.some((item, index) => tickerItemId(item, index) === expandedTickerId)) expandedTickerId = null;
+  if(expandedTickerKey && !feed.some(item => tickerItemKey(item) === expandedTickerKey)) expandedTickerKey = null;
   const tickerCards = feed.length
-    ? feed.map((n, index) => buildTickerCard(n, index, srcClass)).join('')
+    ? feed.map(n => buildTickerCard(n, srcClass)).join('')
     : `<div class="empty-state">${tickerMode === 'pinned' ? 'No pinned ticker items yet. Open Live and pin items you want to keep.' : 'No ticker items are available yet. Check source status, network access, or wait for the first sweep to complete.'}</div>`;
   const tickerDuration = Math.max(20, feed.length * 2.5);
 
@@ -2092,10 +2114,10 @@ function renderLower(){
         <div class="sec-actions">${beforeActions}${pinKey ? `<button class="pin-btn focusable ${pinnedLowerPanel===pinKey?'active':''}" onclick="setPinnedPanel('${pinKey}')">${pinnedLowerPanel===pinKey?'Panel pinned':'Pin panel'}</button>` : ''}${badge}</div>
       </div>`;
 
-  const tickerPanel = `<div class="g-panel lp-ticker ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
+  const tickerPanel = `<div class="g-panel lp-ticker ${expandedTickerKey?'ticker-expanded':''} ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
       ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker', tickerTabs)}
-      <div class="ticker-wrap ${expandedTickerId?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerId) ? '' : tickerCards}</div>
+      <div class="ticker-wrap ${expandedTickerKey?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
+        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerKey) ? '' : tickerCards}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel(`lp-osint ${pinnedLowerPanel==='osint'?'lp-pinned':''}`, 240, panelMeta.osint, true) : '';
@@ -2442,26 +2464,23 @@ function init(){
   });
   // Expand/collapse ticker cards. External links live inside the expanded details.
   document.addEventListener('click',e=>{
-    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-id]');
+    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-key]');
     if(card){
-      expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
-      renderLower();
+      toggleTickerDetails(card.dataset.tickerKey);
     }
   });
   document.addEventListener('keydown',e=>{
-    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-id]');
+    const card=closestTarget(e, '.lp-ticker .tk-card[data-ticker-key]');
     if(card && (e.key === 'Enter' || e.key === ' ')){
       e.preventDefault();
-      expandedTickerId = expandedTickerId === card.dataset.tickerId ? null : card.dataset.tickerId;
-      renderLower();
-      const targetId = expandedTickerId || card.dataset.tickerId;
-      const restored = [...document.querySelectorAll('.lp-ticker .tk-card[data-ticker-id]')].find(el => el.dataset.tickerId === targetId);
-      if(restored) restored.focus();
+      toggleTickerDetails(card.dataset.tickerKey, true);
       return;
     }
-    if(e.key === 'Escape' && expandedTickerId){
-      expandedTickerId = null;
+    if(e.key === 'Escape' && expandedTickerKey){
+      const key = expandedTickerKey;
+      expandedTickerKey = null;
       renderLower();
+      restoreTickerCard(key, true);
       return;
     }
     if(e.key === 'Escape') closeGlossary();

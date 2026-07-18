@@ -103,6 +103,33 @@ function sanitizeExternalUrl(raw) {
   }
 }
 
+function decodeFeedText(raw = '') {
+  return String(raw)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;|&#0*39;|&#x0*27;/gi, "'")
+    .replace(/&#(\d+);/g, (_, value) => String.fromCodePoint(Number(value)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, value) => String.fromCodePoint(parseInt(value, 16)))
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+    .trim();
+}
+
+function telegramPostUrl(post = {}) {
+  const explicit = sanitizeExternalUrl(post.url);
+  if (explicit) return explicit;
+
+  let postId = String(post.postId || '').replace(/^@/, '');
+  if (/^\d+$/.test(postId) && post.channel) postId = `${post.channel}/${postId}`;
+  return /^[a-z0-9_]+\/\d+$/i.test(postId) ? `https://t.me/${postId}` : undefined;
+}
+
 function sumAirHotspots(hotspots = []) {
   return hotspots.reduce((sum, hotspot) => sum + (hotspot.totalAircraft || 0), 0);
 }
@@ -157,11 +184,30 @@ async function fetchRSS(url, source) {
     let match;
     while ((match = itemRegex.exec(xml)) !== null) {
       const block = match[1];
-      const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/)?.[1] || '').trim();
+      const title = decodeFeedText(block.match(/<title(?:\s[^>]*)?>([\s\S]*?)<\/title>/i)?.[1] || '');
       const link = sanitizeExternalUrl((block.match(/<link>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/link>/)?.[1] || '').trim());
       const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]
         || block.match(/<dc:date>(.*?)<\/dc:date>/)?.[1] || '';
-      if (title && title !== source) items.push({ title, date: pubDate, source, url: link || undefined });
+      const summary = decodeFeedText(
+        block.match(/<description(?:\s[^>]*)?>([\s\S]*?)<\/description>/i)?.[1]
+        || block.match(/<content:encoded(?:\s[^>]*)?>([\s\S]*?)<\/content:encoded>/i)?.[1]
+        || ''
+      );
+      const publisher = decodeFeedText(
+        block.match(/<dc:creator(?:\s[^>]*)?>([\s\S]*?)<\/dc:creator>/i)?.[1]
+        || block.match(/<author(?:\s[^>]*)?>([\s\S]*?)<\/author>/i)?.[1]
+        || source
+      );
+      if (title && title !== source) {
+        items.push({
+          title,
+          summary: summary || undefined,
+          publisher: publisher || source,
+          date: pubDate,
+          source,
+          url: link || undefined
+        });
+      }
     }
     return items;
   } catch (e) {
@@ -228,6 +274,8 @@ export async function fetchAllNews() {
       geoNews.push({
         title: item.title.substring(0, 100),
         source: item.source,
+        summary: item.summary,
+        publisher: item.publisher || item.source,
         date: item.date,
         url: item.url,
         lat: geo.lat + (Math.random() - 0.5) * 2,
@@ -430,10 +478,12 @@ export async function synthesize(data) {
   }));
   const tgData = data.sources.Telegram || {};
   const tgUrgent = (tgData.urgentPosts || []).filter(p => isEnglish(p.text)).map(p => ({
-    channel: p.channel, text: p.text?.substring(0, 200), views: p.views, date: p.date, urgentFlags: p.urgentFlags || []
+    channel: p.channel, postId: p.postId, text: p.text, views: p.views, date: p.date,
+    urgentFlags: p.urgentFlags || [], score: p.score, hasMedia: Boolean(p.hasMedia), url: p.url
   }));
   const tgTop = (tgData.topPosts || []).filter(p => isEnglish(p.text)).map(p => ({
-    channel: p.channel, text: p.text?.substring(0, 200), views: p.views, date: p.date, urgentFlags: []
+    channel: p.channel, postId: p.postId, text: p.text, views: p.views, date: p.date,
+    urgentFlags: p.urgentFlags || [], score: p.score, hasMedia: Boolean(p.hasMedia), url: p.url
   }));
   const who = (data.sources.WHO?.diseaseOutbreakNews || []).slice(0, 10).map(w => ({
     title: w.title?.substring(0, 120), date: w.date, summary: w.summary?.substring(0, 150)
@@ -632,14 +682,16 @@ export function serializeForInlineScript(value) {
 }
 
 // === Unified News Feed for Ticker ===
-function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
+export function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
   const feed = [];
 
   // RSS news
   for (const n of rssNews) {
     feed.push({
       headline: n.title, source: n.source, type: 'rss',
-      timestamp: n.date, region: n.region, urgent: false, url: n.url
+      summary: n.summary || n.description,
+      publisher: n.publisher || n.source,
+      timestamp: n.date, region: n.region, urgent: false, url: sanitizeExternalUrl(n.url)
     });
   }
 
@@ -649,7 +701,10 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
       const geo = geoTagText(a.title);
       feed.push({
         headline: a.title.substring(0, 100), source: 'GDELT', type: 'gdelt',
-        timestamp: new Date().toISOString(), region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
+        summary: a.summary || a.description,
+        publisher: a.domain || a.publisher || a.source || 'GDELT',
+        timestamp: a.date || a.timestamp || new Date().toISOString(),
+        region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
       });
     }
   }
@@ -659,7 +714,10 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
     const text = (p.text || '').replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
     feed.push({
       headline: text.substring(0, 100), source: p.channel?.toUpperCase() || 'TELEGRAM',
-      type: 'telegram', timestamp: p.date, region: 'OSINT', urgent: true
+      summary: text, publisher: p.channel || 'Telegram', type: 'telegram',
+      timestamp: p.date, region: 'OSINT', urgent: true, url: telegramPostUrl(p),
+      views: p.views, urgentFlags: p.urgentFlags || [], score: p.score,
+      postId: p.postId, hasMedia: Boolean(p.hasMedia)
     });
   }
 
@@ -668,7 +726,10 @@ function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
     const text = (p.text || '').replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
     feed.push({
       headline: text.substring(0, 100), source: p.channel?.toUpperCase() || 'TELEGRAM',
-      type: 'telegram', timestamp: p.date, region: 'OSINT', urgent: false
+      summary: text, publisher: p.channel || 'Telegram', type: 'telegram',
+      timestamp: p.date, region: 'OSINT', urgent: false, url: telegramPostUrl(p),
+      views: p.views, urgentFlags: p.urgentFlags || [], score: p.score,
+      postId: p.postId, hasMedia: Boolean(p.hasMedia)
     });
   }
 
