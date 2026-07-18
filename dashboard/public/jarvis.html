@@ -66,7 +66,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .fullscreen-btn.warn{border-color:rgba(255,184,76,0.38);color:var(--warn);background:rgba(255,184,76,0.08)}
 .perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
 .perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
-.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.fullscreen-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
+.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.fullscreen-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible,.right-interactive:focus-visible,.right-map-btn:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* HERO */
 .hero-strip{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -228,9 +228,31 @@ body.view-map #lowerGrid{margin-top:10px}
 .mc .mbar span{display:block;height:100%;border-radius:1px;background:linear-gradient(90deg,rgba(68,204,255,0.4),var(--accent))}
 .spark{display:flex;align-items:flex-end;gap:2px;height:24px;margin-top:6px}
 .spark-bar{width:6px;background:linear-gradient(to top,rgba(100,240,200,0.3),var(--accent));border-radius:1px 1px 0 0;transition:height 0.3s}
-.signal-row{padding:8px 10px;border-left:2px solid rgba(100,240,200,0.2);margin-bottom:4px;background:rgba(255,255,255,0.02)}
+.signal-row{padding:8px 28px 8px 10px;border-left:2px solid rgba(100,240,200,0.2);background:rgba(255,255,255,0.02)}
 .signal-row strong{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:2px}
 .signal-row p{font-size:11px;line-height:1.35;color:#c8d8d2}
+.right-accordion-item{margin-bottom:4px}
+.right-interactive{position:relative;cursor:pointer;transition:border-color 0.2s,background 0.2s,box-shadow 0.2s}
+.right-interactive:hover{border-color:rgba(100,240,200,0.32)!important;background:rgba(100,240,200,0.055)!important;box-shadow:inset 0 0 0 1px rgba(100,240,200,0.05)}
+.right-interactive[aria-expanded="true"]{border-color:rgba(100,240,200,0.38)!important;background:rgba(100,240,200,0.07)!important}
+.right-chevron{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:12px;color:var(--dim);transition:transform 0.2s,color 0.2s}
+.right-interactive[aria-expanded="true"]>.right-chevron{transform:translateY(-50%) rotate(90deg);color:var(--accent)}
+.right-item-detail{display:none;padding:10px;border:1px solid rgba(100,240,200,0.12);border-top:0;background:rgba(2,8,12,0.58);color:#b9ccc5;font-size:10px;line-height:1.55}
+.right-interactive[aria-expanded="true"]+.right-item-detail,.right-interactive[aria-expanded="true"] .right-item-detail{display:block}
+.right-detail-kicker{font-family:var(--mono);font-size:8px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent2);margin-bottom:4px}
+.right-detail-copy{overflow-wrap:anywhere}
+.right-detail-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,0.05);font-family:var(--mono);font-size:9px}
+.right-detail-grid dt{color:var(--dim);text-transform:uppercase;letter-spacing:0.05em}
+.right-detail-grid dd{color:#d7e5e0;min-width:0;overflow-wrap:anywhere}
+.right-detail-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px}
+.right-map-btn,.right-source-link{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(68,204,255,0.28);background:rgba(68,204,255,0.07);color:var(--accent2);font-family:var(--mono);font-size:9px;letter-spacing:0.07em;text-transform:uppercase;padding:5px 8px;cursor:pointer;text-decoration:none;transition:all 0.2s}
+.right-map-btn:hover,.right-source-link:hover{border-color:rgba(68,204,255,0.55);background:rgba(68,204,255,0.13);color:#d9f7ff}
+.right-panel-hint{font-family:var(--mono);font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:rgba(106,138,130,0.9);margin:-3px 0 8px}
+.right-context-tag{display:inline-block;margin-left:6px;padding:1px 5px;border:1px solid rgba(68,204,255,0.18);color:var(--accent2);font-family:var(--mono);font-size:8px;letter-spacing:0.06em;text-transform:uppercase}
+.right-map-feedback{position:absolute;z-index:21;left:50%;bottom:46px;transform:translateX(-50%);padding:6px 9px;border:1px solid rgba(100,240,200,0.3);background:rgba(3,12,15,0.92);color:var(--accent);font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;pointer-events:none;opacity:0;transition:opacity 0.2s}
+.right-map-feedback.show{opacity:1}
+.right-focus-ring{fill:rgba(100,240,200,0.08);stroke:var(--accent);stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none;animation:right-focus-pulse 1.4s ease-in-out infinite}
+@keyframes right-focus-pulse{0%,100%{opacity:0.45}50%{opacity:1}}
 .src-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 .src-item{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid rgba(255,255,255,0.04);font-size:11px}
 .sd{width:5px;height:5px;border-radius:50%}
@@ -248,7 +270,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .ic .ic-t{font-size:11px;line-height:1.4;color:#c8d8d2}
 .ic .ic-m{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:4px;display:flex;gap:6px}
 .ic .ic-fl{color:var(--accent2)}
-.sm{display:flex;align-items:center;justify-content:space-between;padding:8px;border:1px solid rgba(255,255,255,0.04);margin-bottom:4px}
+.sm{display:flex;align-items:center;justify-content:space-between;padding:8px 28px 8px 8px;border:1px solid rgba(255,255,255,0.04)}
 .sm .sml{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.05em}
 .sm .smb{flex:1;height:4px;margin:0 10px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
 .sm .smb span{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,rgba(68,204,255,0.3),var(--accent))}
@@ -347,14 +369,16 @@ body.view-map #lowerGrid{margin-top:10px}
 .delta-badge.up{color:#81c784;border:1px solid rgba(129,199,132,0.3);background:rgba(129,199,132,0.08)}
 .delta-badge.down{color:#ef5350;border:1px solid rgba(239,83,80,0.3);background:rgba(239,83,80,0.08)}
 .delta-badge.new{color:#4dd0e1;border:1px solid rgba(77,208,225,0.3);background:rgba(77,208,225,0.08);animation:pulse-new 2s ease infinite}
-.delta-list{max-height:160px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.2) transparent}
-.delta-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-family:var(--mono);font-size:10px;border-bottom:1px solid rgba(255,255,255,0.04)}
+.delta-list{max-height:160px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(0,229,255,0.2) transparent;transition:max-height 0.2s}
+.delta-list.has-expanded{max-height:360px}
+.delta-row{display:flex;align-items:center;gap:6px;padding:5px 22px 5px 0;font-family:var(--mono);font-size:10px;border-bottom:1px solid rgba(255,255,255,0.04)}
 .delta-row.delta-expandable{cursor:pointer;transition:border-color 0.2s,box-shadow 0.2s}
 .delta-row.delta-expandable:hover{border-color:rgba(100,240,200,0.2);box-shadow:0 0 6px rgba(100,240,200,0.1)}
 .delta-row.delta-expanded{border-color:rgba(100,240,200,0.3);background:rgba(100,240,200,0.04)}
 .delta-row.new{background:rgba(77,208,225,0.04)}
 .delta-label{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .delta-val{color:var(--dim);font-size:9px;white-space:nowrap}
+.delta-row .right-chevron{right:4px}
 @keyframes pulse-new{0%,100%{opacity:0.7}50%{opacity:1}}
 
 /* IDEAS SOURCE BADGE */
@@ -463,6 +487,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
           </div>
           <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()" aria-label="Toggle flat and globe map mode">GLOBE MODE</button>
           <div class="map-popup" id="mapPopup"><button class="pp-close" onclick="closePopup()">&times;</button><div class="pp-head"></div><div class="pp-text"></div><div class="pp-meta"></div></div>
+          <div class="right-map-feedback" id="rightMapFeedback">Map focused</div>
         </div>
         <div class="g-panel overview-note" id="overviewNote"></div>
       </div>
@@ -2171,64 +2196,331 @@ function renderLower(){
 }
 
 // === RIGHT RAIL ===
-function renderRight(){
-  const mobile = isMobileLayout();
-  const signals=D.tSignals.length
-    ? D.tSignals.slice(0,6).map((s,i)=>`<div class="signal-row"><strong>Signal ${i+1}</strong><p>${escapeHtml(s)}</p></div>`).join('')
-    : `<div class="empty-state">No cross-source signals were produced in the latest sweep.</div>`;
-  const signalMetrics=[
-    {l:'Incident Tempo',v:D.tg.urgent.length,p:70},
-    {l:'Air Theaters',v:D.air.length,p:60},
-    {l:'Thermal Spikes',v:D.thermal.reduce((s,t)=>s+t.hc,0),p:80},
-    {l:'SDR Nodes',v:D.sdr.total,p:92},
-    {l:'Chokepoints',v:D.chokepoints.length,p:50},
-    {l:'WHO Alerts',v:D.who.length,p:40}
-  ];
+const rightMapRefs = {
+  air: [
+    {lat:30,lng:44},{lat:24,lng:120},{lat:49,lng:32},{lat:57,lng:24},{lat:14,lng:114},
+    {lat:37,lng:127},{lat:25,lng:-80},{lat:4,lng:2},{lat:-34,lng:18},{lat:10,lng:51}
+  ],
+  nuke: [
+    {lat:47.5,lng:34.6},{lat:51.4,lng:30.1},{lat:28.8,lng:50.9},
+    {lat:39.8,lng:125.8},{lat:37.4,lng:141},{lat:31,lng:35.1}
+  ],
+  who: [
+    {lat:0.3,lng:32.6},{lat:-6.2,lng:106.8},{lat:-4.3,lng:15.3},{lat:35,lng:105},
+    {lat:12.5,lng:105},{lat:35,lng:105},{lat:28,lng:84},{lat:24,lng:45},{lat:30,lng:70},{lat:-0.8,lng:11.6}
+  ],
+  osint: [
+    {lat:45,lng:41},{lat:48,lng:37},{lat:48.5,lng:37.5},
+    {lat:45,lng:40.2},null,{lat:50.6,lng:36.6},{lat:48.5,lng:35}
+  ]
+};
 
-  // DELTA PANEL — what changed since last sweep
-  const delta = D.delta || {};
-  const ds = delta.summary || {};
-  const baselineReset = Boolean(delta.baselineReset || ds.baselineReset);
-  const hasDelta = ds.totalChanges > 0;
-  const dirEmoji = {'risk-off':'&#9650;','risk-on':'&#9660;','mixed':'&#9670;'}[ds.direction]||'&#9670;';
-  const dirClass = {'risk-off':'up','risk-on':'down','mixed':''}[ds.direction]||'';
-  const escalated = (delta.signals?.escalated || []).slice(0,6);
-  const deescalated = (delta.signals?.deescalated || []).slice(0,4);
-  const newSigs = (delta.signals?.new || []).slice(0,4);
-  const deltaRows = [];
-  function deltaDetail(s,type){
-    const parts=[];
-    if(s.source)parts.push(`Source: ${escapeHtml(s.source)}`);
-    if(s.key)parts.push(`Key: ${escapeHtml(s.key)}`);
-    if(s.timestamp)parts.push(`Time: ${escapeHtml(new Date(s.timestamp).toLocaleString())}`);
-    if(s.severity)parts.push(`Severity: ${escapeHtml(String(s.severity).toUpperCase())}`);
-    if(type==='new'&&s.reason)parts.push(`Reason: ${escapeHtml(s.reason)}`);
-    if(s.from!==undefined)parts.push(`From: ${escapeHtml(s.from)} → To: ${escapeHtml(s.to)}`);
-    if(s.pctChange!==undefined)parts.push(`Change: ${s.pctChange>0?'+':''}${escapeHtml(s.pctChange)}%`);
-    else if(s.change!==undefined)parts.push(`Change: ${s.change>0?'+':''}${escapeHtml(s.change)}`);
-    const url = safeExternalUrl(s.url);
-    if(url)parts.push(`<a href="${escapeAttr(url)}" target="_blank" rel="noopener" style="color:var(--accent2)">${escapeHtml(url)}</a>`);
-    return `<div class="delta-detail" style="display:none;padding:4px 8px 6px 24px;font-size:9px;color:var(--dim);line-height:1.6;border-bottom:1px solid rgba(255,255,255,0.03)">${parts.join('<br>')}</div>`;
+function normalizeMapTarget(target){
+  if(!target) return null;
+  const lat = Number(target.lat);
+  const lng = Number(target.lng ?? target.lon);
+  if(!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) return null;
+  return {
+    lat,
+    lng,
+    altitude:Number.isFinite(+target.altitude) ? +target.altitude : 0.65,
+    head:cleanText(target.head || target.label || target.name || 'Signal location'),
+    text:cleanText(target.text || target.detail || ''),
+    meta:cleanText(target.meta || target.category || 'Crucix map')
+  };
+}
+
+function getCategoryMapTarget(category){
+  if(category==='air' && D.air.length){
+    let idx=0;
+    D.air.forEach((item,i)=>{if((Number(item.total)||0)>(Number(D.air[idx]?.total)||0))idx=i;});
+    const c=rightMapRefs.air[idx];
+    return c && normalizeMapTarget({...c,head:D.air[idx].region,text:`${D.air[idx].total || 0} aircraft · ${D.air[idx].noCallsign || 0} without callsigns`,meta:'Air activity'});
   }
-  for(const s of newSigs){
-    deltaRows.push(`<div class="delta-row new delta-expandable"><span class="delta-badge new">NEW</span><span class="delta-label">${escapeHtml(s.reason||s.label||s.key)}</span></div>${deltaDetail(s,'new')}`);
+  if(category==='thermal' && D.thermal.length){
+    const hottest=[...D.thermal].sort((a,b)=>(Number(b.hc)||Number(b.det)||0)-(Number(a.hc)||Number(a.det)||0))[0];
+    const fire=asArray(hottest?.fires).sort((a,b)=>(Number(b.frp)||0)-(Number(a.frp)||0))[0];
+    return fire && normalizeMapTarget({lat:fire.lat,lng:fire.lon,head:hottest.region || 'Thermal spike',text:`FRP ${Number(fire.frp||0).toFixed(1)} MW · ${Number(hottest.det||0).toLocaleString()} regional detections`,meta:'FIRMS satellite'});
   }
-  for(const s of escalated){
-    const sev = s.severity==='critical'?'style="color:var(--warn);font-weight:600"':s.severity==='high'?'style="color:#ffab40"':'';
-    const val = s.pctChange!==undefined?`${s.pctChange>0?'+':''}${s.pctChange}%`:`${s.change>0?'+':''}${s.change}`;
-    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${escapeHtml(s.label)}</span><span class="delta-val">${escapeHtml(s.from)}→${escapeHtml(s.to)} (${escapeHtml(val)})</span></div>${deltaDetail(s,'up')}`);
+  if(category==='sdr'){
+    const zone=D.sdr.zones.find(z=>asArray(z.receivers).length);
+    const receiver=zone?.receivers?.[0];
+    return receiver && normalizeMapTarget({lat:receiver.lat,lng:receiver.lon,head:receiver.name || 'SDR receiver',text:`${zone.region} · ${zone.count || zone.receivers.length} receivers in zone`,meta:'KiwiSDR network'});
   }
-  for(const s of deescalated){
-    const val = s.pctChange!==undefined?`${s.pctChange}%`:`${s.change}`;
-    deltaRows.push(`<div class="delta-row delta-expandable"><span class="delta-badge down">&#9660;</span><span class="delta-label">${escapeHtml(s.label||s.key)}</span><span class="delta-val">${escapeHtml(s.from)}→${escapeHtml(s.to)} (${escapeHtml(val)})</span></div>${deltaDetail(s,'down')}`);
+  if(category==='maritime' && D.chokepoints.length){
+    const cp=D.chokepoints[0];
+    return normalizeMapTarget({lat:cp.lat,lng:cp.lon,head:cp.label,text:cp.note,meta:'Maritime chokepoint'});
   }
-  const deltaHtml = hasDelta
-    ? deltaRows.join('')
-    : `<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset ? 'Baseline reset after stale gap' : t('delta.noChanges','No changes since last sweep')}</div>`;
-  const rightMeta = {
-    delta: `Latest sweep ${currentSweepAge()} · ${ds.totalChanges || 0} total changes`,
-    osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
-    core: `Cross-domain stress gauges · ${currentSweepAge()}`
+  if(category==='nuke' && D.nuke.length){
+    const idx=Math.max(0,D.nuke.findIndex(n=>n.anom));
+    const site=D.nuke[idx];
+    const c=rightMapRefs.nuke[idx];
+    return c && normalizeMapTarget({...c,head:site.site,text:`${site.anom?'Anomaly':'Normal'} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:'Radiation monitoring'});
+  }
+  if(category==='osint' && D.tg.urgent.length){
+    const post=D.tg.urgent[0];
+    const c=rightMapRefs.osint[0];
+    return normalizeMapTarget({...c,head:(post.channel||'OSINT').toUpperCase(),text:post.text,meta:`${post.views?.toLocaleString()||'?'} views`});
+  }
+  if(category==='health' && D.who.length){
+    const alert=D.who[0];
+    const c=rightMapRefs.who[0];
+    return normalizeMapTarget({...c,head:alert.title,text:alert.summary,meta:'WHO alert'});
+  }
+  if(category==='news'){
+    const item=(D.news||[]).find(n=>Number.isFinite(+n.lat)&&Number.isFinite(+(n.lon??n.lng)));
+    return item && normalizeMapTarget({lat:item.lat,lng:item.lon??item.lng,head:item.title,text:item.summary,meta:item.source||'World news'});
+  }
+  if(category==='conflict'){
+    const event=(D.acled?.deadliestEvents||[]).find(e=>Number.isFinite(+e.lat)&&Number.isFinite(+(e.lon??e.lng)));
+    return event && normalizeMapTarget({lat:event.lat,lng:event.lon??event.lng,head:event.type||'Conflict event',text:`${event.location||''}, ${event.country||''} · ${event.fatalities||0} fatalities`,meta:'ACLED'});
+  }
+  if(category==='space'){
+    const station=(D.space?.stationPositions||[])[0];
+    return station && normalizeMapTarget({lat:station.lat,lng:station.lon??station.lng,head:station.name,text:'Approximate orbital position',meta:'Space watch'});
+  }
+  return null;
+}
+
+function findTextMapTarget(value, fallbackCategory=''){
+  const record=value && typeof value==='object' && !Array.isArray(value) ? value : {};
+  const direct=normalizeMapTarget({
+    lat:record.lat,
+    lng:record.lng??record.lon,
+    head:record.label||record.reason||record.key,
+    text:record.reason||record.detail,
+    meta:record.source||fallbackCategory
+  });
+  if(direct) return direct;
+  const text=cleanText(Array.isArray(value) ? value.join(' ') : typeof value==='object'
+    ? [record.label,record.reason,record.key,record.source,record.detail].filter(Boolean).join(' ')
+    : value).toLowerCase();
+  if(!text) return getCategoryMapTarget(fallbackCategory);
+
+  const matchers={
+    air:()=>{
+      for(let i=0;i<D.air.length;i++){
+        const name=cleanText(D.air[i].region).toLowerCase().replace(' region','');
+        if(name&&text.includes(name)){
+          const c=rightMapRefs.air[i];
+          if(c) return normalizeMapTarget({...c,head:D.air[i].region,text:`${D.air[i].total||0} aircraft · ${D.air[i].noCallsign||0} without callsigns`,meta:'Air activity'});
+        }
+      }
+      return null;
+    },
+    thermal:()=>{
+      for(const region of D.thermal){
+        const name=cleanText(region.region).toLowerCase();
+        if(name&&text.includes(name)){
+          const fire=asArray(region.fires).sort((a,b)=>(Number(b.frp)||0)-(Number(a.frp)||0))[0];
+          if(fire) return normalizeMapTarget({lat:fire.lat,lng:fire.lon,head:region.region,text:`${Number(region.det||0).toLocaleString()} detections · peak FRP ${Number(fire.frp||0).toFixed(1)} MW`,meta:'FIRMS satellite'});
+        }
+      }
+      return null;
+    },
+    maritime:()=>{
+      for(const cp of D.chokepoints){
+        if(cp.label&&text.includes(cleanText(cp.label).toLowerCase())) return normalizeMapTarget({lat:cp.lat,lng:cp.lon,head:cp.label,text:cp.note,meta:'Maritime chokepoint'});
+      }
+      return null;
+    },
+    nuke:()=>{
+      for(let i=0;i<D.nuke.length;i++){
+        const site=D.nuke[i];
+        const words=cleanText(site.site).toLowerCase().split(/[^a-z0-9]+/).filter(word=>word.length>4);
+        if(words.some(word=>text.includes(word))){
+          const c=rightMapRefs.nuke[i];
+          if(c) return normalizeMapTarget({...c,head:site.site,text:`${site.anom?'Anomaly':'Normal'} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:'Radiation monitoring'});
+        }
+      }
+      return null;
+    },
+    health:()=>{
+      for(let i=0;i<D.who.length;i++){
+        const title=cleanText(D.who[i].title).toLowerCase();
+        if(title&&(title.includes(text.slice(0,36))||text.includes(title.slice(0,36)))){
+          const c=rightMapRefs.who[i];
+          if(c) return normalizeMapTarget({...c,head:D.who[i].title,text:D.who[i].summary,meta:'WHO alert'});
+        }
+      }
+      return null;
+    },
+    news:()=>{
+      for(const item of D.news||[]){
+        const headline=cleanText(item.title).toLowerCase();
+        if(headline&&(headline.includes(text.slice(0,36))||text.includes(headline.slice(0,36)))) return normalizeMapTarget({lat:item.lat,lng:item.lon??item.lng,head:item.title,text:item.summary,meta:item.source||'World news'});
+      }
+      return null;
+    },
+    conflict:()=>{
+      for(const event of D.acled?.deadliestEvents||[]){
+        const place=cleanText(`${event.location||''} ${event.country||''}`).toLowerCase();
+        if(place.split(/\s+/).some(word=>word.length>4&&text.includes(word))) return normalizeMapTarget({lat:event.lat,lng:event.lon??event.lng,head:event.type||'Conflict event',text:`${event.location||''}, ${event.country||''}`,meta:'ACLED'});
+      }
+      return null;
+    },
+    sdr:()=>{
+      for(const zone of D.sdr.zones){
+        if(zone.region&&text.includes(cleanText(zone.region).toLowerCase())){
+          const receiver=asArray(zone.receivers)[0];
+          if(receiver) return normalizeMapTarget({lat:receiver.lat,lng:receiver.lon,head:receiver.name||'SDR receiver',text:`${zone.region} · ${zone.count||zone.receivers.length} receivers in zone`,meta:'KiwiSDR network'});
+        }
+      }
+      return null;
+    }
+  };
+  const searchOrder=[fallbackCategory,'air','thermal','maritime','nuke','health','news','conflict','sdr'].filter((category,index,all)=>matchers[category]&&all.indexOf(category)===index);
+  for(const category of searchOrder){
+    const target=matchers[category]();
+    if(target) return target;
+  }
+  return getCategoryMapTarget(fallbackCategory);
+}
+
+function rightMapActionMarkup(target, label='Focus map'){
+  const t2=normalizeMapTarget(target);
+  if(!t2) return '';
+  return `<button type="button" class="right-map-btn" data-map-lat="${t2.lat}" data-map-lng="${t2.lng}" data-map-alt="${t2.altitude}" data-map-head="${escapeAttr(t2.head)}" data-map-text="${escapeAttr(t2.text.substring(0,320))}" data-map-meta="${escapeAttr(t2.meta)}">&#9678; ${escapeHtml(label)}</button>`;
+}
+
+function classifySignal(signal){
+  const text=cleanText(signal);
+  const lower=text.toLowerCase();
+  let category='worldview';
+  let explanation='This is a synthesized observation from the latest sweep. Use it as a lead for corroboration, not as a standalone conclusion.';
+  if(/thermal|fire|frp|firms|night detections|heat detections/.test(lower)){category='thermal';explanation='Satellite heat detections can show fire intensity and clustering. Compare the regional count, night activity, and peak FRP with other reporting.';}
+  else if(/air|aircraft|callsign|flight|altitude/.test(lower)){category='air';explanation='Air activity is a point-in-time traffic snapshot. Missing callsigns or high-altitude traffic become more useful when they cluster or change between sweeps.';}
+  else if(/ship|maritime|chokepoint|strait|canal/.test(lower)){category='maritime';explanation='Maritime signals matter most when a monitored corridor overlaps disruption reporting, energy prices, or abnormal transit patterns.';}
+  else if(/radiation|nuclear|cpm|radnet/.test(lower)){category='nuke';explanation='Radiation readings should be judged against the site baseline and consecutive observations; one raw reading is not a safety verdict.';}
+  else if(/who|health|outbreak|disease/.test(lower)){category='health';explanation='Health alerts can affect mobility, borders, and supply chains. Severity depends on location, spread, and corroborating official guidance.';}
+  else if(/sdr|radio|receiver|signal/.test(lower)){category='sdr';explanation='Receiver coverage shows where public radio monitoring is available. It indicates observation capacity, not hostile activity.';}
+  else if(/telegram|osint|strike|attack|incident/.test(lower)){category='osint';explanation='Fast OSINT reporting is useful for early warning but may be incomplete. Check timestamps, source history, and independent confirmation.';}
+  else if(/acled|conflict|fatalit|clash/.test(lower)){category='conflict';explanation='Conflict data adds event and fatality context. Recent items may lag breaking reports and should be read alongside current OSINT.';}
+  else if(/oil|wti|brent|vix|spread|market|yield|debt|gscpi/.test(lower)){category='macro';explanation='This is a macro or market stress observation. It can confirm a broader regime but does not map cleanly to one physical location.';}
+  return {text,category,explanation,target:findTextMapTarget(text,category)};
+}
+
+function buildSignalCoreMetrics(){
+  const urgent=D.tg.urgent.length;
+  const tgTotal=Math.max(urgent,Number(D.tg.posts)||0);
+  const activeAir=D.air.filter(a=>(Number(a.total)||0)>0).length;
+  const thermalSpikes=D.thermal.reduce((sum,item)=>sum+(Number(item.hc)||asArray(item.fires).filter(f=>(Number(f.frp)||0)>=50).length),0);
+  const online=Number(D.sdr.online)||0;
+  const sdrTotal=Number(D.sdr.total)||0;
+  const clamp=value=>{
+    const rounded=Math.round(value)||0;
+    return rounded<=0?0:Math.max(4,Math.min(100,rounded));
+  };
+  return [
+    {key:'incident',l:'Incident Tempo',v:urgent,p:clamp((urgent/Math.max(tgTotal,1))*100),category:'osint',summary:`${urgent} urgent posts in the latest Telegram snapshot.`,context:tgTotal?`${tgTotal} total posts observed; ${Math.round((urgent/tgTotal)*100)}% are currently urgent.`:'No Telegram posts were available in this sweep.'},
+    {key:'air',l:'Air Theaters',v:D.air.length,p:clamp((activeAir/Math.max(D.air.length,1))*100),category:'air',summary:`${activeAir} of ${D.air.length} tracked theaters currently report aircraft.`,context:'OpenSky theater counts are point-in-time snapshots and may contain coverage gaps or rate-limit fallbacks.'},
+    {key:'thermal',l:'Thermal Spikes',v:thermalSpikes,p:clamp((thermalSpikes/Math.max(D.thermal.length*3,1))*100),category:'thermal',summary:`${thermalSpikes} high-confidence or high-FRP thermal points are surfaced.`,context:`Across ${D.thermal.length} FIRMS region buckets; open the map to inspect the strongest available point.`},
+    {key:'sdr',l:'SDR Nodes',v:sdrTotal,p:clamp((online/Math.max(sdrTotal,1))*100),category:'sdr',summary:`${online} of ${sdrTotal} public SDR receivers are online.`,context:'Coverage indicates where public radio observation is available, not the presence of a threat.'},
+    {key:'maritime',l:'Chokepoints',v:D.chokepoints.length,p:clamp((D.chokepoints.length/10)*100),category:'maritime',summary:`${D.chokepoints.length} strategic maritime corridors are on the watch layer.`,context:'These are standing watch locations. A listed chokepoint is not automatically disrupted.'},
+    {key:'health',l:'WHO Alerts',v:D.who.length,p:clamp((D.who.length/10)*100),category:'health',summary:`${D.who.length} WHO outbreak or health bulletins are in the current sweep.`,context:'Open the map for the top surfaced alert and corroborate against official guidance.'}
+  ].map(metric=>({...metric,target:getCategoryMapTarget(metric.category)}));
+}
+
+function showRightMapFeedback(label){
+  const feedback=document.getElementById('rightMapFeedback');
+  if(!feedback) return;
+  feedback.textContent=label || 'Map focused';
+  feedback.classList.add('show');
+  clearTimeout(showRightMapFeedback.timer);
+  showRightMapFeedback.timer=setTimeout(()=>feedback.classList.remove('show'),1800);
+}
+
+function focusDashboardMap(target){
+  const t2=normalizeMapTarget(target);
+  if(!t2) return;
+  setPrimaryView('map');
+  closePopup();
+  const container=document.getElementById('mapContainer');
+  if(container) container.scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>{
+    if(isFlat && flatSvg && flatZoom && flatProjection){
+      const point=flatProjection([t2.lng,t2.lat]);
+      if(point){
+        const scale=4.2;
+        flatSvg.transition().duration(850).call(flatZoom.transform,d3.zoomIdentity.translate(flatW/2,flatH/2).scale(scale).translate(-point[0],-point[1]));
+        if(flatG){
+          flatG.selectAll('.right-focus-ring').remove();
+          flatG.append('circle').attr('class','right-focus-ring').attr('cx',point[0]).attr('cy',point[1]).attr('r',10);
+        }
+      }
+    }else if(globe){
+      globe.controls().autoRotate=false;
+      globe.pointOfView({lat:t2.lat,lng:t2.lng,altitude:t2.altitude},850);
+      const rings=(globe.ringsData()||[]).filter(r=>!r._rightHighlight);
+      globe.ringsData([...rings,{lat:t2.lat,lng:t2.lng,maxR:4,speed:3,period:900,_rightHighlight:true}]);
+    }
+    setTimeout(()=>showPopup(null,t2.head,t2.text,t2.meta,t2.lat,t2.lng,0.02),900);
+    showRightMapFeedback(`Focused · ${t2.head}`);
+  },180);
+}
+
+function renderRight(){
+  const mobile=isMobileLayout();
+  const signals=D.tSignals.length ? D.tSignals.slice(0,6).map((signal,i)=>{
+    const context=classifySignal(signal);
+    return `<div class="right-accordion-item">
+      <div class="signal-row right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="signal">
+        <strong>Signal ${i+1}<span class="right-context-tag">${escapeHtml(context.category)}</span></strong>
+        <p>${escapeHtml(context.text)}</p><span class="right-chevron" aria-hidden="true">&#9656;</span>
+      </div>
+      <div class="right-item-detail">
+        <div class="right-detail-kicker">Why this matters</div>
+        <div class="right-detail-copy">${escapeHtml(context.explanation)}</div>
+        <dl class="right-detail-grid"><dt>Freshness</dt><dd>${escapeHtml(currentSweepAge())}</dd><dt>Source state</dt><dd>${D.meta.sourcesOk}/${D.meta.sourcesQueried} sources healthy</dd></dl>
+        <div class="right-detail-actions">${rightMapActionMarkup(context.target,'Locate signal')}<button type="button" class="right-map-btn" data-open-guide="true">Signal guide</button></div>
+      </div>
+    </div>`;
+  }).join('') : `<div class="empty-state">No cross-source signals were produced in the latest sweep.</div>`;
+  const signalMetrics=buildSignalCoreMetrics();
+
+  const delta=D.delta||{};
+  const ds=delta.summary||{};
+  const baselineReset=Boolean(delta.baselineReset||ds.baselineReset);
+  const hasDelta=ds.totalChanges>0;
+  const dirEmoji={'risk-off':'&#9650;','risk-on':'&#9660;','mixed':'&#9670;'}[ds.direction]||'&#9670;';
+  const dirClass={'risk-off':'up','risk-on':'down','mixed':''}[ds.direction]||'';
+  const escalated=(delta.signals?.escalated||[]).slice(0,6);
+  const deescalated=(delta.signals?.deescalated||[]).slice(0,4);
+  const newSigs=(delta.signals?.new||[]).slice(0,4);
+  const deltaRows=[];
+  function deltaDetail(signal,type){
+    const change=signal.pctChange!==undefined?`${signal.pctChange>0?'+':''}${signal.pctChange}%`:signal.change!==undefined?`${signal.change>0?'+':''}${signal.change}`:'—';
+    const target=findTextMapTarget(signal);
+    const url=safeExternalUrl(signal.url);
+    return `<div class="right-item-detail delta-detail">
+      <div class="right-detail-kicker">${type==='new'?'New observation':'Sweep comparison'}</div>
+      <div class="right-detail-copy">${escapeHtml(signal.reason||signal.label||signal.key||'Signal changed in the latest sweep.')}</div>
+      <dl class="right-detail-grid">
+        <dt>Source</dt><dd>${escapeHtml(signal.source||'Crucix synthesis')}</dd>
+        <dt>Severity</dt><dd>${escapeHtml(String(signal.severity||'informational').toUpperCase())}</dd>
+        <dt>Change</dt><dd>${escapeHtml(change)}</dd>
+        ${signal.timestamp?`<dt>Observed</dt><dd>${escapeHtml(new Date(signal.timestamp).toLocaleString())}</dd>`:''}
+      </dl>
+      <div class="right-detail-actions">${rightMapActionMarkup(target,'Locate change')}${url?`<a class="right-source-link" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open source &#8599;</a>`:''}</div>
+    </div>`;
+  }
+  for(const signal of newSigs){
+    deltaRows.push(`<div class="delta-row new delta-expandable right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="delta"><span class="delta-badge new">NEW</span><span class="delta-label">${escapeHtml(signal.reason||signal.label||signal.key)}</span><span class="right-chevron" aria-hidden="true">&#9656;</span></div>${deltaDetail(signal,'new')}`);
+  }
+  for(const signal of escalated){
+    const sev=signal.severity==='critical'?'style="color:var(--warn);font-weight:600"':signal.severity==='high'?'style="color:#ffab40"':'';
+    const val=signal.pctChange!==undefined?`${signal.pctChange>0?'+':''}${signal.pctChange}%`:`${signal.change>0?'+':''}${signal.change}`;
+    deltaRows.push(`<div class="delta-row delta-expandable right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="delta"><span class="delta-badge up">&#9650;</span><span class="delta-label" ${sev}>${escapeHtml(signal.label||signal.key)}</span><span class="delta-val">${escapeHtml(signal.from)}→${escapeHtml(signal.to)} (${escapeHtml(val)})</span><span class="right-chevron" aria-hidden="true">&#9656;</span></div>${deltaDetail(signal,'up')}`);
+  }
+  for(const signal of deescalated){
+    const val=signal.pctChange!==undefined?`${signal.pctChange}%`:`${signal.change}`;
+    deltaRows.push(`<div class="delta-row delta-expandable right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="delta"><span class="delta-badge down">&#9660;</span><span class="delta-label">${escapeHtml(signal.label||signal.key)}</span><span class="delta-val">${escapeHtml(signal.from)}→${escapeHtml(signal.to)} (${escapeHtml(val)})</span><span class="right-chevron" aria-hidden="true">&#9656;</span></div>${deltaDetail(signal,'down')}`);
+  }
+  const deltaHtml=hasDelta?deltaRows.join(''):`<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset?'Baseline reset after stale gap':t('delta.noChanges','No changes since last sweep')}</div>`;
+  const rightMeta={
+    delta:`Latest sweep ${currentSweepAge()} · ${ds.totalChanges||0} total changes`,
+    osint:`Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
+    core:`Cross-domain stress gauges · ${currentSweepAge()}`
   };
 
   document.getElementById('rightRail').innerHTML=`
@@ -2238,17 +2530,29 @@ function renderRight(){
         <span style="color:var(--dim)">${t('delta.changes','Changes')}: <span style="color:var(--accent)">${ds.totalChanges}</span></span>
         <span style="color:var(--dim)">${t('delta.critical','Critical')}: <span style="color:${ds.criticalChanges>0?'var(--warn)':'var(--dim)'}">${ds.criticalChanges||0}</span></span>
         ${ds.signalBreakdown?`<span style="color:var(--dim)">${t('delta.new','New')}: <span style="color:#4dd0e1">${ds.signalBreakdown.new}</span> &#8593;${ds.signalBreakdown.escalated} &#8595;${ds.signalBreakdown.deescalated}</span>`:''}
-      </div>`:''}
+      </div><div class="right-panel-hint">Click any change for evidence and location</div>`:''}
       <div class="delta-list">${deltaHtml}</div>
     </div>
-    ${mobile ? '' : buildOsintPanel('right-osint', 300, rightMeta.osint)}
+    ${mobile?'':buildOsintPanel('right-osint',300,rightMeta.osint)}
     <div class="g-panel right-signals">
       <div class="sec-head"><div class="sec-title"><h3>${t('panels.crossSourceSignals','Cross-Source Signals')}</h3><div class="sec-meta">${rightMeta.core}</div></div><span class="badge">${t('badges.worldview','WORLDVIEW')}</span></div>
+      <div class="right-panel-hint">Click a signal for context${D.tSignals.length?' and map focus':''}</div>
       ${signals}
     </div>
     <div class="g-panel right-core">
       <div class="sec-head"><div class="sec-title"><h3>${t('panels.signalCore','Signal Core')}</h3><div class="sec-meta">Triage support metrics</div></div><span class="badge">${t('badges.hotMetrics','HOT METRICS')}</span></div>
-      ${signalMetrics.map(s=>`<div class="sm"><span class="sml">${s.l}</span><div class="smb"><span style="width:${s.p}%"></span></div><span class="smv">${s.v}</span></div>`).join('')}
+      <div class="right-panel-hint">Click a metric to inspect the strongest area</div>
+      ${signalMetrics.map(metric=>`<div class="right-accordion-item">
+        <div class="sm right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="core">
+          <span class="sml">${escapeHtml(metric.l)}</span><div class="smb"><span style="width:${metric.p}%"></span></div><span class="smv">${escapeHtml(metric.v)}</span><span class="right-chevron" aria-hidden="true">&#9656;</span>
+        </div>
+        <div class="right-item-detail">
+          <div class="right-detail-kicker">${escapeHtml(metric.l)} · current sweep</div>
+          <div class="right-detail-copy">${escapeHtml(metric.summary)}</div>
+          <dl class="right-detail-grid"><dt>Context</dt><dd>${escapeHtml(metric.context)}</dd><dt>Updated</dt><dd>${escapeHtml(currentSweepAge())}</dd></dl>
+          <div class="right-detail-actions">${rightMapActionMarkup(metric.target,'Explore map')}</div>
+        </div>
+      </div>`).join('')}
     </div>`;
 }
 
@@ -2309,16 +2613,52 @@ function runBoot(){
 function isMobileLayout(){ return window.innerWidth <= 1100; }
 
 function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
-  const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
-  const whoItems=D.who.slice(0,4).map(w=>({channel:'WHO ALERT',text:w.title,date:w.date,isWho:true}));
-  const osintItems=[...allPosts.slice(0,15),...whoItems];
-  const osintCards=osintItems.length ? osintItems.map(p=>{
-    const isU=p.urgentFlags&&p.urgentFlags.length>0;
-    const views=p.views?p.views>=1000?`${(p.views/1000).toFixed(0)}K`:p.views:'';
-    const age=p.date?getAge(p.date):'';
-    const flags=(p.urgentFlags||[]).map(f=>`<span class="tk-src tg" style="margin-right:2px">${escapeHtml(f)}</span>`).join('');
-    const srcCls=p.isWho?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
-    return `<div class="tk-card ${isU?'urgent':''}"><span ${srcCls}>${escapeHtml((p.channel||'OSINT').toUpperCase().substring(0,14))}</span>${views?`<span class="tk-src other">${escapeHtml(views)}</span>`:''}<span class="tk-time">${escapeHtml(age)}</span>${flags}<div class="tk-head">${escapeHtml(cleanText((p.text||'').substring(0,160)))}</div></div>`;
+  const seen=new Set();
+  const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).filter(post=>{
+    const key=tickerItemKey(post);
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0,15).map(post=>{
+    const urgentIndex=D.tg.urgent.indexOf(post);
+    const c=urgentIndex>=0?rightMapRefs.osint[urgentIndex]:null;
+    return {
+      ...post,
+      _kind:'telegram',
+      _target:c&&normalizeMapTarget({...c,head:(post.channel||'OSINT').toUpperCase(),text:post.text,meta:`${post.views?.toLocaleString()||'?'} views`})
+    };
+  });
+  const whoItems=D.who.slice(0,4).map((item,index)=>({
+    ...item,
+    channel:'WHO ALERT',
+    text:item.summary?`${item.title} — ${item.summary}`:item.title,
+    _kind:'who',
+    _target:rightMapRefs.who[index]&&normalizeMapTarget({...rightMapRefs.who[index],head:item.title,text:item.summary,meta:'WHO alert'})
+  }));
+  const osintItems=[...allPosts,...whoItems];
+  const osintCards=osintItems.length ? osintItems.map((item,index)=>{
+    const isU=asArray(item.urgentFlags).length>0;
+    const views=item.views?item.views>=1000?`${(item.views/1000).toFixed(0)}K`:item.views:'';
+    const age=item.date?getAge(item.date):'';
+    const flags=asArray(item.urgentFlags).map(flag=>`<span class="tk-src tg" style="margin-right:2px">${escapeHtml(flag)}</span>`).join('');
+    const sourceClass=item._kind==='who'?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
+    const sourceUrl=safeExternalUrl(item.url);
+    const fullText=cleanText(item.text||item.title||'');
+    return `<div class="tk-card osint-card right-interactive ${isU?'urgent':''}" tabindex="0" role="button" aria-expanded="false" data-right-item="osint" data-osint-key="${escapeAttr(`${item._kind}-${index}-${tickerItemKey(item)}`)}">
+      <span ${sourceClass}>${escapeHtml((item.channel||item.source||'OSINT').toUpperCase().substring(0,14))}</span>${views?`<span class="tk-src other">${escapeHtml(views)}</span>`:''}<span class="tk-time">${escapeHtml(age)}</span>${flags}
+      <div class="tk-head">${escapeHtml(fullText.substring(0,160))}</div><span class="right-chevron" aria-hidden="true">&#9656;</span>
+      <div class="right-item-detail">
+        <div class="right-detail-kicker">${item._kind==='who'?'Official health bulletin':'OSINT report'}</div>
+        <div class="right-detail-copy">${escapeHtml(fullText)}</div>
+        <dl class="right-detail-grid">
+          <dt>Source</dt><dd>${escapeHtml(item.channel||item.source||'OSINT')}</dd>
+          <dt>Observed</dt><dd>${escapeHtml(item.date?new Date(item.date).toLocaleString():'Timestamp unavailable')}</dd>
+          ${item.views?`<dt>Audience</dt><dd>${escapeHtml(Number(item.views).toLocaleString())} views</dd>`:''}
+          ${asArray(item.urgentFlags).length?`<dt>Flags</dt><dd>${escapeHtml(item.urgentFlags.join(', '))}</dd>`:''}
+        </dl>
+        <div class="right-detail-actions">${rightMapActionMarkup(item._target,'Locate report')}${sourceUrl?`<a class="right-source-link" href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener">Open source &#8599;</a>`:''}</div>
+      </div>
+    </div>`;
   }).join('') : `<div class="empty-state">No OSINT or WHO items are available yet.</div>`;
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
@@ -2326,6 +2666,7 @@ function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
         <div class="sec-title"><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-meta">${meta || `Telegram + WHO · ${currentSweepAge()}`}</div></div>
         <div class="sec-actions">${showPin ? `<button class="pin-btn focusable ${pinnedLowerPanel==='osint'?'active':''}" onclick="setPinnedPanel('osint')">${pinnedLowerPanel==='osint'?'Pinned':'Pin'}</button>` : ''}<span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div>
       </div>
+      <div class="right-panel-hint">Click a report to read it and locate mapped items</div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
       </div>
@@ -2601,27 +2942,76 @@ document.addEventListener('DOMContentLoaded', () => {
   observer.observe(document.body, { childList: true, subtree: true });
 })();
 
-// === Phase 6: Sweep Delta Expandable Items ===
+// === Right-rail interactions: refresh-safe accordions + map focus ===
 (function(){
-  function hookDeltaClicks() {
-    document.querySelectorAll('.delta-expandable').forEach(row => {
-      row.addEventListener('click', () => {
-        const detail = row.nextElementSibling;
-        if (detail && detail.classList.contains('delta-detail')) {
-          const isOpen = detail.style.display !== 'none';
-          detail.style.display = isOpen ? 'none' : 'block';
-          row.classList.toggle('delta-expanded', !isOpen);
-        }
-      });
+  function refreshExpandedContainers(scope=document){
+    scope.querySelectorAll('.delta-list').forEach(list=>{
+      list.classList.toggle('has-expanded',!!list.querySelector('.right-interactive[aria-expanded="true"]'));
+    });
+    scope.querySelectorAll('.ticker-wrap').forEach(wrap=>{
+      wrap.classList.toggle('has-expanded',!!wrap.querySelector('.right-interactive[aria-expanded="true"]'));
     });
   }
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('.delta-expandable')) {
-      observer.disconnect();
-      setTimeout(hookDeltaClicks, 600);
+
+  function collapseRightItems(scope=document, except=null){
+    scope.querySelectorAll('.right-interactive[aria-expanded="true"]').forEach(item=>{
+      if(item===except) return;
+      item.setAttribute('aria-expanded','false');
+      item.classList.remove('delta-expanded');
+    });
+    refreshExpandedContainers(scope);
+  }
+
+  function toggleRightItem(item){
+    const panel=item.closest('.g-panel')||document;
+    const opening=item.getAttribute('aria-expanded')!=='true';
+    collapseRightItems(panel,item);
+    item.setAttribute('aria-expanded',opening?'true':'false');
+    item.classList.toggle('delta-expanded',opening&&item.classList.contains('delta-row'));
+    refreshExpandedContainers(panel);
+    if(opening) setTimeout(()=>item.scrollIntoView({block:'nearest',inline:'nearest'}),40);
+  }
+
+  document.addEventListener('click',event=>{
+    const mapButton=closestTarget(event,'.right-map-btn[data-map-lat]');
+    if(mapButton){
+      event.preventDefault();
+      event.stopPropagation();
+      focusDashboardMap({
+        lat:mapButton.dataset.mapLat,
+        lng:mapButton.dataset.mapLng,
+        altitude:mapButton.dataset.mapAlt,
+        head:mapButton.dataset.mapHead,
+        text:mapButton.dataset.mapText,
+        meta:mapButton.dataset.mapMeta
+      });
+      return;
+    }
+    const guideButton=closestTarget(event,'[data-open-guide]');
+    if(guideButton){
+      event.preventDefault();
+      event.stopPropagation();
+      openGlossary();
+      return;
+    }
+    if(closestTarget(event,'.right-source-link,.right-item-detail button,.right-item-detail a')) return;
+    const item=closestTarget(event,'.right-interactive[data-right-item]');
+    if(item) toggleRightItem(item);
+  });
+
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){
+      collapseRightItems(document);
+      return;
+    }
+    if(event.key!=='Enter'&&event.key!==' ') return;
+    if(closestTarget(event,'.right-item-detail button,.right-item-detail a')) return;
+    const item=closestTarget(event,'.right-interactive[data-right-item]');
+    if(item){
+      event.preventDefault();
+      toggleRightItem(item);
     }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
 })();
 
 // === Phase 3: Sensor Grid Click-to-Filter + Accordion + Fly-to ===
