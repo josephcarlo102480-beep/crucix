@@ -104,6 +104,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
         <span class="cat-name">ISS</span>
         <span class="cat-count"></span>
       </button>
+      <button class="cat-btn" data-cat="meteor">
+        <div class="cat-dot" style="background:#00e5ff;box-shadow:0 0 6px rgba(0,229,255,0.6)"></div>
+        <span class="cat-name">METEOR-M</span>
+        <span class="cat-count"></span>
+      </button>
       <button class="cat-btn" data-cat="military">
         <div class="cat-dot" style="background:#ff5f63;box-shadow:0 0 6px rgba(255,95,99,0.6)"></div>
         <span class="cat-name">Military</span>
@@ -170,6 +175,7 @@ const OBSERVER_GD = {
 
 const CATEGORIES = {
   iss:      { noradId: 25544, query: 'ISS', pageSize: 5, color: '#ffffff', trackColor: 'rgba(255,255,255,0.6)' },
+  meteor:   { query: 'METEOR-M', pageSize: 20, color: '#00e5ff', trackColor: 'rgba(0,229,255,0.5)' },
   military: { queries: ['USA', 'NOSS', 'COSMOS'], pageSize: 15, maxTotal: 30, color: '#ff5f63', trackColor: 'rgba(255,95,99,0.5)' },
   starlink: { query: 'starlink', pageSize: 30, color: '#4488ff', trackColor: 'rgba(68,136,255,0.4)' },
   oneweb:   { query: 'oneweb', pageSize: 30, color: '#69f0ae', trackColor: 'rgba(105,240,174,0.4)' },
