@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<!--
+  Crucix — AirWatch Military Aircraft Tracker (standalone module page)
+  Isolated. Talks only to /api/airwatch/*. Leaflet + CartoDB dark tiles
+  (unpkg + http(s) img-src are already allowed by the server CSP).
+  Does not touch jarvis.html / the other module pages.
+
+  The backend polls airplanes.live (fallback: adsb.lol) every 45s and this
+  page reads that cache — loading this page never hits the upstream APIs.
+  Trails and orbit detection are built client-side from successive polls.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Crucix — AirWatch</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
+  --border:rgba(68,204,255,0.14);--border-bright:rgba(68,204,255,0.35);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--cyan:#44ccff;
+  --warn:#ffb84c;--danger:#ff5f63;--helo:#c792ea;--mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(68,204,255,0.25) transparent}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(68,204,255,0.25);border-radius:3px}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);overflow:hidden}
+#wrap{display:flex;height:100vh}
+#sidebar{width:360px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;z-index:500}
+.logo{padding:14px 16px}
+.logo h1{font-size:14px;letter-spacing:0.15em;color:var(--cyan);margin:0}
+.logo .sub{font-size:10px;color:var(--dim);margin-top:4px}
+.back-link{display:block;padding:8px 16px;color:var(--accent);font-size:10px;text-decoration:none;border-top:1px solid var(--border);border-bottom:1px solid var(--border);letter-spacing:0.08em}
+.back-link:hover{background:rgba(100,240,200,0.08)}
+.controls{padding:10px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--dim)}
+.scope-row{display:flex;gap:6px;margin-bottom:10px}
+.scope-btn{flex:1;border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:6px 0;cursor:pointer;transition:all .2s}
+.scope-btn.active{background:var(--accent);border-color:var(--accent);color:#03140d}
+.scope-btn:hover{border-color:var(--accent);color:var(--text)}
+.scope-btn.active:hover{color:#03140d}
+.cat-row{display:flex;align-items:center;gap:7px;padding:3px 0;cursor:pointer;user-select:none}
+.cat-row input{accent-color:var(--cyan);margin:0}
+.cat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.cat-name{flex:1;letter-spacing:0.08em;color:var(--text)}
+.cat-count{color:var(--text);min-width:26px;text-align:right}
+.cat-trend{min-width:70px;text-align:right;font-size:9px}
+.cat-trend.up{color:var(--warn)}
+.cat-trend.down{color:var(--dim)}
+.cat-trend.flat{color:var(--dim)}
+.baseline-note{margin-top:6px;font-size:9px;color:var(--dim);line-height:1.5}
+#tablewrap{flex:1;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:10px}
+thead th{position:sticky;top:0;background:#04101a;color:var(--dim);text-align:left;padding:6px 8px;font-weight:400;letter-spacing:0.08em;cursor:pointer;border-bottom:1px solid var(--border);white-space:nowrap;z-index:5}
+thead th:hover{color:var(--cyan)}
+thead th .arr{color:var(--cyan)}
+tbody td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:rgba(68,204,255,0.06)}
+.cs{color:var(--text)}
+.orbit-tag{color:var(--warn)}
+.catcell{font-size:9px}
+.empty{padding:20px 16px;color:var(--dim);font-size:10px;text-align:center;line-height:1.7}
+#status{padding:10px 16px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);line-height:1.7}
+#status .src{color:var(--cyan)}
+#status .warnline{color:var(--warn)}
+#map{flex:1;background:var(--bg)}
+.leaflet-container{background:#060a10;font-family:var(--mono)}
+.leaflet-control-attribution{background:rgba(6,14,22,0.8)!important;color:var(--dim)!important;font-size:9px!important}
+.leaflet-control-attribution a{color:var(--dim)!important}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--cyan)!important;border:1px solid var(--border)!important;border-radius:0!important}
+.leaflet-control-zoom a:hover{background:rgba(68,204,255,0.12)!important}
+.leaflet-bar{border:none!important;box-shadow:0 2px 12px rgba(0,0,0,0.5)!important}
+.leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--border-bright);border-radius:0;box-shadow:0 4px 24px rgba(0,0,0,0.6)}
+.leaflet-popup-tip{background:var(--panel);border:1px solid var(--border-bright)}
+.leaflet-popup-content{font-family:var(--mono);font-size:11px;margin:12px 14px;line-height:1.6}
+.pp-cs{color:var(--cyan);font-weight:600;font-size:12px}
+.pp-cat{display:inline-block;font-size:9px;padding:1px 6px;border:1px solid;border-radius:2px;margin-left:6px;vertical-align:1px}
+.pp-desc{color:var(--text);margin:2px 0 6px}
+.pp-grid{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-size:10px}
+.pp-grid .k{color:var(--dim)}
+.pp-orbit{margin-top:6px;color:var(--warn);font-size:10px}
+.ac-ic{display:flex;align-items:center;justify-content:center;width:26px;height:26px;filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))}
+.ac-ic svg{display:block}
+.ac-ic.orbit::before{content:'';position:absolute;inset:-3px;border:1px solid var(--warn);border-radius:50%;animation:orbitPulse 1.8s ease-out infinite}
+@keyframes orbitPulse{0%{transform:scale(0.55);opacity:0.9}100%{transform:scale(1.25);opacity:0}}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="sidebar">
+    <div class="logo"><h1>CRUCIX · AIRWATCH</h1><div class="sub">MILITARY AIR ACTIVITY · MIDDLE EAST THEATRE</div></div>
+    <a class="back-link" href="/">&larr; back to dashboard</a>
+    <div class="controls">
+      <div class="scope-row">
+        <button class="scope-btn active" id="scopeRegion">Region</button>
+        <button class="scope-btn" id="scopeGlobal">Global</button>
+      </div>
+      <div id="catFilters"></div>
+      <div class="baseline-note" id="baselineNote"></div>
+    </div>
+    <div id="tablewrap"><div class="empty">connecting…</div></div>
+    <div id="status">initializing…</div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script>
+'use strict';
+// ─── Tunables ───
+const POLL_MS = 45 * 1000;        // matches the backend poll cadence
+const RETRY_MS = 10 * 1000;       // retry cadence while backend warms up
+const TRAIL_LEN = 10;             // positions kept per aircraft (client-built)
+const MAX_MARKERS = 600;          // hard cap (Pi-friendly; global mil ~300-500)
+const STALE_AFTER_S = 180;        // feed older than 3 min ⇒ stale warning
+
+const API = '/api/airwatch';
+const CAT_COLORS = {
+  TANKER: 'var(--warn)', ISR: 'var(--cyan)', HEAVY: 'var(--accent)',
+  FIGHTER: 'var(--danger)', HELO: 'var(--helo)', OTHER: 'var(--dim)',
+};
+const CAT_HEX = { // literal colors for SVG fills (CSS vars don't reach SVG attrs)
+  TANKER: '#ffb84c', ISR: '#44ccff', HEAVY: '#64f0c8',
+  FIGHTER: '#ff5f63', HELO: '#c792ea', OTHER: '#6a8a82',
+};
+const CATEGORIES = Object.keys(CAT_COLORS);
+
+// ─── State ───
+let scope = 'region';
+let enabledCats = new Set(CATEGORIES);
+let aircraftList = [];            // latest payload list (unfiltered by category)
+let stats = null;
+let lastPayload = null;
+let lastFetchOk = null;           // client-side fetch health
+let sortKey = 'alt', sortDir = -1;
+const trails = new Map();         // hex → [{lat, lon, ts}]
+const orbitFlags = new Map();     // hex → bool (recomputed per poll)
+const markers = new Map();        // hex → { marker, line }
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtTs = ts => ts ? esc(String(ts).replace('T',' ').slice(0,19)) + ' UTC' : '—';
+
+// ─── Map ───
+const map = L.map('map', { zoomControl: true, attributionControl: true, preferCanvas: true })
+  .setView([26.5, 51.5], 5); // Persian Gulf
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO · data: airplanes.live / adsb.lol',
+  subdomains: 'abcd', maxZoom: 12,
+}).addTo(map);
+const trailRenderer = L.canvas({ padding: 0.3 }); // canvas polylines are cheap on the Pi
+
+// Rotated plane glyph as a divIcon (rotation via CSS transform on the SVG).
+function planeIcon(ac, orbiting) {
+  const color = CAT_HEX[ac.cat] || CAT_HEX.OTHER;
+  const rot = Number.isFinite(ac.track) ? ac.track : 0;
+  return L.divIcon({
+    className: '',
+    iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -10],
+    html: `<div class="ac-ic${orbiting ? ' orbit' : ''}" style="position:relative">
+      <svg width="18" height="18" viewBox="0 0 24 24" style="transform:rotate(${rot}deg)">
+        <path d="M12 1.5 L14.2 8.5 L22.5 12 L14.2 13.2 L14 18.2 L17 21 L12 19.6 L7 21 L10 18.2 L9.8 13.2 L1.5 12 L9.8 8.5 Z"
+          fill="${color}" stroke="rgba(2,4,8,0.85)" stroke-width="0.8"/>
+      </svg></div>`,
+  });
+}
+
+function popupHtml(ac) {
+  const color = CAT_HEX[ac.cat] || CAT_HEX.OTHER;
+  const rows = [
+    ['HEX', ac.hex], ['TYPE', ac.type], ['REG', ac.reg],
+    ['ALT', Number.isFinite(ac.alt) ? ac.alt.toLocaleString() + ' ft' : null],
+    ['SPD', Number.isFinite(ac.gs) ? Math.round(ac.gs) + ' kt' : null],
+    ['HDG', Number.isFinite(ac.track) ? Math.round(ac.track) + '°' : null],
+    ['SQUAWK', ac.squawk], ['COUNTRY', ac.country], ['OPERATOR', ac.operator],
+  ].filter(([, v]) => v != null && v !== '');
+  return `<div><span class="pp-cs">${esc(ac.callsign || ac.hex)}</span>` +
+    `<span class="pp-cat" style="color:${color};border-color:${color}">${esc(ac.cat)}</span></div>` +
+    (ac.desc ? `<div class="pp-desc">${esc(ac.desc)}</div>` : '') +
+    `<div class="pp-grid">${rows.map(([k, v]) => `<span class="k">${k}</span><span>${esc(v)}</span>`).join('')}</div>` +
+    (orbitFlags.get(ac.hex) ? '<div class="pp-orbit">◉ ON STATION — orbit/racetrack pattern (tanker or ISR holding)</div>' : '');
+}
+
+// ─── Trails + orbit detection ───
+function pushTrail(ac) {
+  let t = trails.get(ac.hex);
+  if (!t) { t = []; trails.set(ac.hex, t); }
+  const last = t[t.length - 1];
+  if (!last || last.lat !== ac.lat || last.lon !== ac.lon) {
+    t.push({ lat: ac.lat, lon: ac.lon, ts: Date.now() });
+    if (t.length > TRAIL_LEN) t.shift();
+  }
+}
+
+// Orbits/racetracks (tankers + ISR on station): heading swings through a wide
+// arc while the aircraft stays in a small box. With ~10 points at 45s spacing
+// a straight-line jet covers ~100 km, an orbiting one stays within ~50 km.
+function detectOrbit(hex, ac) {
+  const t = trails.get(hex);
+  if (!t || t.length < 6 || !Number.isFinite(ac.gs) || ac.gs < 80) return false;
+  // Position spread (equirectangular approx, km)
+  let latMin = 90, latMax = -90, lonMin = 180, lonMax = -180;
+  for (const p of t) {
+    latMin = Math.min(latMin, p.lat); latMax = Math.max(latMax, p.lat);
+    lonMin = Math.min(lonMin, p.lon); lonMax = Math.max(lonMax, p.lon);
+  }
+  const midLat = (latMin + latMax) / 2 * Math.PI / 180;
+  const dy = (latMax - latMin) * 111;
+  const dx = (lonMax - lonMin) * 111 * Math.cos(midLat);
+  const spreadKm = Math.hypot(dx, dy);
+  if (spreadKm > 70) return false;
+  // Heading variance: circular std dev of successive-leg bearings
+  let sinSum = 0, cosSum = 0, n = 0, cumTurn = 0, prevBrg = null;
+  for (let i = 1; i < t.length; i++) {
+    const brg = Math.atan2(t[i].lon - t[i-1].lon, t[i].lat - t[i-1].lat);
+    sinSum += Math.sin(brg); cosSum += Math.cos(brg); n++;
+    if (prevBrg != null) {
+      let d = (brg - prevBrg) * 180 / Math.PI;
+      while (d > 180) d -= 360;
+      while (d < -180) d += 360;
+      cumTurn += Math.abs(d);
+    }
+    prevBrg = brg;
+  }
+  if (!n) return false;
+  const R = Math.hypot(sinSum / n, cosSum / n);
+  const circStdDeg = Math.sqrt(Math.max(0, -2 * Math.log(Math.max(R, 1e-9)))) * 180 / Math.PI;
+  return circStdDeg > 45 || cumTurn > 270;
+}
+
+// ─── Rendering ───
+function visibleAircraft() {
+  return aircraftList.filter(ac => enabledCats.has(ac.cat));
+}
+
+function renderMap() {
+  const wanted = visibleAircraft().slice(0, MAX_MARKERS);
+  const wantedHex = new Set(wanted.map(ac => ac.hex));
+  // Remove markers no longer wanted
+  for (const [hex, entry] of markers) {
+    if (!wantedHex.has(hex)) {
+      map.removeLayer(entry.marker);
+      if (entry.line) map.removeLayer(entry.line);
+      markers.delete(hex);
+    }
+  }
+  for (const ac of wanted) {
+    const orbiting = orbitFlags.get(ac.hex) || false;
+    const trail = (trails.get(ac.hex) || []).map(p => [p.lat, p.lon]);
+    let entry = markers.get(ac.hex);
+    if (!entry) {
+      const marker = L.marker([ac.lat, ac.lon], { icon: planeIcon(ac, orbiting), keyboard: false });
+      marker.bindPopup(() => popupHtml(marker._ac), { maxWidth: 320 });
+      entry = { marker, line: null };
+      marker.addTo(map);
+      markers.set(ac.hex, entry);
+    } else {
+      entry.marker.setLatLng([ac.lat, ac.lon]);
+      entry.marker.setIcon(planeIcon(ac, orbiting));
+    }
+    entry.marker._ac = ac;
+    if (trail.length >= 2) {
+      if (!entry.line) {
+        entry.line = L.polyline(trail, {
+          renderer: trailRenderer, color: CAT_HEX[ac.cat] || CAT_HEX.OTHER,
+          weight: 1, opacity: 0.45, interactive: false,
+        }).addTo(map);
+      } else {
+        entry.line.setLatLngs(trail);
+        entry.line.setStyle({ color: CAT_HEX[ac.cat] || CAT_HEX.OTHER });
+      }
+    }
+  }
+}
+
+function trendMarkup(cat) {
+  const s = stats?.categories?.[cat];
+  if (!s || s.deltaPct == null) return '<span class="cat-trend flat">·</span>';
+  const sign = s.deltaPct > 0 ? '+' : '';
+  if (s.trend === 'up') return `<span class="cat-trend up">▲ ${sign}${s.deltaPct}%</span>`;
+  if (s.trend === 'down') return `<span class="cat-trend down">▼ ${sign}${s.deltaPct}%</span>`;
+  return `<span class="cat-trend flat">≈ 24h avg</span>`;
+}
+
+function renderFilters() {
+  const counts = Object.fromEntries(CATEGORIES.map(c => [c, 0]));
+  for (const ac of aircraftList) counts[ac.cat] = (counts[ac.cat] || 0) + 1;
+  document.getElementById('catFilters').innerHTML = CATEGORIES.map(cat => `
+    <label class="cat-row">
+      <input type="checkbox" data-cat="${cat}" ${enabledCats.has(cat) ? 'checked' : ''} />
+      <span class="cat-dot" style="background:${CAT_HEX[cat]}"></span>
+      <span class="cat-name">${cat}</span>
+      <span class="cat-count">${counts[cat]}</span>
+      ${trendMarkup(cat)}
+    </label>`).join('');
+  document.querySelectorAll('#catFilters input').forEach(cb => cb.addEventListener('change', () => {
+    cb.checked ? enabledCats.add(cb.dataset.cat) : enabledCats.delete(cb.dataset.cat);
+    renderAll();
+  }));
+  const bn = document.getElementById('baselineNote');
+  if (stats && !stats.baseline?.mature) {
+    bn.textContent = `baseline building: ${stats.baseline?.hours ?? 0}/${stats.baseline?.minHours ?? 6}h of history — trend arrows appear once enough hours accumulate`;
+  } else if (scope === 'global') {
+    bn.textContent = 'trend arrows compare the REGION picture vs its 24h baseline';
+  } else {
+    bn.textContent = '';
+  }
+}
+
+const SORTS = {
+  cs:   ac => (ac.callsign || ac.hex || '').toUpperCase(),
+  type: ac => (ac.type || '').toUpperCase(),
+  cat:  ac => ac.cat,
+  alt:  ac => Number.isFinite(ac.alt) ? ac.alt : -1,
+  gs:   ac => Number.isFinite(ac.gs) ? ac.gs : -1,
+};
+
+function renderTable() {
+  const wrap = document.getElementById('tablewrap');
+  const list = visibleAircraft();
+  if (!list.length) {
+    const note = lastPayload?.note
+      ? esc(lastPayload.note)
+      : (aircraftList.length ? 'all categories filtered out' : 'no aircraft in view');
+    wrap.innerHTML = `<div class="empty">${note}</div>`;
+    return;
+  }
+  const get = SORTS[sortKey] || SORTS.alt;
+  const sorted = [...list].sort((a, b) => {
+    const va = get(a), vb = get(b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+  const arr = k => sortKey === k ? `<span class="arr">${sortDir > 0 ? '▲' : '▼'}</span>` : '';
+  const rows = sorted.map(ac => `
+    <tr data-hex="${esc(ac.hex)}">
+      <td class="cs" style="max-width:92px">${orbitFlags.get(ac.hex) ? '<span class="orbit-tag" title="orbit/racetrack — on station">◉ </span>' : ''}${esc(ac.callsign || ac.hex)}</td>
+      <td style="max-width:52px">${esc(ac.type || '—')}</td>
+      <td class="catcell" style="color:${CAT_HEX[ac.cat]}">${esc(ac.cat)}</td>
+      <td>${Number.isFinite(ac.alt) ? ac.alt.toLocaleString() : '—'}</td>
+      <td>${Number.isFinite(ac.gs) ? Math.round(ac.gs) : '—'}</td>
+    </tr>`).join('');
+  wrap.innerHTML = `<table>
+    <thead><tr>
+      <th data-k="cs">CALLSIGN${arr('cs')}</th><th data-k="type">TYPE${arr('type')}</th>
+      <th data-k="cat">CAT${arr('cat')}</th><th data-k="alt">ALT FT${arr('alt')}</th>
+      <th data-k="gs">KT${arr('gs')}</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.querySelectorAll('thead th').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'cs' || k === 'type' || k === 'cat' ? 1 : -1; }
+    renderTable();
+  }));
+  wrap.querySelectorAll('tbody tr').forEach(tr => tr.addEventListener('click', () => {
+    const entry = markers.get(tr.dataset.hex);
+    if (entry) {
+      map.flyTo(entry.marker.getLatLng(), Math.max(map.getZoom(), 7), { duration: 0.8 });
+      entry.marker.openPopup();
+    }
+  }));
+}
+
+function renderStatus() {
+  const el = document.getElementById('status');
+  if (!lastPayload) {
+    el.innerHTML = lastFetchOk === false
+      ? '<span class="warnline">backend unreachable — retrying…</span>'
+      : 'waiting for first poll…';
+    return;
+  }
+  const feedAgeS = Math.round((Date.now() - new Date(lastPayload.fetchedAt).getTime()) / 1000);
+  const lines = [
+    `source <span class="src">${esc(lastPayload.source)}</span>` +
+      (lastPayload.sourceStatus?.active !== lastPayload.sourceStatus?.sources?.[0]?.id ? ' <span class="warnline">(fallback active)</span>' : '') +
+      ` · ${lastPayload.count} tracked (${scope})`,
+    `updated ${fmtTs(lastPayload.fetchedAt)} (${feedAgeS}s ago)` +
+      (lastPayload.withoutPosition ? ` · ${lastPayload.withoutPosition} mil no-position` : ''),
+  ];
+  if (feedAgeS > STALE_AFTER_S) lines.push('<span class="warnline">⚠ STALE DATA — feed is over 3 min old (upstream sources may be down or rate-limiting)</span>');
+  if (lastFetchOk === false) lines.push('<span class="warnline">⚠ last refresh from backend failed — showing previous data</span>');
+  el.innerHTML = lines.join('<br>');
+}
+
+function renderAll() { renderFilters(); renderTable(); renderMap(); renderStatus(); }
+
+// ─── Data loading ───
+async function load() {
+  try {
+    const [acRes, stRes] = await Promise.all([
+      fetch(`${API}/aircraft?scope=${scope}`),
+      fetch(`${API}/stats`),
+    ]);
+    if (acRes.status === 503) { // backend still warming — retry soon
+      lastFetchOk = null;
+      renderStatus();
+      setTimeout(load, RETRY_MS);
+      return;
+    }
+    const payload = await acRes.json();
+    if (!acRes.ok) throw new Error(payload.error || `HTTP ${acRes.status}`);
+    if (stRes.ok) stats = await stRes.json();
+
+    lastPayload = payload;
+    aircraftList = payload.aircraft || [];
+    lastFetchOk = true;
+    for (const ac of aircraftList) pushTrail(ac);
+    // Prune trails for aircraft gone from the GLOBAL feed (keep across scope
+    // switches; a region-filtered fetch must not wipe global trails).
+    if (scope === 'global') {
+      const seen = new Set(aircraftList.map(ac => ac.hex));
+      for (const hex of trails.keys()) if (!seen.has(hex)) trails.delete(hex);
+    }
+    orbitFlags.clear();
+    for (const ac of aircraftList) orbitFlags.set(ac.hex, detectOrbit(ac.hex, ac));
+    renderAll();
+  } catch (err) {
+    lastFetchOk = false;
+    console.warn('[AirWatch] refresh failed:', err);
+    renderStatus();
+  }
+}
+
+document.getElementById('scopeRegion').addEventListener('click', () => setScope('region'));
+document.getElementById('scopeGlobal').addEventListener('click', () => setScope('global'));
+function setScope(next) {
+  if (scope === next) return;
+  scope = next;
+  document.getElementById('scopeRegion').classList.toggle('active', scope === 'region');
+  document.getElementById('scopeGlobal').classList.toggle('active', scope === 'global');
+  if (scope === 'region') map.flyTo([26.5, 51.5], 5, { duration: 0.8 });
+  else map.flyTo([25, 30], 3, { duration: 0.8 });
+  load();
+}
+
+load();
+setInterval(load, POLL_MS);
+setInterval(renderStatus, 15 * 1000); // keep the age/stale line ticking between polls
+</script>
+</body>
+</html>
