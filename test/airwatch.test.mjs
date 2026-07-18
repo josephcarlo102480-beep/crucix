@@ -44,6 +44,13 @@ describe('airwatch classification', () => {
     assert.equal(classify('H60'), 'HELO');
   });
 
+  test('falls back to the desc field for mil aircraft flying civilian airframe codes', () => {
+    assert.equal(classify('B762', 'A3', 'BOEING KC-46A Pegasus'), 'TANKER');
+    assert.equal(classify('B738', 'A3', 'BOEING E-7A Wedgetail'), 'ISR');
+    assert.equal(classify('B762', 'A3', 'BOEING 767-200'), 'OTHER'); // plain civilian 767
+    assert.equal(classify('K35R', 'A3', 'nonsense desc'), 'TANKER'); // type code wins over desc
+  });
+
   test('unknown types fall through to OTHER without matching E3-like civilian codes', () => {
     assert.equal(classify('ZZZZ'), 'OTHER');
     assert.equal(classify(null), 'OTHER');

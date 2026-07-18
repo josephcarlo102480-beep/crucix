@@ -69,18 +69,37 @@ const TYPE_PREFIX = [
   ['H47', 'HELO'], ['H53', 'HELO'], ['H60', 'HELO'], ['H64', 'HELO'],
 ];
 
+// Description-keyword fallback for aircraft the feeds report under their
+// civilian airframe code (e.g. KC-46A as B762, E-7 as B738/E737) — checked
+// only when the type-designator tables miss, so an explicit code always wins.
+const DESC_KEYWORDS = [
+  [/KC-?46|PEGASUS|KC-?135|STRATOTANKER|KC-?10|EXTENDER|KC-?767|MRTT|VOYAGER/, 'TANKER'],
+  [/RIVET ?JOINT|AWACS|SENTRY|WEDGETAIL|JSTARS|POSEIDON|GLOBAL ?HAWK|REAPER|HAWKEYE|DRAGON ?LADY|COMPASS ?CALL|GUARDRAIL/, 'ISR'],
+  [/GLOBEMASTER|GALAXY|HERCULES|A400M/, 'HEAVY'],
+  [/FIGHTING ?FALCON|STRIKE ?EAGLE|SUPER ?HORNET|HORNET|LIGHTNING ?II|RAPTOR|TYPHOON|RAFALE|GRIPEN|THUNDERBOLT/, 'FIGHTER'],
+  [/BLACK ?HAWK|PAVE ?HAWK|SEAHAWK|CHINOOK|APACHE|STALLION|OSPREY|MERLIN|COBRA|VENOM/, 'HELO'],
+];
+
 /**
  * Classify an aircraft into one of CATEGORIES.
  * @param {string} type ICAO type designator (feed `t` field)
  * @param {string} emitterCategory ADS-B emitter category (feed `category`,
  *   e.g. 'A7' = rotorcraft) — used as a helicopter catch-all.
+ * @param {string} desc feed `desc` field (e.g. "BOEING KC-46A Pegasus") —
+ *   fallback for tankers/ISR flying under civilian airframe codes.
  */
-export function classify(type, emitterCategory) {
+export function classify(type, emitterCategory, desc) {
   const t = String(type || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (t && TYPE_EXACT[t]) return TYPE_EXACT[t];
   if (t) {
     for (const [prefix, cat] of TYPE_PREFIX) {
       if (t.startsWith(prefix)) return cat;
+    }
+  }
+  const d = String(desc || '').toUpperCase();
+  if (d) {
+    for (const [pattern, cat] of DESC_KEYWORDS) {
+      if (pattern.test(d)) return cat;
     }
   }
   if (String(emitterCategory || '').toUpperCase() === 'A7') return 'HELO';
@@ -164,7 +183,7 @@ export function normalizeAircraft(ac) {
     type,
     desc: ac.desc || null,
     operator: ac.ownOp || null,
-    cat: classify(type, ac.category),
+    cat: classify(type, ac.category, ac.desc),
     lat, lon, alt,
     gs: Number.isFinite(Number(ac.gs)) ? Number(ac.gs) : null,
     track,

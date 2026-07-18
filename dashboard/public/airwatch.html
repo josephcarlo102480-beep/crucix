@@ -385,7 +385,11 @@ function renderStatus() {
 function renderAll() { renderFilters(); renderTable(); renderMap(); renderStatus(); }
 
 // ─── Data loading ───
+let retryTimer = null; // single pending warm-up retry — the 45s interval also
+                       // calls load(), so unguarded setTimeout chains would
+                       // multiply during a prolonged upstream outage.
 async function load() {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   try {
     const [acRes, stRes] = await Promise.all([
       fetch(`${API}/aircraft?scope=${scope}`),
@@ -394,7 +398,7 @@ async function load() {
     if (acRes.status === 503) { // backend still warming — retry soon
       lastFetchOk = null;
       renderStatus();
-      setTimeout(load, RETRY_MS);
+      retryTimer = setTimeout(() => { retryTimer = null; load(); }, RETRY_MS);
       return;
     }
     const payload = await acRes.json();
