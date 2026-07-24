@@ -12,6 +12,8 @@
     "brief": "node apis/briefing.mjs",
     "brief:save": "node apis/save-briefing.mjs",
     "diag": "node diag.mjs",
+    "probe": "node scripts/browser-probe.mjs",
+    "probe:map-popup": "node scripts/browser-probe.mjs --wait-for '.nuke-clickable[data-site]' scripts/probes/map-popup.probe.js",
     "clean": "node scripts/clean.mjs",
     "fresh-start": "npm run clean && npm start"
   },
