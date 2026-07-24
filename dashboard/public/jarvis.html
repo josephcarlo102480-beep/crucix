@@ -11,6 +11,7 @@
 <script src="https://d3js.org/topojson.v3.min.js"></script>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<script src="/js/globe-fx.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -531,6 +532,7 @@ function t(keyPath, fallback) {
 
 // === GLOBALS ===
 let globe = null;
+let globeFX = null;
 let globeInitialized = false;
 let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
@@ -877,6 +879,10 @@ function togglePerfMode(){
     renderLower();
     renderRight();
   }
+  if(globeFX){
+    globeFX.lock();
+    globeFX.setQuality(lowPerfMode ? 0 : 3);
+  }
 }
 
 // === TOPBAR ===
@@ -1211,8 +1217,7 @@ function initGlobe(){
     .bumpImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-topology.png')
     .backgroundImageUrl('')
     .backgroundColor('rgba(0,0,0,0)')
-    .atmosphereColor('#64f0c8')
-    .atmosphereAltitude(0.18)
+    .showAtmosphere(false)
     .showGraticules(true)
     // Points layer (main markers)
     .pointAltitude(d => d.alt || 0.01)
@@ -1247,19 +1252,6 @@ function initGlobe(){
   const scene = globe.scene();
   const renderer = globe.renderer();
   renderer.setClearColor(0x000000, 0);
-
-  // Add subtle stars background
-  const starGeom = new THREE.BufferGeometry();
-  const starVerts = [];
-  for(let i=0; i<2000; i++){
-    const r = 800 + Math.random()*200;
-    const theta = Math.random()*Math.PI*2;
-    const phi = Math.acos(2*Math.random()-1);
-    starVerts.push(r*Math.sin(phi)*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta), r*Math.cos(phi));
-  }
-  starGeom.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
-  const starMat = new THREE.PointsMaterial({color:0x88bbaa, size:0.8, transparent:true, opacity:0.6});
-  scene.add(new THREE.Points(starGeom, starMat));
 
   // Customize graticule color
   scene.traverse(obj => {
@@ -1303,6 +1295,22 @@ function initGlobe(){
     document.getElementById('flatMapSvg').style.display = 'none';
     document.getElementById('projToggle').textContent = 'FLAT MODE';
     document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  }
+
+  globeFX = window.CrucixGlobeFX ? CrucixGlobeFX.attach(globe, {
+    shells: true,
+    stars: true,
+    sun: true,
+    adaptive: true,
+    dprCap: 1.75,
+    starCount: 5000,
+    starSeed: 1337,
+    color: '#64f0c8',
+    sunStrength: 0.5,
+  }) : null;
+  if(globeFX && lowPerfMode){
+    globeFX.setQuality(0);
+    globeFX.lock();
   }
 
   globeInitialized = true;

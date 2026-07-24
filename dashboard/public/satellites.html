@@ -8,7 +8,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<script src="/js/globe-fx.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1081,6 +1083,7 @@ function centerOnConjunction(idx) {
 
 // === 3D Globe (Globe.gl) ===
 let globe3d = null;
+let globeFX = null;
 let viewMode = '2d';
 
 function init3DGlobe() {
@@ -1088,10 +1091,8 @@ function init3DGlobe() {
   globe3d = Globe()(container)
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-    .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
-    .showAtmosphere(true)
-    .atmosphereColor('#64f0c8')
-    .atmosphereAltitude(0.15)
+    .backgroundImageUrl('')
+    .showAtmosphere(false)
     .pointOfView({ lat: OBSERVER.lat, lng: OBSERVER.lng, altitude: 2.5 })
     // Satellite current positions — HTML elements always render on top, never get lost
     .htmlElementsData([])
@@ -1147,6 +1148,18 @@ function init3DGlobe() {
     .ringMaxRadius(1.2)
     .ringPropagationSpeed(0.8)
     .ringRepeatPeriod(1200);
+
+  globeFX = window.CrucixGlobeFX ? CrucixGlobeFX.attach(globe3d, {
+    shells: true,
+    stars: true,
+    sun: true,
+    adaptive: true,
+    dprCap: 1.75,
+    starCount: 5000,
+    starSeed: 1337,
+    color: '#64f0c8',
+    sunStrength: 1.0,
+  }) : null;
 }
 
 function isValidCoord(lat, lng) {
