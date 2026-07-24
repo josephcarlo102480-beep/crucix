@@ -2902,8 +2902,9 @@ document.addEventListener('DOMContentLoaded', () => {
           globe.pointOfView({ lat: coords.lat, lng: coords.lng, altitude: 0.8 }, 1000);
         }
 
-        // Show popup overlay
-        const popup = document.getElementById('mapPopup') || createNukePopup();
+        // Show popup overlay — own element, NOT the shared #mapPopup (whose
+        // .pp-head/.pp-text/.pp-meta children showPopup() depends on).
+        const popup = document.getElementById('nukePopup') || createNukePopup();
         const cpmVal = nukeData?.cpm?.toFixed(1) || 'No data';
         const status = nukeData?.anom ? 'ANOMALY DETECTED' : 'Normal';
         const statusColor = nukeData?.anom ? 'var(--danger)' : 'var(--accent)';
