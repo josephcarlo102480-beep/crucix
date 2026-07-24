@@ -229,7 +229,7 @@ function popupHtml(cam){
   const kind = feedKind(cam);
   let media = '';
   if (kind === 'iframe'){
-    media = `<div class="iframe-wrap"><iframe src="${esc(safeHttpUrl(cam.stream_url))}" sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="no-referrer" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
+    media = `<div class="iframe-wrap"><iframe src="${esc(safeHttpUrl(cam.stream_url))}" sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
   } else if (kind === 'hls'){
     media = `<div class="iframe-wrap"><video id="camVideo" controls autoplay muted playsinline></video></div>`;
   } else if (kind === 'image'){
