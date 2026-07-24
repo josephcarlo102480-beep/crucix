@@ -12,6 +12,12 @@
  *
  * Clicks the Nuclear Watch row first to arm the old trigger, then every flat
  * map marker. Returns pass:false if any marker throws or renders no popup.
+ *
+ * Also guards a second bug: the nuke rows used to carry click listeners bound
+ * directly to each row, so renderLeftRail() rewriting #leftRail.innerHTML wiped
+ * them out and the rows went permanently inert. The handler is now delegated on
+ * #leftRail, which survives innerHTML re-renders — the three re-render states
+ * below all have to stay "WORKS".
  */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const failures = [];
@@ -60,10 +66,46 @@ for (const g of markers) {
 }
 if (!markers.length) failures.push('no flat map markers found — is the map in globe mode?');
 
+// The nuke rows must survive left-rail re-renders. Only rows whose site name
+// resolves to coordinates open a card, so try each until one does.
+const nukeCardOpens = async () => {
+  document.getElementById('nukePopup')?.remove();
+  const rows = [...document.querySelectorAll('.nuke-clickable[data-site]')];
+  if (!rows.length) return 'NO ROWS';
+  for (const row of rows) {
+    try { row.click(); } catch (e) { failures.push(`nuke row "${row.dataset.site}" threw: ${e.message}`); }
+    await sleep(300);
+    const p = document.getElementById('nukePopup');
+    if (p && p.innerHTML.trim()) return 'WORKS';
+  }
+  return 'DEAD';
+};
+
+const rerender = {};
+rerender.freshAfterBoot = await nukeCardOpens();
+if (rerender.freshAfterBoot !== 'WORKS') {
+  failures.push(`no Nuclear Watch row opened #nukePopup on a freshly booted page (${rerender.freshAfterBoot})`);
+}
+
+renderLeftRail();
+await sleep(400);
+rerender.afterRenderLeftRail = await nukeCardOpens();
+if (rerender.afterRenderLeftRail !== 'WORKS') {
+  failures.push(`Nuclear Watch rows went inert after renderLeftRail() (${rerender.afterRenderLeftRail}) — the click handler is bound to the rows themselves instead of delegated on #leftRail, so the innerHTML rewrite destroys it`);
+}
+
+syncResponsiveLayout(true);
+await sleep(600);
+rerender.afterSyncResponsiveLayout = await nukeCardOpens();
+if (rerender.afterSyncResponsiveLayout !== 'WORKS') {
+  failures.push(`Nuclear Watch rows went inert after syncResponsiveLayout(true) (${rerender.afterSyncResponsiveLayout}) — the delegated #leftRail handler did not survive a responsive re-render`);
+}
+
 return {
   pass: failures.length === 0 && errors.length === 0,
   markersClicked: markers.length,
   popupsByLayer: byLayer,
+  nukeRerenderStates: rerender,
   uncaughtErrors: errors,
   failures,
 };

@@ -2899,8 +2899,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function hookNukeClicks() {
-    document.querySelectorAll('.nuke-clickable[data-site]').forEach(el => {
-      el.addEventListener('click', () => {
+    const rail = document.getElementById('leftRail');
+    if (!rail || rail._nukeClicksBound) return;
+    rail._nukeClicksBound = true;
+    rail.addEventListener('click', (e) => {
+        const el = closestTarget(e, '.nuke-clickable[data-site]');
+        if (!el) return;
         const site = el.dataset.site;
         const coords = findNukeCoords(site);
         if (!coords) return;
@@ -2941,7 +2945,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         };
         setTimeout(() => document.addEventListener('click', closeHandler), 100);
-      });
     });
   }
 
@@ -2953,13 +2956,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return div;
   }
 
-  const observer = new MutationObserver(() => {
-    if (document.querySelector('.nuke-clickable[data-site]')) {
-      observer.disconnect();
-      setTimeout(hookNukeClicks, 600);
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
+  if (document.getElementById('leftRail')) {
+    hookNukeClicks();
+  } else {
+    const observer = new MutationObserver(() => {
+      if (document.getElementById('leftRail')) {
+        observer.disconnect();
+        hookNukeClicks();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
 })();
 
 // === Right-rail interactions: refresh-safe accordions + map focus ===
