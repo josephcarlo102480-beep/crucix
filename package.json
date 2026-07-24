@@ -14,6 +14,7 @@
     "diag": "node diag.mjs",
     "probe": "node scripts/browser-probe.mjs",
     "probe:map-popup": "node scripts/browser-probe.mjs --wait-for '.nuke-clickable[data-site]' scripts/probes/map-popup.probe.js",
+    "probe:flat-map": "node scripts/browser-probe.mjs --wait-for '#flatMapSvg g.markers' scripts/probes/flat-map-layers.probe.js",
     "clean": "node scripts/clean.mjs",
     "fresh-start": "npm run clean && npm start"
   },

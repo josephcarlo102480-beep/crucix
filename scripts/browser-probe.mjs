@@ -20,7 +20,7 @@
  * a JSON string and it gets parsed for you.
  *
  * Exit codes: 0 ok · 1 harness or program failure · 2 console errors seen
- * (suppress with --allow-console-errors).
+ * (suppress with --allow-console-errors) · 3 the probe returned {pass:false}.
  *
  * Heads up: Firefox takes ~15-20 s to come up on the Pi, and the dashboard
  * renders asynchronously after load — use --wait-for and/or --settle rather
@@ -180,6 +180,9 @@ try {
 
 // ---- report ---------------------------------------------------------------
 const errors = console_.filter(e => e.level === 'error');
+// A probe that returns {pass:false} has failed its own assertions, even though
+// the harness itself ran fine — surface that as a non-zero exit for CI.
+const failed = out.ok && out.result && typeof out.result === 'object' && out.result.pass === false;
 console.log(JSON.stringify({ url: opt.url, console: console_, consoleErrors: errors.length, ...out }, null, 2));
 
 try { ws?.close(); } catch { /* already gone */ }
@@ -188,4 +191,4 @@ if (!opt.keepOpen) {
   await sleep(300);
   try { rmSync(profile, { recursive: true, force: true }); } catch { /* best effort */ }
 }
-process.exit(!out.ok ? 1 : (errors.length && !opt.allowConsoleErrors) ? 2 : 0);
+process.exit(!out.ok ? 1 : failed ? 3 : (errors.length && !opt.allowConsoleErrors) ? 2 : 0);

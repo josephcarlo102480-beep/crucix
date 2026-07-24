@@ -1674,10 +1674,14 @@ function initFlatMap(){
   drawFlatMap();
 }
 
+let flatDrawSeq=0;
 function drawFlatMap(){
+  const seq=++flatDrawSeq;
+  flatG.selectAll('path.graticule,path.border,g.markers,g.corridors-layer').remove();
   flatG.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',flatPath);
   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
     .then(r=>r.json()).then(world=>{
+      if(seq!==flatDrawSeq)return;
       const countries=topojson.feature(world,world.objects.countries);
       flatG.selectAll('path.land').data(countries.features).enter().append('path').attr('class','land').attr('d',flatPath);
       flatG.append('path').datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b)).attr('class','border').attr('d',flatPath);
@@ -1686,6 +1690,7 @@ function drawFlatMap(){
 }
 
 function plotFlatMarkers(){
+  flatG.selectAll('g.markers,g.corridors-layer').remove();
   const mg=flatG.append('g').attr('class','markers');
   const proj=flatProjection;
   const addPt=(lat,lon,r,fill,stroke,onClick,priority)=>{
