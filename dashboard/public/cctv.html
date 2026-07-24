@@ -218,7 +218,7 @@ function setupYtErrorWatch(){
   if (!frame) return;
   const frameUrl = new URL(frame.src);
   if (!frameUrl.host.includes('youtube')) return;
-  const onMessage = (e) => {
+  const onMessage = async (e) => {
     if (e.origin !== frameUrl.origin) return;
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
@@ -226,7 +226,25 @@ function setupYtErrorWatch(){
     const code = Number(data.info);
     let message = `Feed error (code ${code}).`;
     if (code === 100) message = 'Stream offline — this live stream ID is stale. 24/7 streams restart under new IDs. Try "open ↗".';
-    else if (code === 101 || code === 150) message = 'Embed blocked — the owner disallows embedding. Try "open ↗".';
+    else if (code === 101 || code === 150){
+      const watch = ytErrorWatch;
+      const videoId = frameUrl.pathname.match(/\/embed\/([^/]+)/)?.[1];
+      const wrap = document.getElementById('camMedia');
+      if (wrap) wrap.innerHTML = '<div class="pmsg">Checking feed…</div>';
+      message = 'Feed unavailable — embed blocked or stream offline. Try "open ↗".';
+      try {
+        const url = 'https://www.youtube.com/oembed?url=' +
+          encodeURIComponent('https://www.youtube.com/watch?v=' + videoId) + '&format=json';
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (res.ok) message = 'Embed blocked — the owner disallows embedding this stream. Try "open ↗".';
+        else if (res.status === 401 || res.status === 403) message = 'Stream offline — the video is now private. 24/7 streams restart under new IDs. Try "open ↗".';
+        else if (res.status === 404) message = 'Stream offline — this video ID is stale. 24/7 streams restart under new IDs. Try "open ↗".';
+      } catch { /* ambiguous player error */ }
+      if (ytErrorWatch !== watch) return;
+      const currentWrap = document.getElementById('camMedia');
+      if (currentWrap) currentWrap.innerHTML = `<div class="pmsg">${message}</div>`;
+      return;
+    }
     else if (code === 2) message = 'Invalid video ID.';
     else if (code === 5) message = 'Player error.';
     const wrap = document.getElementById('camMedia');
