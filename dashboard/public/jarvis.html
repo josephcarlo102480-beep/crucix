@@ -1550,6 +1550,12 @@ function plotMarkers(){
 function showPopup(event,head,text,meta,lat,lng,alt){
   const popup=document.getElementById('mapPopup');
   const container=document.getElementById('mapContainer');
+  // Safety net: if the popup shell or any of its children went missing, bail out
+  // loudly rather than throwing out of a d3/globe click handler.
+  if(!popup||!container||!popup.querySelector('.pp-head')||!popup.querySelector('.pp-text')||!popup.querySelector('.pp-meta')){
+    console.warn('[Crucix] showPopup: #mapPopup markup missing or incomplete; skipping popup');
+    return;
+  }
   const rect=container.getBoundingClientRect();
   let left, top;
   if(!isFlat && lat!=null && globe && typeof globe.getScreenCoords==='function'){
