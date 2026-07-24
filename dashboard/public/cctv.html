@@ -105,6 +105,7 @@ const popup = document.getElementById('popup');
 let allCameras = [];
 let liveTimer = null;          // auto-refresh interval for snapshot (JPEG) feeds
 let hlsPlayer = null;          // active hls.js instance (destroyed on close/switch)
+let ytErrorWatch = null;       // active YouTube load/message listeners
 let currentCluster = [];       // cameras overlapping the last clicked dot
 const CLUSTER_PX = 22;         // screen distance (px) that counts as "same spot"
 // Live-ish refresh cadence for JPEG feeds. Most traffic cams only update
@@ -212,14 +213,48 @@ function stopLive(){ if (liveTimer){ clearInterval(liveTimer); liveTimer = null;
 // hls.js keeps fetching live segments until destroyed — closing the popup or
 // switching cameras without this leaks an active loader per HLS open.
 function destroyHlsPlayer(){ if (hlsPlayer){ try { hlsPlayer.destroy(); } catch { /* already dead */ } hlsPlayer = null; } }
-window.cctvClose = function(){ stopLive(); destroyHlsPlayer(); popup.style.display = 'none'; };
+function setupYtErrorWatch(){
+  const frame = document.getElementById('camFrame');
+  if (!frame) return;
+  const frameUrl = new URL(frame.src);
+  if (!frameUrl.host.includes('youtube')) return;
+  const onMessage = (e) => {
+    if (e.origin !== frameUrl.origin) return;
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    if (!data || data.event !== 'onError') return;
+    const code = Number(data.info);
+    let message = `Feed error (code ${code}).`;
+    if (code === 100) message = 'Stream offline — this live stream ID is stale. 24/7 streams restart under new IDs. Try "open ↗".';
+    else if (code === 101 || code === 150) message = 'Embed blocked — the owner disallows embedding. Try "open ↗".';
+    else if (code === 2) message = 'Invalid video ID.';
+    else if (code === 5) message = 'Player error.';
+    const wrap = document.getElementById('camMedia');
+    if (wrap) wrap.innerHTML = `<div class="pmsg">${message}</div>`;
+  };
+  const onLoad = () => {
+    frame.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 'camFrame', channel: 'widget' }), frameUrl.origin);
+    window.addEventListener('message', onMessage);
+  };
+  ytErrorWatch = { frame, onLoad, onMessage };
+  frame.addEventListener('load', onLoad, { once: true });
+}
+function teardownYtErrorWatch(){
+  if (!ytErrorWatch) return;
+  ytErrorWatch.frame.removeEventListener('load', ytErrorWatch.onLoad);
+  window.removeEventListener('message', ytErrorWatch.onMessage);
+  ytErrorWatch = null;
+}
+window.cctvClose = function(){ stopLive(); destroyHlsPlayer(); teardownYtErrorWatch(); popup.style.display = 'none'; };
 
 // Render a camera's popup body in place and (re)start its feed.
 function renderCameraInto(cam){
   stopLive();
   destroyHlsPlayer();
+  teardownYtErrorWatch();
   popup.innerHTML = popupHtml(cam);
   const kind = feedKind(cam);
+  if (kind === 'iframe') setupYtErrorWatch();
   if (kind === 'hls') setupHls(safeHttpUrl(cam.stream_url));
   if (kind === 'image') startLive(cam.id);
 }
@@ -229,7 +264,9 @@ function popupHtml(cam){
   const kind = feedKind(cam);
   let media = '';
   if (kind === 'iframe'){
-    media = `<div class="iframe-wrap"><iframe src="${esc(safeHttpUrl(cam.stream_url))}" sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
+    const frameUrl = new URL(safeHttpUrl(cam.stream_url));
+    if (frameUrl.host.includes('youtube')) frameUrl.searchParams.set('enablejsapi', '1');
+    media = `<div class="iframe-wrap"><iframe id="camFrame" src="${esc(frameUrl.toString())}" sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
   } else if (kind === 'hls'){
     media = `<div class="iframe-wrap"><video id="camVideo" controls autoplay muted playsinline></video></div>`;
   } else if (kind === 'image'){
