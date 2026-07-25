@@ -482,22 +482,22 @@ async function fetchItalyCameras() {
 
 async function fetchCzechiaCameras() {
   return [
-    { id: 'cz-prague-1', lat: 50.0878, lng: 14.4205, name: 'Prague - Old Town Square', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/IFnbDmgP69Q?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'cz-prague-1', lat: 50.0878, lng: 14.4205, name: 'Prague - Old Town Square', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/3C8W4Rlgiog?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
     { id: 'cz-prague-2', lat: 50.0865, lng: 14.4114, name: 'Prague - Charles Bridge', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/tmlE1ct0cYk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'cz-prague-3', lat: 50.0900, lng: 14.4000, name: 'Prague - City View', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/sspBOJIrNzU?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'cz-prague-3', lat: 50.0900, lng: 14.4000, name: 'Prague - City View', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/yQe334ro-w0?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
   ];
 }
 
 async function fetchSlovakiaCameras() {
   return [
-    { id: 'sk-bratislava-1', lat: 48.1486, lng: 17.1077, name: 'Bratislava - Old Town', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/kYDIwCLGKL0?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'sk-bratislava-3', lat: 48.1450, lng: 17.1000, name: 'Bratislava - Danube River', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/xFdvZ4eGzPg?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'sk-bratislava-1', lat: 48.1486, lng: 17.1077, name: 'Bratislava - Old Town', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/Kycpb3_xCeo?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'sk-bratislava-3', lat: 48.1450, lng: 17.1000, name: 'Bratislava - Danube River', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/PZMvWDB6O0o?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
   ];
 }
 
 async function fetchGermanyCameras() {
   return [
-    { id: 'de-berlin-1', lat: 52.5200, lng: 13.4050, name: 'Berlin - Alexanderplatz', city: 'Berlin', country: 'Germany', stream_url: 'https://www.youtube-nocookie.com/embed/IRqboacDNFg?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'de-berlin-1', lat: 52.5200, lng: 13.4050, name: 'Berlin - Alexanderplatz', city: 'Berlin', country: 'Germany', stream_url: 'https://www.youtube-nocookie.com/embed/4Xg-wkPazp4?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
     { id: 'de-munich-1', lat: 48.1351, lng: 11.5820, name: 'Munich - Marienplatz', city: 'Munich', country: 'Germany', stream_url: 'https://www.youtube-nocookie.com/embed/KxWuwC7R5kY?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
   ];
 }
@@ -514,7 +514,7 @@ async function fetchFranceCameras() {
 async function fetchSpainCameras() {
   return [
     { id: 'es-barcelona-2', lat: 41.3800, lng: 2.1800, name: 'Barcelona - Beach Area', city: 'Barcelona', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/4DjwrvoTKwk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'es-madrid-1', lat: 40.4168, lng: -3.7038, name: 'Madrid - Puerta del Sol', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/4CaHlfpGlAI?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'es-madrid-1', lat: 40.4168, lng: -3.7038, name: 'Madrid - Puerta del Sol', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/4yCeo9edKGQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
     { id: 'es-madrid-2', lat: 40.4200, lng: -3.7000, name: 'Madrid - Gran Via', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/LSPN10FbR3U?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
   ];
 }
@@ -527,10 +527,10 @@ async function fetchPolandCameras() {
 
 async function fetchJapanCameras() {
   return [
-    { id: 'jp-shibuya-crossing', lat: 35.6595, lng: 139.7005, name: 'Shibuya Scramble Crossing', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/HpdO5Kq3o7Y?autoplay=1&mute=1', stream_type: 'iframe', source: 'ANN News / YouTube' },
-    { id: 'jp-tokyo-tower', lat: 35.6586, lng: 139.7454, name: 'Tokyo Tower Live Cam', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/cbJ03Xk_eLQ?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
-    { id: 'jp-mt-fuji', lat: 35.3606, lng: 138.7274, name: 'Mt. Fuji Live', city: 'Shizuoka/Yamanashi', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/5aLh8R2HqOQ?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
-    { id: 'jp-osaka-dotonbori', lat: 34.6687, lng: 135.5013, name: 'Dotonbori Live Cam', city: 'Osaka', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/m6J9w94oBXY?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
+    { id: 'jp-shibuya-crossing', lat: 35.6595, lng: 139.7005, name: 'Shibuya Scramble Crossing', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/8H3nRCFVR6Y?autoplay=1&mute=1', stream_type: 'iframe', source: 'ANN News / YouTube' },
+    { id: 'jp-tokyo-tower', lat: 35.6586, lng: 139.7454, name: 'Tokyo Tower Live Cam', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/nu6NE55_X7A?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
+    { id: 'jp-mt-fuji', lat: 35.3606, lng: 138.7274, name: 'Mt. Fuji Live', city: 'Shizuoka/Yamanashi', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/bdUbACCWmoY?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
+    { id: 'jp-osaka-dotonbori', lat: 34.6687, lng: 135.5013, name: 'Dotonbori Live Cam', city: 'Osaka', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/i2PpmC1IeKk?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
   ];
 }
 
