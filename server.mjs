@@ -33,6 +33,8 @@ import { warmCache as warmSanctionsCache } from './services/sanctions/ofacSancti
 import cctvRouter from './services/cctv/cctvRouter.mjs';
 import telegramRouter, { warmTelegram } from './services/telegram/telegramRouter.mjs';
 import airwatchRouter, { warmAirwatch, stopAirwatch } from './services/airwatch/airwatchRouter.mjs';
+import tleRouter from './services/space/tleRouter.mjs';
+import { warmTle } from './services/space/tleCatalog.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -194,6 +196,7 @@ app.use('/api/sanctions', sanctionsRouter);
 app.use('/api/cctv', cctvRouter);
 app.use('/api/telegram', telegramRouter);
 app.use('/api/airwatch', airwatchRouter);
+app.use('/api/tle', tleRouter);
 
 // Serve loading page until first sweep completes, then the dashboard with injected locale
 app.get('/', (req, res) => {
@@ -553,6 +556,12 @@ async function start() {
     // Start the AirWatch military aircraft poller (fire-and-forget).
     warmAirwatch()
       .then(ok => console.log(`[Crucix] AirWatch mil feed ${ok ? 'warmed' : 'first fetch failed (poller will keep retrying)'}`))
+      .catch(() => {});
+
+    // Pre-pull the TLE groups the satellite tracker opens with, plus the full
+    // catalogue that search and the military group are mined from.
+    warmTle()
+      .then(() => console.log('[Crucix] TLE catalog warmed'))
       .catch(() => {});
 
     // Try to load existing data first for instant display (await so dashboard shows immediately)
