@@ -19,6 +19,11 @@ import { getAllCameras, getCameraById, stealthFetch } from './cctvCameras.mjs';
 
 const router = Router();
 
+// Warm the assembled-list cache at boot: assembly now includes a YouTube
+// liveness sweep (~30 watch-page fetches), too slow to leave to the first
+// visitor after a restart.
+getAllCameras().catch(() => {});
+
 // GET /api/cctv/cameras — full assembled set (12h cache).
 router.get('/cameras', async (req, res) => {
   try {

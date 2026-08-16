@@ -4,7 +4,7 @@
   Isolated. Talks only to /api/cctv/*. Own Globe.gl instance (same CDN as
   satellites.html). Does not touch jarvis.html/satellites.html.
 
-  The backend caps the global set (~400 cameras, MAX_CAMERAS in
+  The backend caps the global set (~500 cameras, MAX_CAMERAS in
   cctvCameras.mjs), so all cameras render on load at the default zoom —
   no viewport gating. MAX_VISIBLE_POINTS below is the client-side cap.
 -->
@@ -91,7 +91,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 <div id="popup"></div>
 
 <script>
-// ─── The backend now caps the global set (~400 cameras), so we render them
+// ─── The backend now caps the global set (~500 cameras), so we render them
 //     all immediately at the default zoom — no viewport gate needed. ───
 // Hard cap on rendered points; keep at/above the backend MAX_CAMERAS (400).
 const MAX_VISIBLE_POINTS = 500;

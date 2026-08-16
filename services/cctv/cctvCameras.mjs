@@ -18,11 +18,11 @@
  */
 
 // ═══ Tunable: cap on the assembled global camera set ═══
-// The raw set is ~3,400 cameras (mostly long tails of ASFINAG/TfL), which is
-// far more than a phone client needs. We round-robin across sources and keep
-// the first MAX_CAMERAS so every source stays represented (global spread)
-// while the bulky sources get trimmed. Bump this to widen coverage.
-const MAX_CAMERAS = 400;
+// The raw set is ~5,200 cameras (mostly long tails of ASFINAG/TfL/511/NYC),
+// which is far more than a phone client needs. We round-robin across sources
+// and keep the first MAX_CAMERAS so every source stays represented (global
+// spread) while the bulky sources get trimmed. Bump this to widen coverage.
+const MAX_CAMERAS = 500;
 
 // ═══ stealthFetch (ported from src/lib/stealthFetch.ts) ═══
 // NOTE: in OSIRIS the "residential IP" generator's output is never injected
@@ -237,6 +237,23 @@ async function fetchUSEastCameras() {
   // Florida 511 removed 2026-06 — fl511.com/api/v2/cameras 404s and the
   // v2/get/cameras variant rejects keyless requests ("Invalid Key").
 
+  // NYC DOT traffic cams (~950 online, keyless; frames refresh every ~2s so
+  // these are the most "live" snapshot feeds in the whole set)
+  try {
+    const res = await stealthFetch('https://webcams.nyctmc.org/api/cameras', { signal: AbortSignal.timeout(12000) });
+    if (res.ok) {
+      const data = await res.json();
+      for (const cam of (data || [])) {
+        if (cam.isOnline !== 'true' || !cam.latitude || !cam.longitude || !cam.imageUrl) continue;
+        cams.push({
+          id: `nyc-${cam.id}`, lat: cam.latitude, lng: cam.longitude,
+          name: cam.name || 'NYC Camera', city: cam.area || 'New York', country: 'US',
+          feed_url: cam.imageUrl, source: 'NYC DOT',
+        });
+      }
+    }
+  } catch { /* silent */ }
+
   return cams.filter((c) => c.lat && c.lng);
 }
 
@@ -285,18 +302,20 @@ async function fetchAsiaCameras() {
 async function fetchMiddleEastCameras() {
   const cams = [];
 
-  // Israel Curated (Embedded)
+  // Israel Curated (Embedded) — IDs verified live 2026-08. Entries with a
+  // yt_channel re-resolve to the channel's current stream at assembly time
+  // (see verifyYouTubeLiveCams), so they survive stream restarts.
   cams.push(
     {
       id: 'il-israel-multicam', lat: 32.0853, lng: 34.7818,
-      name: 'Israel Multi-Cam (Live)', city: 'Tel Aviv', country: 'Israel',
-      stream_url: 'https://www.youtube-nocookie.com/embed/gmtlJ_m2r5A?autoplay=1&mute=1',
-      stream_type: 'iframe',
+      name: 'Middle East OSINT Multi-Cam (Live)', city: 'Tel Aviv', country: 'Israel',
+      stream_url: 'https://www.youtube-nocookie.com/embed/AkqGOcpDvZU?autoplay=1&mute=1',
+      stream_type: 'iframe', yt_channel: 'UCper-NWj8xdXacSpFtF4Mgg',
       source: 'YouTube Live',
     },
     {
       id: 'il-jerusalem-live', lat: 31.7767, lng: 35.2345,
-      name: 'Jerusalem Western Wall', city: 'Jerusalem', country: 'Israel',
+      name: 'Jerusalem Western Wall (EarthCam)', city: 'Jerusalem', country: 'Israel',
       stream_url: 'https://www.youtube-nocookie.com/embed/77akujLn4k8?autoplay=1&mute=1',
       stream_type: 'iframe',
       source: 'YouTube Live',
@@ -307,16 +326,16 @@ async function fetchMiddleEastCameras() {
   cams.push(
     {
       id: 'lb-beirut-skyline', lat: 33.8938, lng: 35.5018,
-      name: 'Beirut Skyline Live', city: 'Beirut', country: 'Lebanon',
-      stream_url: 'https://www.youtube-nocookie.com/embed/qJf4NqPKLjI?autoplay=1&mute=1',
+      name: 'Beirut Skyline (CGTN)', city: 'Beirut', country: 'Lebanon',
+      stream_url: 'https://www.youtube-nocookie.com/embed/o8jWN-MBeM0?autoplay=1&mute=1',
       stream_type: 'iframe',
       source: 'YouTube Live',
     },
     {
       id: 'lb-me-multicam', lat: 33.2721, lng: 35.2033,
-      name: 'Middle East Multi-Cam (Live)', city: 'Regional', country: 'Middle East',
-      stream_url: 'https://www.youtube-nocookie.com/embed/oxT5R6I0N6E?autoplay=1&mute=1',
-      stream_type: 'iframe',
+      name: 'Middle East 24/7 Multi-Cam (Live)', city: 'Regional', country: 'Middle East',
+      stream_url: 'https://www.youtube-nocookie.com/embed/Tu6hjlUq2Bs?autoplay=1&mute=1',
+      stream_type: 'iframe', yt_channel: 'UC98W74iwmWXnOMHq0lYeDIw',
       source: 'YouTube Live',
     }
   );
@@ -503,25 +522,32 @@ async function fetchGermanyCameras() {
 }
 
 async function fetchFranceCameras() {
+  // Rebuilt 2026-08: UMuEooW0iAQ and YAdNYoRY0Cw were dead; OzYp4NRZlwQ
+  // ("Louvre") is really the Palais d'Iéna cam facing the Eiffel Tower, and
+  // asO_10T0k2k ("Nice") is really Cannes Quai Laubeuf — relabeled/moved.
   return [
-    { id: 'fr-paris-1', lat: 48.8584, lng: 2.2945, name: 'Paris - Eiffel Tower Area', city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/UMuEooW0iAQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'fr-paris-2', lat: 48.8600, lng: 2.3300, name: 'Paris - Louvre Area', city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/OzYp4NRZlwQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'fr-nice-1', lat: 43.6961, lng: 7.2717, name: 'Nice - Promenade des Anglais', city: 'Nice', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/YAdNYoRY0Cw?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'fr-nice-2', lat: 43.7000, lng: 7.2600, name: 'Nice - City View', city: 'Nice', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/asO_10T0k2k?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'fr-paris-1', lat: 48.8421, lng: 2.3219, name: 'Paris - Skyline (Le Ciel de Paris)', city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/vPy-iwB686k?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCxb9X1HJKkmPwfttoTcLh1A', source: 'YouTube Live' },
+    { id: 'fr-paris-2', lat: 48.8622, lng: 2.2887, name: "Paris - Eiffel Tower (Palais d'Iéna)", city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/OzYp4NRZlwQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'fr-cannes-1', lat: 43.5482, lng: 7.0040, name: 'Cannes - Boulevard du Midi', city: 'Cannes', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/z6BNMoj9Pyo?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCZqr-kHlRzGyCgh7BHksSAw', source: 'YouTube Live' },
+    { id: 'fr-cannes-2', lat: 43.5477, lng: 7.0122, name: 'Cannes - Quai Laubeuf', city: 'Cannes', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/asO_10T0k2k?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UC-YwGCdQF-0AdCXhrDF0d2Q', source: 'YouTube Live' },
   ];
 }
 
 async function fetchSpainCameras() {
+  // Rebuilt 2026-08: 4DjwrvoTKwk and 4yCeo9edKGQ were dead, and LSPN10FbR3U
+  // ("Madrid Gran Via") is really Platja d'Aro on the Costa Brava — moved.
+  // No live keyless Madrid street cam found; the rolling SkylineWebcams Spain
+  // multicam stands in at the Madrid pin.
   return [
-    { id: 'es-barcelona-2', lat: 41.3800, lng: 2.1800, name: 'Barcelona - Beach Area', city: 'Barcelona', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/4DjwrvoTKwk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'es-madrid-1', lat: 40.4168, lng: -3.7038, name: 'Madrid - Puerta del Sol', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/4yCeo9edKGQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'es-madrid-2', lat: 40.4200, lng: -3.7000, name: 'Madrid - Gran Via', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/LSPN10FbR3U?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'es-madrid-1', lat: 40.4168, lng: -3.7038, name: 'Madrid - Spain Multi-Cam (rolling)', city: 'Madrid', country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/kUfuwa8mDrA?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'es-platja-daro-1', lat: 41.8172, lng: 3.0672, name: "Platja d'Aro - Beach (Costa Brava)", city: "Platja d'Aro", country: 'Spain', stream_url: 'https://www.youtube-nocookie.com/embed/LSPN10FbR3U?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCPp3S_agEGIvcEe9NynOjPw', source: 'YouTube Live' },
   ];
 }
 
 async function fetchPolandCameras() {
+  // NZ_ZiHAx8Ic died; replaced 2026-08 with TGD-Transprojekt's 24/7 Wrzeszcz 4K cam.
   return [
-    { id: 'pl-gdansk-1', lat: 54.3520, lng: 18.6466, name: 'Gdansk - City View', city: 'Gdansk', country: 'Poland', stream_url: 'https://www.youtube-nocookie.com/embed/NZ_ZiHAx8Ic?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'pl-gdansk-1', lat: 54.3915, lng: 18.5990, name: 'Gdańsk - Wrzeszcz (4K)', city: 'Gdansk', country: 'Poland', stream_url: 'https://www.youtube-nocookie.com/embed/ta2myV8mrXk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCcQJdC0Aa8rWfeOjl4fdyVw', source: 'YouTube Live' },
   ];
 }
 
@@ -679,6 +705,90 @@ function capCameras(cameras, max) {
   return { cameras: out, sources };
 }
 
+// ═══ YouTube liveness verification ═══
+// The curated city cams are YouTube live streams, and live IDs rot: when a
+// stream restarts (or the channel vanishes) the old embed shows a permanent
+// "video unavailable". At assembly time (12h cache) every YouTube embed is
+// checked against its watch page for "isLiveNow"; entries carrying a
+// yt_channel are first re-resolved to whatever that channel is streaming NOW,
+// so those cams survive stream restarts. A definite "not live" drops the cam;
+// network errors keep it unverified (fail open) so a YouTube hiccup can't
+// nuke the whole curated set.
+const YT_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
+function ytEmbedVideoId(url) {
+  const m = /youtube(?:-nocookie)?\.com\/embed\/([\w-]{11})/i.exec(url || '');
+  return m ? m[1] : null;
+}
+
+async function ytFetchHtml(url) {
+  const res = await fetch(url, { headers: YT_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+async function ytVideoIsLive(videoId) {
+  const html = await ytFetchHtml(`https://www.youtube.com/watch?v=${videoId}`);
+  return html.includes('"isLiveNow":true');
+}
+
+// Resolve a channel's current live videoId, or null if it isn't streaming.
+async function ytChannelLiveVideoId(channelId) {
+  const html = await ytFetchHtml(`https://www.youtube.com/channel/${channelId}/live`);
+  if (!html.includes('"isLiveNow":true')) return null;
+  const m = html.match(/"videoId":"([\w-]{11})"/);
+  return m ? m[1] : null;
+}
+
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  }));
+  return out;
+}
+
+async function verifyYouTubeLiveCams(cameras) {
+  const passthrough = [];
+  const targets = [];
+  for (const cam of cameras) {
+    if (cam.yt_channel || (cam.stream_type === 'iframe' && ytEmbedVideoId(cam.stream_url))) targets.push(cam);
+    else passthrough.push(cam);
+  }
+
+  let live = 0, dropped = 0, errors = 0;
+  const kept = await mapPool(targets, 5, async (cam) => {
+    const { yt_channel, ...rest } = cam; // yt_channel is assembly-internal, not for clients
+    try {
+      if (yt_channel) {
+        const vid = await ytChannelLiveVideoId(yt_channel);
+        if (vid) {
+          live++;
+          return { ...rest, stream_url: `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1`, stream_type: 'iframe' };
+        }
+        // channel offline — fall through to the pinned video, if any
+      }
+      const pinned = ytEmbedVideoId(cam.stream_url);
+      if (pinned && await ytVideoIsLive(pinned)) { live++; return rest; }
+      dropped++;
+      return null;
+    } catch {
+      errors++;
+      return rest;
+    }
+  });
+
+  console.log(`[cctv] yt-verify: ${live} live, ${dropped} dropped (not live), ${errors} kept unverified (fetch errors)`);
+  return [...passthrough, ...kept.filter(Boolean)];
+}
+
 // ═══ 12h assembled-list cache for the global set ═══
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 let allCache = null;       // { fetchedAt, cameras, sources }
@@ -703,8 +813,10 @@ export async function getAllCameras() {
       console.log(`[cctv] assembled ${assembled.cameras.length} raw cameras — ${census || 'NO SOURCES RESPONDED'}`);
       // If we got almost nothing (all upstreams down), keep any prior snapshot.
       if (assembled.cameras.length < 50 && allCache) return allCache;
+      // Drop YouTube embeds that aren't actually live right now.
+      const verified = await verifyYouTubeLiveCams(assembled.cameras);
       // Cap to MAX_CAMERAS, preserving a global spread across sources.
-      const { cameras, sources } = capCameras(assembled.cameras, MAX_CAMERAS);
+      const { cameras, sources } = capCameras(verified, MAX_CAMERAS);
       const loaded = { fetchedAt: Date.now(), cameras, sources };
       allCache = loaded;
       return loaded;
