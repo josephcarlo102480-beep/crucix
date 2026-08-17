@@ -22,6 +22,11 @@
   const SCENE_RADIUS = 100;
   const DEG = Math.PI / 180;
   const TRAIL_POINTS = 10;
+  // Gains applied to earth-night.jpg, in linear light. Open ocean sits near
+  // 0.005 there and lit conurbations near 0.13, so these put the coastlines at
+  // a faint moonlit wash and cities just below clipping once encoded to sRGB.
+  const NIGHT_BASE = 0.55;
+  const NIGHT_LIGHTS = 3.6;
 
   const GLOBE_VERT = `
     varying vec2 vUv;
@@ -80,10 +85,11 @@
       float spec = pow(max(dot(n, halfV), 0.0), 48.0) * water * day * uGlint;
 
       // Warm scattering band where the sun is on the horizon. Kept narrow and
-      // faint on purpose: the night side is nearly black, so anything wider
-      // than the real twilight arc washes half the planet orange.
-      float terminator = exp(-pow(c * 8.0, 2.0));
-      vec3 warm = vec3(1.0, 0.44, 0.18) * terminator * 0.13;
+      // faint on purpose: anything wider than the real twilight arc reads as a
+      // rust-coloured smear across a quarter of the disc once the output is
+      // gamma-encoded, which lifts midtones far more than it lifts highlights.
+      float terminator = exp(-pow(c * 10.0, 2.0));
+      vec3 warm = vec3(1.0, 0.44, 0.18) * terminator * 0.05;
 
       // The night image carries a lit ocean as well as city lights. Weighting
       // by luminance keeps the cities bright and holds the water back to a
@@ -98,12 +104,19 @@
       // additional city-light emphasis, so disabling it never makes Earth a
       // featureless black sphere.
       float night = pow(1.0 - day, 1.4);
-      vec3 col = dayCol * relief * (0.10 + 0.92 * day);
+      vec3 col = dayCol * relief * (0.14 + 0.90 * day);
       col += nightCol * night * (uNightBase + cities * uNightLights);
       col += warm;
       col += spec * vec3(1.0, 0.95, 0.85);
 
       gl_FragColor = vec4(col, 1.0);
+      // Everything above is linear light — the textures are tagged sRGB, so
+      // texture2D hands back decoded values. A ShaderMaterial gets no output
+      // conversion of its own, so without this the linear result is written
+      // straight into an sRGB framebuffer and the whole planet renders about
+      // four times too dark. three injects linearToOutputTexel into the
+      // fragment prefix for every material; this chunk is the call.
+      #include <colorspace_fragment>
     }
   `;
 
@@ -147,6 +160,7 @@
       float a = (core * 0.95 + halo * 0.40) * mix(0.5, 1.0, vLit);
       a = clamp(a + vSel * 0.4, 0.0, 1.0);
       gl_FragColor = vec4(col, a);
+      #include <colorspace_fragment>
     }
   `;
 
@@ -168,6 +182,7 @@
     uniform float uOpacity;
     void main() {
       gl_FragColor = vec4(vColor, vFade * uOpacity);
+      #include <colorspace_fragment>
     }
   `;
 
@@ -278,8 +293,8 @@
         earthUniforms.uNight.value = night || day;
         earthUniforms.uTopo.value = topo || day;
         hasNightTexture = Boolean(night);
-        earthUniforms.uNightBase.value = night ? 1.35 : 0;
-        earthUniforms.uNightLights.value = night && nightLightsEnabled ? 7.5 : 0;
+        earthUniforms.uNightBase.value = night ? NIGHT_BASE : 0;
+        earthUniforms.uNightLights.value = night && nightLightsEnabled ? NIGHT_LIGHTS : 0;
         earthUniforms.uRelief.value = topo ? 1 : 0;
         globe.globeMaterial(earthMaterial);
       });
@@ -594,7 +609,7 @@
 
       setNightLights(on) {
         nightLightsEnabled = on;
-        earthUniforms.uNightLights.value = on && hasNightTexture ? 7.5 : 0;
+        earthUniforms.uNightLights.value = on && hasNightTexture ? NIGHT_LIGHTS : 0;
       },
       setRelief(on) { earthUniforms.uRelief.value = on ? 1 : 0; },
       setGlint(on) { earthUniforms.uGlint.value = on ? 0.55 : 0; },
