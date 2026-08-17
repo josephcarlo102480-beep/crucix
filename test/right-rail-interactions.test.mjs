@@ -6,6 +6,11 @@ import { join } from 'node:path';
 const html = readFileSync(join(process.cwd(), 'dashboard/public/jarvis.html'), 'utf8');
 
 describe('dashboard right-rail interactions', () => {
+  it('labels Ask AI with the configured GPT-5.6 family', () => {
+    assert.match(html, /<span class="ideas-src llm">GPT-5\.6<\/span>/);
+    assert.doesNotMatch(html, /GPT-5\.5/);
+  });
+
   it('renders delta, cross-source, core, and OSINT rows as accessible controls', () => {
     for (const item of ['delta', 'signal', 'core', 'osint']) {
       assert.match(html, new RegExp(`data-right-item="${item}"`));

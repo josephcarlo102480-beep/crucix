@@ -10,7 +10,7 @@ describe('OpenAIProvider', () => {
   it('should set defaults correctly', () => {
     const provider = new OpenAIProvider({ apiKey: 'sk-test' });
     assert.equal(provider.name, 'openai');
-    assert.equal(provider.model, 'gpt-5.6-sol');
+    assert.equal(provider.model, 'gpt-5.6');
     assert.equal(provider.isConfigured, true);
   });
 

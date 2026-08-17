@@ -2195,7 +2195,7 @@ function renderLower(){
     </div>`;
   const askActions = askMessages.length ? `<button type="button" class="ask-clear" onclick="clearAskAI()">Clear</button>` : '';
   const askPanel = `<div class="g-panel lp-ask ${pinnedLowerPanel==='ask'?'lp-pinned':''}">
-      ${panelHead('Ask AI', panelMeta.ask, '<span class="ideas-src llm">GPT-5.5</span>', 'ask', askActions)}
+      ${panelHead('Ask AI', panelMeta.ask, '<span class="ideas-src llm">GPT-5.6</span>', 'ask', askActions)}
       <div class="ask-log" id="askLog">${renderAskMessages()}</div>
       <form class="ask-form" onsubmit="submitAskAI(event)">
         <textarea id="askInput" class="ask-input" maxlength="1200" placeholder="Ask about this sweep, a signal, or live context"></textarea>

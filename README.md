@@ -229,7 +229,7 @@ Set `LLM_PROVIDER` to one of: `anthropic`, `openai`, `gemini`, `codex`, `openrou
 | Provider | Key Required | Default Model |
 |----------|-------------|---------------|
 | `anthropic` | `LLM_API_KEY` | claude-sonnet-4-6 |
-| `openai` | `LLM_API_KEY` or `OPENAI_API_KEY` | gpt-5.6-sol |
+| `openai` | `LLM_API_KEY` or `OPENAI_API_KEY` | gpt-5.6 |
 | `gemini` | `LLM_API_KEY` | gemini-3.1-pro |
 | `openrouter` | `LLM_API_KEY` | openrouter/auto |
 | `codex` | None (uses `~/.codex/auth.json`) | gpt-5.3-codex |
