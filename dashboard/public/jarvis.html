@@ -9,8 +9,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/topojson.v3.min.js"></script>
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/",
+    "three/": "https://unpkg.com/three@0.169.0/"
+  }
+}
+</script>
+<script type="module">
+// One shared three instance for the whole page: globe.gl is loaded with three
+// externalized, so the import map hands it the same module as the app code.
+// Subdeps are pinned to what globe.gl 2.33.0's UMD bundle shipped with.
+import * as THREE from 'three';
+import Globe from 'https://esm.sh/globe.gl@2.33.0?external=three&deps=three-globe@2.32.0,three-render-objects@1.29.5';
+window.THREE = THREE;
+window.Globe = Globe;
+</script>
 <script src="/js/globe-fx.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}

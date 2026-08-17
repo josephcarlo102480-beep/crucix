@@ -168,7 +168,7 @@ app.use((req, res, next) => {
   res.set({
     'Content-Security-Policy': [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://d3js.org https://unpkg.com https://cdn.jsdelivr.net",
+      "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://d3js.org https://unpkg.com https://cdn.jsdelivr.net https://esm.sh",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob: http: https:",
