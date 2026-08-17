@@ -41,6 +41,7 @@
     uniform sampler2D uNight;
     uniform sampler2D uTopo;
     uniform vec3 uSun;
+    uniform float uNightBase;
     uniform float uNightLights;
     uniform float uRelief;
     uniform float uGlint;
@@ -92,10 +93,13 @@
       float lum = dot(nightCol, vec3(0.4, 0.5, 0.1));
       float cities = 0.05 + 0.95 * smoothstep(0.012, 0.09, lum);
 
-      // Night ambient is deliberately near zero — city lights should be the
-      // only thing carrying the dark side.
-      vec3 col = dayCol * relief * (0.018 + 1.02 * day);
-      col += nightCol * cities * pow(1.0 - day, 1.4) * uNightLights;
+      // Keep the night side dark without losing the continents. The night
+      // texture provides a dim geographic base; the toggle controls only the
+      // additional city-light emphasis, so disabling it never makes Earth a
+      // featureless black sphere.
+      float night = pow(1.0 - day, 1.4);
+      vec3 col = dayCol * relief * (0.10 + 0.92 * day);
+      col += nightCol * night * (uNightBase + cities * uNightLights);
       col += warm;
       col += spec * vec3(1.0, 0.95, 0.85);
 
@@ -243,12 +247,15 @@
     });
 
     const sunDirection = new THREE.Vector3(1, 0, 0);
+    let hasNightTexture = false;
+    let nightLightsEnabled = true;
     const earthUniforms = {
       uDay: { value: null },
       uNight: { value: null },
       uTopo: { value: null },
       uSun: { value: sunDirection },
-      uNightLights: { value: 7.5 },
+      uNightBase: { value: 0 },
+      uNightLights: { value: 0 },
       uRelief: { value: 1 },
       uGlint: { value: 0.55 },
     };
@@ -270,7 +277,9 @@
         earthUniforms.uDay.value = day;
         earthUniforms.uNight.value = night || day;
         earthUniforms.uTopo.value = topo || day;
-        earthUniforms.uNightLights.value = night ? 7.5 : 0;
+        hasNightTexture = Boolean(night);
+        earthUniforms.uNightBase.value = night ? 1.35 : 0;
+        earthUniforms.uNightLights.value = night && nightLightsEnabled ? 7.5 : 0;
         earthUniforms.uRelief.value = topo ? 1 : 0;
         globe.globeMaterial(earthMaterial);
       });
@@ -583,7 +592,10 @@
         rebuildTrails();
       },
 
-      setNightLights(on) { earthUniforms.uNightLights.value = on ? 7.5 : 0; },
+      setNightLights(on) {
+        nightLightsEnabled = on;
+        earthUniforms.uNightLights.value = on && hasNightTexture ? 7.5 : 0;
+      },
       setRelief(on) { earthUniforms.uRelief.value = on ? 1 : 0; },
       setGlint(on) { earthUniforms.uGlint.value = on ? 0.55 : 0; },
 

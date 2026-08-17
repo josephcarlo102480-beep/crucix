@@ -60,6 +60,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .sec-head .count{margin-left:auto;color:var(--dimmer);letter-spacing:0.04em}
 .sec-head.danger{color:var(--danger)}
 .sec-body{padding:8px 16px}
+details.sec>summary.sec-head{list-style:none;cursor:pointer;user-select:none}
+details.sec>summary.sec-head::-webkit-details-marker{display:none}
+details.sec>summary.sec-head::before{content:'›';font-size:15px;line-height:0;color:var(--dim);
+  transform:rotate(0deg);transition:transform 0.15s,color 0.15s}
+details.sec[open]>summary.sec-head::before{transform:rotate(90deg);color:var(--accent)}
+details.sec>summary.sec-head:hover{background:rgba(100,240,200,0.055)}
 
 .obs{padding:9px 16px;font-size:9px;color:var(--dim);line-height:1.6;border-bottom:1px solid var(--border)}
 .obs b{color:var(--text);font-weight:500}
@@ -106,6 +112,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .sel-title{padding:9px 16px 4px;font-size:12px;font-weight:600;letter-spacing:0.04em;
   display:flex;align-items:center;gap:7px}
 .sel-title .swatch{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sel-title .name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel-close{width:25px;height:25px;margin:-4px -7px -1px auto;border:0;background:transparent;
+  color:var(--dim);font:18px/1 var(--mono);cursor:pointer;flex-shrink:0}
+.sel-close:hover,.sel-close:focus-visible{color:var(--text);background:rgba(255,255,255,0.06);outline:none}
 .sel-sub{padding:0 16px 7px;font-size:9px;color:var(--dim);letter-spacing:0.06em}
 .sel-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:0 16px 10px}
 .sel-cell{background:var(--panel);padding:5px 7px}
@@ -115,6 +125,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
 .mini-btn{flex:1;padding:5px 6px;background:rgba(0,0,0,0.35);border:1px solid var(--border);
   color:var(--accent2);font-family:var(--mono);font-size:9px;letter-spacing:0.08em;cursor:pointer;transition:all 0.15s}
 .mini-btn:hover{border-color:var(--border-bright);background:rgba(100,240,200,0.1);color:var(--accent)}
+.mini-btn.hot{border-color:var(--border-bright);background:rgba(100,240,200,0.13);color:var(--accent)}
 .badge{display:inline-block;padding:1px 5px;border-radius:2px;font-size:8px;letter-spacing:0.08em}
 .badge.lit{background:rgba(255,214,120,0.16);color:#ffd678}
 .badge.ecl{background:rgba(120,140,160,0.16);color:#8fa6b5}
@@ -225,46 +236,48 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
       <div id="searchResults"></div>
     </div>
 
-    <div class="sec">
-      <div class="sec-head">Catalogue <span class="count" id="catCount"></span></div>
-      <div id="groups"></div>
-    </div>
-
-    <div id="selPanel">
-      <div class="sel-title"><span class="swatch"></span><span class="name"></span></div>
+    <div id="selPanel" role="region" aria-label="Selected satellite">
+      <div class="sel-title"><span class="swatch"></span><span class="name"></span>
+        <button class="sel-close" id="btnCloseSel" type="button" title="Close selection" aria-label="Close selected satellite">&times;</button>
+      </div>
       <div class="sel-sub"></div>
       <div class="sel-grid"></div>
       <div class="sel-actions">
-        <button class="mini-btn" id="btnFollow">FOLLOW</button>
-        <button class="mini-btn" id="btnClearSel">CLEAR</button>
+        <button class="mini-btn" id="btnFollow" type="button" aria-pressed="false">FOLLOW</button>
+        <button class="mini-btn" id="btnClearSel" type="button">DESELECT</button>
       </div>
     </div>
 
-    <div class="sec">
-      <div class="sec-head">Sky from observer</div>
+    <details class="sec" open>
+      <summary class="sec-head">Catalogue <span class="count" id="catCount"></span></summary>
+      <div id="groups"></div>
+    </details>
+
+    <details class="sec">
+      <summary class="sec-head">Sky from observer</summary>
       <div id="skyWrap"><canvas id="skyPlot" width="500" height="500"></canvas></div>
-    </div>
+    </details>
 
-    <div class="sec">
-      <div class="sec-head">Overhead now <span class="count" id="visCount"></span></div>
+    <details class="sec">
+      <summary class="sec-head">Overhead now <span class="count" id="visCount"></span></summary>
       <div id="visnow"><div class="empty">Nothing above the horizon.</div></div>
-    </div>
+    </details>
 
-    <div class="sec">
-      <div class="sec-head">Passes &mdash; next 12 h <span class="count" id="passCount"></span></div>
+    <details class="sec">
+      <summary class="sec-head">Passes &mdash; next 12 h <span class="count" id="passCount"></span></summary>
       <div id="passes"><div class="empty">Computing&hellip;</div></div>
-    </div>
+    </details>
 
-    <div class="sec">
-      <div class="sec-head danger">Conjunctions <span class="count" id="conjCount"></span></div>
+    <details class="sec">
+      <summary class="sec-head">Approx. close approaches <span class="count" id="conjCount"></span></summary>
       <div class="sec-body" style="padding-bottom:4px">
-        <button class="mini-btn" id="btnConj" style="width:100%">SCAN NEXT 12 H</button>
+        <button class="mini-btn" id="btnConj" style="width:100%">RUN ESTIMATE</button>
       </div>
-      <div id="conj"><div class="empty">Close-approach screening is expensive &mdash; run it on demand.</div></div>
-    </div>
+      <div id="conj"><div class="empty">Rough screening from public orbital elements; not collision-risk data.</div></div>
+    </details>
 
-    <div class="sec">
-      <div class="sec-head">Layers</div>
+    <details class="sec">
+      <summary class="sec-head">Display options</summary>
       <div class="sec-body">
         <label class="opt"><input type="checkbox" id="optTrails" checked>Motion trails</label>
         <label class="opt"><input type="checkbox" id="optNight" checked>City lights</label>
@@ -272,7 +285,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--m
         <label class="opt"><input type="checkbox" id="optRotate" checked>Auto-rotate</label>
         <label class="opt"><input type="checkbox" id="optTrueScale">True altitude scale</label>
       </div>
-    </div>
+    </details>
 
     <div id="status">Booting&hellip;</div>
   </div>
@@ -368,10 +381,12 @@ async function toggleGroup(id) {
   if (group) {
     E.setGroupVisible(id, !group.visible);
     btn.classList.toggle('active', group.visible);
+    if (!group.visible && selected && selected.group === id) select(null);
     afterCatalogueChange();
     return;
   }
 
+  if (btn.classList.contains('loading')) return;
   btn.classList.add('loading');
   btn.querySelector('.cat-count').textContent = '···';
   try {
@@ -402,23 +417,23 @@ function afterCatalogueChange() {
 
 function updateCounts() {
   const list = E.visibleSats();
-  $('catCount').textContent = list.length ? `${list.length} tracked` : '';
+  $('catCount').textContent = list.length ? `${list.length} shown` : '';
   const lit = list.filter((s) => s.ok && s.sunlit).length;
   const groups = [...E.groups.values()].filter((g) => g.visible && g.sats.length).length;
   setStatus(list.length
     ? `${list.length} objects across ${groups} group(s) · ${lit} in sunlight.`
-      + ' Click a dot to track it; drag the time bar to fly the orbits forward.'
-    : 'Nothing tracked — pick a catalogue group above.');
+      + ' Click a dot to inspect it; FOLLOW is optional.'
+    : 'Nothing shown — pick a catalogue group above.');
 }
 
 function renderLegend() {
   const sub = E.subsolar(E.simTimeMs());
   $('legend').innerHTML = `
-    <div class="li"><span class="sw" style="background:#ffe680;box-shadow:0 0 6px #ffe680"></span>Sunlit — reflects to the ground</div>
+    <div class="li"><span class="sw" style="background:#ffe680;box-shadow:0 0 6px #ffe680"></span>Satellite in sunlight</div>
     <div class="li"><span class="sw" style="background:#3d4a52"></span>In Earth&rsquo;s shadow</div>
     <div class="li"><span class="sw" style="background:#ffb84c"></span>Observer</div>
     <div class="hint">Sun overhead at ${sub.lat.toFixed(1)}°, ${sub.lng.toFixed(1)}°.
-    Click any dot to track it.</div>`;
+    Click a dot to inspect it; FOLLOW is opt-in.</div>`;
 }
 
 // ---------- search ----------
@@ -463,7 +478,19 @@ async function runSearch(q) {
 }
 
 // ---------- selection ----------
-function select(sat, fly) {
+function select(sat, fly, preservePass = false) {
+  // Lists refresh on a timer, so a just-hidden group's old row can still be
+  // clicked briefly. Never let stale UI resurrect an invisible target.
+  if (sat && !E.visibleSats().includes(sat)) {
+    sat = null;
+    preservePass = false;
+  }
+  const changedTarget = sat !== selected;
+  if (!preservePass && selectedPass) {
+    selectedPass = null;
+    document.querySelectorAll('#passes .row.sel').forEach((el) => el.classList.remove('sel'));
+  }
+  if (!sat || changedTarget) follow = false;
   selected = sat;
   if (globe3d) globe3d.select(sat);
   renderSelection();
@@ -472,15 +499,22 @@ function select(sat, fly) {
     if (fixed) {
       if (view === '3d') {
         globe3d.focus(fixed.lat, fixed.lng, 1.5);
-        // focus() stops the spin, so the toggle has to agree.
+        // A focused target and a spinning globe fight each other. Reflect the
+        // actual stopped state in the control; the user can opt back in.
         $('optRotate').checked = false;
       } else {
         map.setView([fixed.lat, fixed.lng], Math.max(map.getZoom(), 4), { animate: true });
       }
     }
   }
-  if (!sat) follow = false;
+  if (!sat && globe3d) globe3d.setAutoRotate(!paused && $('optRotate').checked);
   $('btnFollow').classList.toggle('hot', follow);
+  $('btnFollow').setAttribute('aria-pressed', String(follow));
+}
+
+function selectFromSurface(sat) {
+  const next = sat && sat !== selected ? sat : null;
+  select(next, Boolean(next));
 }
 
 function renderSelection() {
@@ -533,11 +567,15 @@ function observerLook(sat) {
 }
 
 $('btnClearSel').addEventListener('click', () => select(null));
+$('btnCloseSel').addEventListener('click', () => select(null));
 $('btnFollow').addEventListener('click', () => {
-  follow = !follow;
+  follow = Boolean(selected) && !follow;
   $('btnFollow').classList.toggle('hot', follow);
-  if (follow && !globe3d) return;
-  if (follow) globe3d.setAutoRotate(false);
+  $('btnFollow').setAttribute('aria-pressed', String(follow));
+  if (globe3d) globe3d.setAutoRotate(!follow && !paused && $('optRotate').checked);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && selected) select(null);
 });
 
 // ---------- time controls ----------
@@ -602,7 +640,7 @@ $('optGlint').addEventListener('change', (e) => {
   globe3d.setGlint(e.target.checked);
   globe3d.setRelief(e.target.checked);
 });
-$('optRotate').addEventListener('change', (e) => globe3d && globe3d.setAutoRotate(e.target.checked && !paused));
+$('optRotate').addEventListener('change', (e) => globe3d && globe3d.setAutoRotate(e.target.checked && !paused && !follow));
 $('optTrueScale').addEventListener('change', (e) => {
   E.scaleMode = e.target.checked ? 'true' : 'compressed';
   E.stepAll();
@@ -614,7 +652,7 @@ function init3D() {
   globe3d = window.SatGlobe3D.create($('globe3d'), {
     lat: OBSERVER.lat,
     lng: OBSERVER.lng,
-    onSelect: (sat) => { if (sat) follow = true; select(sat, true); },
+    onSelect: selectFromSurface,
     onHover: (sat, event) => showTooltip(sat, event),
   });
   globe3d.observer(OBSERVER.lat, OBSERVER.lng);
@@ -659,7 +697,7 @@ function init2D() {
   // handling; hit testing rides on Leaflet's own mouse events instead.
   map.on('click', (e) => {
     const hit = pick2D(e.containerPoint);
-    if (hit) { follow = true; select(hit, true); }
+    selectFromSurface(hit);
   });
   map.on('mousemove', (e) => {
     const hit = pick2D(e.containerPoint);
@@ -928,12 +966,15 @@ function renderOverhead(up) {
     const eye = dark && item.sat.sunlit && item.el > 10;
     return `<div class="row${item.sat === selected ? ' sel' : ''}" data-up="${i}" role="button" tabindex="0">
       <div class="r1"><span class="sw" style="width:7px;height:7px;border-radius:50%;background:${esc(item.sat.color)}"></span>
-        ${esc(item.sat.name)} ${eye ? '<span class="eye">&#9670; visible</span>' : ''}</div>
+        ${esc(item.sat.name)} ${eye ? '<span class="eye">&#9670; sunlit opportunity</span>' : ''}</div>
       <div class="r2">${item.el.toFixed(0)}° up · ${item.bearing} ${item.az.toFixed(0)}° · ${item.rangeKm.toFixed(0)} km</div>
     </div>`;
   }).join('');
   host.querySelectorAll('.row').forEach((el) => {
-    el.addEventListener('click', () => select(up[Number(el.dataset.up)].sat, true));
+    el.addEventListener('click', () => {
+      const sat = up[Number(el.dataset.up)].sat;
+      select(sat === selected ? null : sat, sat !== selected);
+    });
   });
 }
 
@@ -964,7 +1005,7 @@ function renderPasses(result) {
   const host = $('passes');
   $('passCount').textContent = passes.length ? `${passes.length}` : '';
   if (!passes.length) {
-    host.innerHTML = '<div class="empty">No pass above 10° in the next 12 hours for the tracked objects.</div>';
+    host.innerHTML = '<div class="empty">No pass above 10° in the next 12 hours for the shown objects.</div>';
     return;
   }
   const truncNote = result.truncated
@@ -976,7 +1017,7 @@ function renderPasses(result) {
     const dur = p.durationS ? `${Math.round(p.durationS / 60)} min` : 'ongoing';
     return `<div class="row${p === selectedPass ? ' sel' : ''}" data-pass="${i}" role="button" tabindex="0">
       <div class="r1"><span style="color:${esc(p.color)}">${esc(p.name)}</span>
-        ${p.visible ? '<span class="eye">&#9670; naked eye</span>' : ''}</div>
+        ${p.visible ? '<span class="eye">&#9670; sunlit opportunity</span>' : ''}</div>
       <div class="r2">${when} · peak ${p.peakEl.toFixed(0)}° ${p.bearing} · ${dur}</div>
       <div class="r3">${p.riseBearing} → ${p.setBearing || 'ongoing'}${p.sunlit ? '' : ' · in eclipse'}</div>
     </div>`;
@@ -984,9 +1025,14 @@ function renderPasses(result) {
 
   host.querySelectorAll('.row').forEach((el) => {
     el.addEventListener('click', () => {
-      selectedPass = passes[Number(el.dataset.pass)];
-      const sat = E.byKey.get(selectedPass.key);
-      if (sat) select(sat, true);
+      const nextPass = passes[Number(el.dataset.pass)];
+      if (nextPass === selectedPass && selected === E.byKey.get(nextPass.key)) {
+        select(null);
+      } else {
+        selectedPass = nextPass;
+        const sat = E.byKey.get(selectedPass.key);
+        if (sat) select(sat, true, true);
+      }
       renderPasses(result);
       drawSky();
     });
@@ -1007,11 +1053,11 @@ async function runConjunctions() {
       + `(that is ${(tracked * (tracked - 1) / 2).toLocaleString()} pairs). Hide a group and try again.</div>`;
     return;
   }
-  $('btnConj').textContent = 'SCANNING…';
+  $('btnConj').textContent = 'ESTIMATING…';
   const result = await E.computeConjunctions(12, (frac, pairs) => {
-    $('conj').innerHTML = `<div class="empty">Screening ${pairs.toLocaleString()} pairs — ${Math.round(frac * 100)}%</div>`;
+    $('conj').innerHTML = `<div class="empty">Estimating ${pairs.toLocaleString()} pairs — ${Math.round(frac * 100)}%</div>`;
   });
-  $('btnConj').textContent = 'SCAN NEXT 12 H';
+  $('btnConj').textContent = 'RUN ESTIMATE';
   if (!result) return;
   conjunctions = result.conjunctions;
   renderConjunctions(result);
@@ -1021,29 +1067,32 @@ async function runConjunctions() {
 function renderConjunctions(result) {
   const host = $('conj');
   $('conjCount').textContent = conjunctions.length ? String(conjunctions.length) : '';
-  // Docked station modules pin at zero separation forever; reporting them as
-  // CRITICAL would bury every real close approach.
+  // Persistent co-orbiting pairs would bury the more useful candidates.
   const docked = result.coorbiting
-    ? `${result.coorbiting} permanently co-orbiting pair(s) excluded — docked modules and formation flyers.`
+    ? `${result.coorbiting} persistent close pair(s) excluded from this estimate.`
     : '';
   if (!conjunctions.length) {
-    host.innerHTML = `<div class="empty">No approach inside ${E.CONJ.thresholdKm} km. `
+    host.innerHTML = `<div class="empty">No estimated candidate inside ~${E.CONJ.thresholdKm} km. `
       + `${result.pairs.toLocaleString()} pair(s) survived the orbit-shell screen. ${docked}</div>`;
     return;
   }
   host.innerHTML = (docked ? `<div class="empty">${docked}</div>` : '')
     + conjunctions.slice(0, 20).map((c, i) => {
     const t = new Date(c.ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    return `<div class="row ${c.severity}" data-conj="${i}" role="button" tabindex="0">
+    return `<div class="row" data-conj="${i}" role="button" tabindex="0">
       <div class="r1">${esc(c.nameA)} / ${esc(c.nameB)}</div>
-      <div class="r2">${t} · ${c.minDistKm.toFixed(1)} km · ${c.severity.toUpperCase()}</div>
+      <div class="r2">${t} · ~${Math.round(c.minDistKm)} km estimated</div>
       <div class="r3">alt ${c.altA.toFixed(0)} / ${c.altB.toFixed(0)} km</div>
     </div>`;
   }).join('');
   host.querySelectorAll('.row').forEach((el) => {
     el.addEventListener('click', () => {
       const c = conjunctions[Number(el.dataset.conj)];
-      if (view === '3d') globe3d.focus(c.midLat, c.midLng, 1.1);
+      if (selected) select(null);
+      if (view === '3d') {
+        globe3d.focus(c.midLat, c.midLng, 1.1);
+        $('optRotate').checked = false;
+      }
       else map.setView([c.midLat, c.midLng], 5, { animate: true });
     });
   });
@@ -1116,7 +1165,7 @@ function tickStats() {
   let lit = 0, ok = 0;
   for (const sat of list) { if (sat.ok) { ok += 1; if (sat.sunlit) lit += 1; } }
   const s = E.stats();
-  $('stats').innerHTML = `<b>${ok}</b> tracked<br>`
+  $('stats').innerHTML = `<b>${ok}</b> shown<br>`
     + `<span class="lit">${lit}</span> in sunlight<br>`
     + `${view === '3d' && globe3d ? `${globe3d.fps} fps · ` : ''}${s.sweepMs} ms sweep`;
 }
@@ -1168,6 +1217,7 @@ async function boot() {
     if (follow && selected) {
       const fixed = E.geodetic(selected);
       if (fixed && view === '3d') globe3d.focus(fixed.lat, fixed.lng, 1.5, 900);
+      else if (fixed && map) map.panTo([fixed.lat, fixed.lng], { animate: true, duration: 0.8 });
     }
   }, 3000);
   setInterval(renderLegend, 60000);
