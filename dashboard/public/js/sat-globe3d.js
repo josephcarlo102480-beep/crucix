@@ -325,6 +325,10 @@
       pg.setAttribute('aLit', new THREE.BufferAttribute(new Float32Array(capacity), 1));
       pg.setAttribute('aSel', new THREE.BufferAttribute(new Float32Array(capacity), 1));
       pg.setDrawRange(0, 0);
+      // Positions rewrite every frame and rescale with scaleMode; a lazily
+      // computed sphere would be cached from the first pick and silently
+      // reject raycasts against anything that later moves outside it.
+      pg.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), SCENE_RADIUS * 12);
       const points = new THREE.Points(pg, pointMaterial);
       points.frustumCulled = false;
       points.renderOrder = 12;

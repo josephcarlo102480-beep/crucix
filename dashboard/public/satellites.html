@@ -470,7 +470,9 @@ function select(sat, fly) {
 function renderSelection() {
   const panel = $('selPanel');
   if (!selected) { panel.classList.remove('on'); return; }
+  const reveal = !panel.classList.contains('on');
   panel.classList.add('on');
+  if (reveal) panel.scrollIntoView({ block: 'nearest' });
   const sat = selected;
   const fixed = E.geodetic(sat);
   const look = observerLook(sat);
@@ -532,6 +534,8 @@ function applyRate() {
   const r = RATES[Math.abs(rateIndex)];
   $('rateLabel').textContent = paused ? 'PAUSED' : `${rateIndex < 0 ? '−' : ''}${r}×`;
   $('btnPlay').innerHTML = paused ? '&#9654;' : '&#9208;';
+  // Pause stops the spin too; resume restores whatever the rotate toggle / follow mode allow.
+  if (globe3d) globe3d.setAutoRotate(!paused && $('optRotate').checked && !follow);
 }
 
 $('btnPlay').addEventListener('click', () => { paused = !paused; applyRate(); });
@@ -582,7 +586,7 @@ $('optGlint').addEventListener('change', (e) => {
   globe3d.setGlint(e.target.checked);
   globe3d.setRelief(e.target.checked);
 });
-$('optRotate').addEventListener('change', (e) => globe3d && globe3d.setAutoRotate(e.target.checked));
+$('optRotate').addEventListener('change', (e) => globe3d && globe3d.setAutoRotate(e.target.checked && !paused));
 $('optTrueScale').addEventListener('change', (e) => {
   E.scaleMode = e.target.checked ? 'true' : 'compressed';
   E.stepAll();
@@ -594,7 +598,7 @@ function init3D() {
   globe3d = window.SatGlobe3D.create($('globe3d'), {
     lat: OBSERVER.lat,
     lng: OBSERVER.lng,
-    onSelect: (sat) => select(sat, false),
+    onSelect: (sat) => { if (sat) follow = true; select(sat, true); },
     onHover: (sat, event) => showTooltip(sat, event),
   });
   globe3d.observer(OBSERVER.lat, OBSERVER.lng);
@@ -639,7 +643,7 @@ function init2D() {
   // handling; hit testing rides on Leaflet's own mouse events instead.
   map.on('click', (e) => {
     const hit = pick2D(e.containerPoint);
-    if (hit) select(hit, false);
+    if (hit) { follow = true; select(hit, true); }
   });
   map.on('mousemove', (e) => {
     const hit = pick2D(e.containerPoint);
