@@ -42,7 +42,7 @@
 
 Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, military aircraft tracking, and social sentiment from 25 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
-Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Telegram and Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
+Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
 
 Try the live demo first at [https://www.crucix.live/](https://www.crucix.live/), then clone the repo when you want the full local stack.
 
@@ -166,28 +166,12 @@ The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
 4. Generates LLM trade ideas (if configured)
-5. Evaluates breaking news alerts — multi-tier (FLASH / PRIORITY / ROUTINE) with semantic dedup. Sends to Telegram and/or Discord if configured. Works with LLM evaluation or falls back to rule-based alerting when LLM is unavailable.
+5. Evaluates breaking news alerts — multi-tier (FLASH / PRIORITY / ROUTINE) with semantic dedup. Sends to Discord if configured. Works with LLM evaluation or falls back to rule-based alerting when LLM is unavailable.
 6. Pushes update to all connected browsers via SSE
-
-### Telegram Bot (Two-Way)
-Crucix doubles as an interactive Telegram bot. Beyond sending alerts, it responds to commands directly from your chat:
-
-| Command | What It Does |
-|---------|-------------|
-| `/status` | System health, last sweep time, source status, LLM status |
-| `/sweep` | Trigger a manual sweep cycle |
-| `/brief` | Compact text summary of the latest intelligence (direction, key metrics, top OSINT) |
-| `/portfolio` | Portfolio status (if Alpaca connected) |
-| `/alerts` | Recent alert history with tiers |
-| `/mute` / `/mute 2h` | Silence alerts for 1h (or custom duration) |
-| `/unmute` | Resume alerts |
-| `/help` | Show all available commands |
-
-This requires `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`. The bot polls for messages every 5 seconds (configurable via `TELEGRAM_POLL_INTERVAL`).
 
 ### Discord Bot (Two-Way)
 
-Crucix also supports Discord as a full-featured bot with slash commands and rich embed alerts. It mirrors the Telegram bot's capabilities with Discord-native formatting.
+Crucix also supports Discord as a full-featured bot with slash commands and rich embed alerts. It exposes the same commands and alert tiers with Discord-native formatting.
 
 | Command | What It Does |
 |---------|-------------|
@@ -257,14 +241,6 @@ For Codex, run `npx @openai/codex login` to authenticate via your ChatGPT subscr
 
 The dashboard Ask AI panel is available when `LLM_PROVIDER=openai` and an OpenAI key is configured. It answers against the current Crucix dashboard snapshot and may use OpenAI web search for live outside context. Questions sent through Ask AI include the current dashboard snapshot in the OpenAI request.
 
-### Telegram Bot + Alerts (optional)
-
-| Key | How to Get |
-|-----|------------|
-| `TELEGRAM_BOT_TOKEN` | Create via [@BotFather](https://t.me/BotFather) on Telegram |
-| `TELEGRAM_CHAT_ID` | Get via [@userinfobot](https://t.me/userinfobot) |
-| `TELEGRAM_POLL_INTERVAL` | *(Optional)* Bot command polling interval in ms (default: 5000) |
-
 ### Discord Bot + Alerts (optional)
 
 | Key | How to Get |
@@ -282,7 +258,7 @@ The dashboard Ask AI panel is available when `LLM_PROVIDER=openai` and an OpenAI
 5. Copy the generated URL and open it in your browser to invite the bot to your server
 6. Install the dependency: `npm install discord.js`
 
-Alerts work with or without an LLM on both Telegram and Discord. With an LLM configured, signal evaluation is richer and more context-aware. Without one, a deterministic rule engine evaluates signals based on severity, cross-domain correlation, and signal counts.
+Alerts work with or without an LLM on Discord. With an LLM configured, signal evaluation is richer and more context-aware. Without one, a deterministic rule engine evaluates signals based on severity, cross-domain correlation, and signal counts.
 
 ### Without Any Keys
 
@@ -338,7 +314,6 @@ crucix/
 │   │   ├── memory.mjs         # Hot memory (3 runs, atomic writes) + cold storage (daily archives)
 │   │   └── index.mjs          # Re-exports
 │   └── alerts/
-│       ├── telegram.mjs       # Multi-tier alerts (FLASH/PRIORITY/ROUTINE) + two-way bot commands
 │       └── discord.mjs        # Discord bot (slash commands, rich embeds) + webhook fallback
 │
 └── runs/                      # Runtime data (gitignored)
@@ -439,9 +414,6 @@ All settings are in `.env` with sensible defaults:
 | `LLM_PROVIDER` | disabled | `anthropic`, `openai`, `gemini`, `codex`, `openrouter`, `minimax`, `mistral`, or `ollama` |
 | `LLM_API_KEY` | — | API key (not needed for codex) |
 | `LLM_MODEL` | per-provider default | Override model selection |
-| `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
-| `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
-| `TELEGRAM_POLL_INTERVAL` | `5000` | Bot command polling interval (ms) |
 | `DISCORD_BOT_TOKEN` | disabled | For Discord alerts + slash commands |
 | `DISCORD_CHANNEL_ID` | — | Discord channel for alerts |
 | `DISCORD_GUILD_ID` | — | Server ID (instant slash command registration) |
@@ -517,10 +489,6 @@ This is normal — the first sweep takes 30–60 seconds to query all 25 sources
 Expected behavior. Sources that require API keys will return structured errors if the key isn't set. The rest of the sweep continues normally. Check the Source Integrity section in the dashboard (or the server logs) to see which sources failed and why. The 3 most impactful free keys to add are `FRED_API_KEY`, `FIRMS_MAP_KEY`, and `EIA_API_KEY`.
 
 OpenSky can also return `HTTP 429` when its public hotspots are queried too aggressively. Crucix does not try to evade that limit. Instead, it surfaces the throttle/error in source health and preserves the most recent non-empty air traffic snapshot from `runs/` so the dashboard flight layer does not suddenly go blank on a throttled sweep.
-
-### Telegram bot not responding to commands
-
-Make sure both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`. The bot only responds to messages from the configured chat ID (security measure). You should see `[Crucix] Telegram alerts enabled` and `[Crucix] Bot command polling started` in the server logs on startup. If not, double-check your token with `curl https://api.telegram.org/bot<YOUR_TOKEN>/getMe`.
 
 ### Discord bot not responding to slash commands
 

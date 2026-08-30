@@ -32,7 +32,6 @@ describe('crucix.config', () => {
       HOST: '0.0.0.0',
       PORT: '4123',
       REFRESH_INTERVAL_MINUTES: '30',
-      TELEGRAM_POLL_INTERVAL: '750',
       ASK_AI_RATE_LIMIT_MAX: '9',
       ASK_AI_RATE_LIMIT_WINDOW_MINUTES: '20',
       ASK_AI_MAX_CONCURRENT: '3',
@@ -41,7 +40,6 @@ describe('crucix.config', () => {
     assert.equal(config.host, '0.0.0.0');
     assert.equal(config.port, 4123);
     assert.equal(config.refreshIntervalMinutes, 30);
-    assert.equal(config.telegram.botPollingInterval, 750);
     assert.equal(config.api.askRateLimitMax, 9);
     assert.equal(config.api.askRateLimitWindowMinutes, 20);
     assert.equal(config.api.askMaxConcurrent, 3);
@@ -51,13 +49,13 @@ describe('crucix.config', () => {
     const config = await loadConfigWithEnv({
       PORT: '-1',
       REFRESH_INTERVAL_MINUTES: '0',
-      TELEGRAM_POLL_INTERVAL: 'oops',
+      ASK_AI_MAX_CONCURRENT: 'oops', // non-numeric, vs the below-minimum cases
       ASK_AI_RATE_LIMIT_MAX: '0',
     });
 
     assert.equal(config.port, 3117);
     assert.equal(config.refreshIntervalMinutes, 15);
-    assert.equal(config.telegram.botPollingInterval, 5000);
+    assert.equal(config.api.askMaxConcurrent, 2);
     assert.equal(config.api.askRateLimitMax, 6);
   });
 

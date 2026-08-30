@@ -46,7 +46,7 @@ const modules = [
   ['./lib/delta/index.mjs', 'delta index'],
   ['./lib/llm/index.mjs', 'LLM factory'],
   ['./lib/llm/ideas.mjs', 'LLM ideas'],
-  ['./lib/alerts/telegram.mjs', 'telegram alerter'],
+  ['./lib/alerts/discord.mjs', 'discord alerter'],
   ['./dashboard/inject.mjs', 'dashboard inject'],
   ['./apis/briefing.mjs', 'briefing orchestrator'],
 ];

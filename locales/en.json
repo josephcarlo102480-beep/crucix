@@ -7,7 +7,7 @@
   "dashboard": {
     "title": "CRUCIX — Intelligence Terminal",
     "bootTitle": "CRUCIX INTELLIGENCE ENGINE",
-    "bootSubtitle": "Local Palantir · 31 Sources",
+    "bootSubtitle": "Local Palantir · 25 Sources",
     "waitingForSweep": "Waiting for first sweep...",
     "sourcesOk": "Sources OK",
     "lastSweep": "Last sweep",
@@ -233,64 +233,6 @@
     "justNow": "just now",
     "hoursAgo": "{hours}h ago",
     "daysAgo": "{days}d ago"
-  },
-  "bot": {
-    "commands": {
-      "status": "Get current system health, last sweep time, source status",
-      "sweep": "Trigger a manual sweep cycle",
-      "brief": "Get a compact text summary of the latest intelligence",
-      "portfolio": "Show current positions and P&L (if Alpaca connected)",
-      "alerts": "Show recent alert history",
-      "mute": "Mute alerts for 1h (or /mute 2h, /mute 4h)",
-      "unmute": "Resume alerts",
-      "help": "Show available commands"
-    },
-    "messages": {
-      "alertsMuted": "🔇 Alerts muted for {hours}h — until {time} UTC",
-      "useUnmute": "Use /unmute to resume.",
-      "alertsResumed": "🔔 Alerts resumed. You'll receive the next signal evaluation.",
-      "sweepTriggered": "🚀 Manual sweep triggered. You'll receive alerts if anything significant is detected.",
-      "sweepInProgress": "🔄 Sweep already in progress. Please wait.",
-      "noDataYet": "⏳ No data yet — waiting for first sweep to complete.",
-      "noRecentAlerts": "No recent alerts.",
-      "recentAlerts": "📋 Recent Alerts (last {count})",
-      "commandsTip": "Tip: Commands are case-insensitive",
-      "commandFailed": "❌ Command failed: {error}",
-      "portfolioNotAvailable": "📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries."
-    },
-    "status": {
-      "title": "🖥️ CRUCIX STATUS",
-      "uptime": "Uptime",
-      "lastSweep": "Last sweep",
-      "nextSweep": "Next sweep",
-      "sweepInProgress": "Sweep in progress",
-      "yes": "🔄 Yes",
-      "no": "⏸️ No",
-      "sources": "Sources",
-      "failed": "failed",
-      "llm": "LLM",
-      "enabled": "✅",
-      "disabled": "❌ Disabled",
-      "sseClients": "SSE clients",
-      "dashboard": "Dashboard",
-      "pending": "pending",
-      "never": "never"
-    },
-    "brief": {
-      "title": "📋 CRUCIX BRIEF",
-      "direction": "Direction",
-      "changes": "changes",
-      "criticalChanges": "critical",
-      "osint": "📡 OSINT",
-      "urgentSignals": "urgent signals",
-      "totalPosts": "total posts",
-      "topIdeas": "💡 Top Ideas"
-    },
-    "alertTiers": {
-      "flash": "FLASH",
-      "priority": "PRIORITY",
-      "routine": "ROUTINE"
-    }
   },
   "alerts": {
     "tiers": {

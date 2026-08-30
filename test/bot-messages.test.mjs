@@ -6,14 +6,12 @@ import {
   buildStatusSnapshot,
   formatDiscordBrief,
   formatDiscordStatus,
-  formatTelegramBrief,
-  formatTelegramStatus,
 } from '../lib/bot/messages.mjs';
 import { contentHash, getNewSignals, ruleBasedEvaluation } from '../lib/alerts/shared.mjs';
 import { DiscordAlerter } from '../lib/alerts/discord.mjs';
 
 describe('bot message builders', () => {
-  it('formats shared status content for telegram and discord', () => {
+  it('formats status content for discord', () => {
     const snapshot = buildStatusSnapshot({
       startTime: Date.now() - (2 * 3600 + 15 * 60) * 1000,
       currentData: { meta: { sourcesOk: 24, sourcesQueried: 27, sourcesFailed: 3 } },
@@ -25,16 +23,15 @@ describe('bot message builders', () => {
       port: 3117,
     });
 
-    const telegram = formatTelegramStatus(snapshot);
     const discord = formatDiscordStatus(snapshot);
 
-    assert.match(telegram, /CRUCIX STATUS/);
-    assert.match(telegram, /Sources: 24\/27 OK \(3 failed\)/);
+    assert.match(discord, /CRUCIX STATUS/);
+    assert.match(discord, /Sources: 24\/27 OK \(3 failed\)/);
     assert.match(discord, /Dashboard: http:\/\/localhost:3117/);
     assert.match(discord, /LLM: enabled \(openai\)/);
   });
 
-  it('formats shared brief content for telegram and discord', () => {
+  it('formats brief content for discord', () => {
     const snapshot = buildBriefSnapshot({
       currentData: {
         fred: [{ id: 'VIXCLS', value: 28.4 }, { id: 'BAMLH0A0HYM2', value: 4.2 }],
@@ -45,11 +42,10 @@ describe('bot message builders', () => {
       now: '2026-04-19T17:30:00.000Z',
     });
 
-    const telegram = formatTelegramBrief(snapshot);
     const discord = formatDiscordBrief(snapshot);
 
-    assert.match(telegram, /VIX: 28.4/);
-    assert.match(telegram, /Long defense basket/);
+    assert.match(discord, /VIX: 28.4/);
+    assert.match(discord, /Long defense basket/);
     assert.match(discord, /RISK-OFF/);
     assert.match(discord, /HY Spread: 4.2/);
   });

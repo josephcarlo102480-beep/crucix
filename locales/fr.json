@@ -7,7 +7,7 @@
   "dashboard": {
     "title": "CRUCIX — Terminal de Renseignement",
     "bootTitle": "CRUCIX MOTEUR DE RENSEIGNEMENT",
-    "bootSubtitle": "Palantir Local · 31 Sources",
+    "bootSubtitle": "Palantir Local · 25 Sources",
     "waitingForSweep": "En attente du premier scan...",
     "sourcesOk": "Sources OK",
     "lastSweep": "Dernier scan",
@@ -233,64 +233,6 @@
     "justNow": "à l'instant",
     "hoursAgo": "il y a {hours}h",
     "daysAgo": "il y a {days}j"
-  },
-  "bot": {
-    "commands": {
-      "status": "État du système, dernier scan, statut des sources",
-      "sweep": "Déclencher un scan manuel",
-      "brief": "Résumé compact des derniers renseignements",
-      "portfolio": "Positions et P&L (si Alpaca connecté)",
-      "alerts": "Historique des alertes récentes",
-      "mute": "Couper les alertes 1h (ou /mute 2h, /mute 4h)",
-      "unmute": "Reprendre les alertes",
-      "help": "Afficher les commandes disponibles"
-    },
-    "messages": {
-      "alertsMuted": "🔇 Alertes coupées pour {hours}h — jusqu'à {time} UTC",
-      "useUnmute": "Utilisez /unmute pour reprendre.",
-      "alertsResumed": "🔔 Alertes reprises. Vous recevrez la prochaine évaluation de signal.",
-      "sweepTriggered": "🚀 Scan manuel déclenché. Vous recevrez des alertes si quelque chose de significatif est détecté.",
-      "sweepInProgress": "🔄 Scan déjà en cours. Veuillez patienter.",
-      "noDataYet": "⏳ Pas encore de données — en attente du premier scan.",
-      "noRecentAlerts": "Pas d'alertes récentes.",
-      "recentAlerts": "📋 Alertes Récentes (les {count} dernières)",
-      "commandsTip": "Astuce : Les commandes ne sont pas sensibles à la casse",
-      "commandFailed": "❌ Commande échouée : {error}",
-      "portfolioNotAvailable": "📊 L'intégration portfolio nécessite la connexion Alpaca MCP.\nUtilisez le dashboard Crucix ou l'agent Claude pour les requêtes portfolio."
-    },
-    "status": {
-      "title": "🖥️ STATUT CRUCIX",
-      "uptime": "Disponibilité",
-      "lastSweep": "Dernier scan",
-      "nextSweep": "Prochain scan",
-      "sweepInProgress": "Scan en cours",
-      "yes": "🔄 Oui",
-      "no": "⏸️ Non",
-      "sources": "Sources",
-      "failed": "échouées",
-      "llm": "LLM",
-      "enabled": "✅",
-      "disabled": "❌ Désactivé",
-      "sseClients": "Clients SSE",
-      "dashboard": "Dashboard",
-      "pending": "en attente",
-      "never": "jamais"
-    },
-    "brief": {
-      "title": "📋 BRIEF CRUCIX",
-      "direction": "Direction",
-      "changes": "changements",
-      "criticalChanges": "critiques",
-      "osint": "📡 OSINT",
-      "urgentSignals": "signaux urgents",
-      "totalPosts": "posts totaux",
-      "topIdeas": "💡 Meilleures Idées"
-    },
-    "alertTiers": {
-      "flash": "FLASH",
-      "priority": "PRIORITÉ",
-      "routine": "ROUTINE"
-    }
   },
   "alerts": {
     "tiers": {

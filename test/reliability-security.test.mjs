@@ -5,11 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serializeForInlineScript } from '../dashboard/inject.mjs';
 import { MemoryManager } from '../lib/delta/memory.mjs';
-import {
-  clearTelegramChannelMessages,
-  getTelegramChannelMessages,
-  recordTelegramUpdate,
-} from '../lib/telegramUpdates.mjs';
 import { isAskRequestAuthorized } from '../server.mjs';
 
 const dashboardHtml = readFileSync(join(process.cwd(), 'dashboard/public/jarvis.html'), 'utf8');
@@ -56,36 +51,6 @@ describe('Ask AI exposure policy', () => {
     assert.equal(isAskRequestAuthorized('0.0.0.0', 'secret', ''), false);
     assert.equal(isAskRequestAuthorized('0.0.0.0', 'secret', 'wrong'), false);
     assert.equal(isAskRequestAuthorized('0.0.0.0', 'secret', 'secret'), true);
-  });
-});
-
-describe('Telegram shared update snapshot', () => {
-  it('captures and replaces channel posts without storing command messages', () => {
-    clearTelegramChannelMessages();
-    assert.equal(recordTelegramUpdate({ message: { message_id: 1 } }), false);
-    assert.equal(recordTelegramUpdate({
-      channel_post: {
-        message_id: 7,
-        date: 1_700_000_000,
-        text: 'first',
-        chat: { id: -1001, username: 'intel' },
-      },
-    }), true);
-    recordTelegramUpdate({
-      edited_channel_post: {
-        message_id: 7,
-        date: 1_700_000_000,
-        edit_date: 1_700_000_100,
-        text: 'edited',
-        chat: { id: -1001, username: 'intel' },
-      },
-    });
-
-    const messages = getTelegramChannelMessages();
-    assert.equal(messages.length, 1);
-    assert.equal(messages[0].text, 'edited');
-    assert.equal(messages[0].channel, 'intel');
-    clearTelegramChannelMessages();
   });
 });
 

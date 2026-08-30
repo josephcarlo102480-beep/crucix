@@ -17,15 +17,12 @@ import { createLLMProvider } from './lib/llm/index.mjs';
 import { answerDashboardQuestion, validateAskQuestion } from './lib/llm/ask.mjs';
 import { getSatellitePassContext } from './lib/space/satellitePasses.mjs';
 import { generateLLMIdeas } from './lib/llm/ideas.mjs';
-import { TelegramAlerter } from './lib/alerts/telegram.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import {
   buildBriefSnapshot,
   buildStatusSnapshot,
   formatDiscordBrief,
   formatDiscordStatus,
-  formatTelegramBrief,
-  formatTelegramStatus,
 } from './lib/bot/messages.mjs';
 // --- Isolated OSINT modules (ported from OSIRIS) ---
 import cctvRouter, { warmCctv } from './services/cctv/cctvRouter.mjs';
@@ -63,9 +60,8 @@ const memory = new MemoryManager(RUNS_DIR, {
   maxBaselineAgeMs: config.refreshIntervalMinutes * 2.5 * 60 * 1000,
 });
 
-// === LLM + Telegram + Discord ===
+// === LLM + Discord ===
 const llmProvider = createLLMProvider(config.llm);
-const telegramAlerter = new TelegramAlerter(config.telegram);
 const discordAlerter = new DiscordAlerter(config.discord || {});
 let integrationsStarted = false;
 
@@ -98,40 +94,12 @@ function initializeIntegrations() {
   } else if (llmProvider) {
     console.warn(`[Crucix] LLM provider "${llmProvider.name}" selected but credentials are missing. LLM features disabled.`);
   }
-  if (telegramAlerter.isConfigured) {
-    console.log('[Crucix] Telegram alerts enabled');
-
-    // ─── Two-Way Bot Commands ─────────────────────────────────────────────
-
-    telegramAlerter.onCommand('/status', async () => {
-      return formatTelegramStatus(getStatusSnapshot());
-    });
-
-    telegramAlerter.onCommand('/sweep', async () => {
-      if (sweepInProgress) return '🔄 Sweep already in progress. Please wait.';
-      // Fire and forget — don't block the bot response
-      runSweepCycle().catch(err => console.error('[Crucix] Manual sweep failed:', err.message));
-      return '🚀 Manual sweep triggered. You\'ll receive alerts if anything significant is detected.';
-    });
-
-    telegramAlerter.onCommand('/brief', async () => {
-      if (!currentData) return '⏳ No data yet — waiting for first sweep to complete.';
-      return formatTelegramBrief(getBriefSnapshot());
-    });
-
-    telegramAlerter.onCommand('/portfolio', async () => {
-      return '📊 Portfolio integration requires Alpaca MCP connection.\nUse the Crucix dashboard or Claude agent for portfolio queries.';
-    });
-
-    // Start polling for bot commands
-    telegramAlerter.startPolling(config.telegram.botPollingInterval);
-  }
-
   // === Discord Bot ===
   if (discordAlerter.isConfigured) {
     console.log('[Crucix] Discord alerts enabled');
 
-    // Reuse the same command handlers as Telegram (DRY)
+    // ─── Two-Way Bot Commands ─────────────────────────────────────────────
+
     discordAlerter.onCommand('status', async () => {
       return formatDiscordStatus(getStatusSnapshot());
     });
@@ -238,7 +206,6 @@ app.get('/api/health', (req, res) => {
     llmEnabled: !!llmProvider?.isConfigured,
     llmProvider: llmProvider?.name || null,
     askAiRequiresToken: !isLoopbackHost(config.host),
-    telegramEnabled: !!(config.telegram.botToken && config.telegram.chatId),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
   });
@@ -449,13 +416,8 @@ async function runSweepCycle() {
     }
     memory.updateLastRunIdeas(synthesized.ideas);
 
-    // 6. Alert evaluation — Telegram + Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
+    // 6. Alert evaluation — Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
     if (delta?.summary?.totalChanges > 0) {
-      if (telegramAlerter.isConfigured) {
-        telegramAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
-          console.error('[Crucix] Telegram alert error:', err.message);
-        });
-      }
       if (discordAlerter.isConfigured) {
         discordAlerter.evaluateAndAlert(llmProvider, delta, memory).catch(err => {
           console.error('[Crucix] Discord alert error:', err.message);
@@ -493,7 +455,6 @@ async function start() {
   const port = config.port;
   const displayHost = isLoopbackHost(config.host) ? config.host : 'localhost';
 
-  const telegramStatus = config.telegram.botToken ? 'enabled' : 'disabled';
   const discordStatus = config.discord?.botToken
     ? 'enabled'
     : config.discord?.webhookUrl ? 'webhook only' : 'disabled';
@@ -509,7 +470,6 @@ async function start() {
     `  Health:     http://${displayHost}:${port}/api/health`,
     `  Refresh:    Every ${config.refreshIntervalMinutes} min`,
     `  LLM:        ${llmStatus}`,
-    `  Telegram:   ${telegramStatus}`,
     `  Discord:    ${discordStatus}`,
   ];
   const INNER = Math.max(46, ...lines.filter(Boolean).map(s => s.length + 2));
@@ -596,7 +556,6 @@ async function shutdown(signal) {
 
   if (sweepTimer) clearInterval(sweepTimer);
   clearInterval(sseHeartbeatTimer);
-  telegramAlerter.stopPolling?.();
   try { stopAirwatch(); } catch { }
   for (const client of sseClients) {
     try { client.end(); } catch { }
