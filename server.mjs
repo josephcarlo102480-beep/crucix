@@ -28,7 +28,7 @@ import {
   formatTelegramStatus,
 } from './lib/bot/messages.mjs';
 // --- Isolated OSINT modules (ported from OSIRIS) ---
-import cctvRouter from './services/cctv/cctvRouter.mjs';
+import cctvRouter, { warmCctv } from './services/cctv/cctvRouter.mjs';
 import airwatchRouter, { warmAirwatch, stopAirwatch } from './services/airwatch/airwatchRouter.mjs';
 import tleRouter from './services/space/tleRouter.mjs';
 import { warmTle } from './services/space/tleCatalog.mjs';
@@ -537,6 +537,12 @@ async function start() {
 
   httpServer.on('listening', async () => {
     console.log(`[Crucix] Server running on http://${displayHost}:${port} (bound to ${config.host})`);
+
+    // Assemble the CCTV camera list, which includes a YouTube liveness sweep
+    // (fire-and-forget).
+    warmCctv()
+      .then(n => console.log(`[Crucix] CCTV cameras warmed (${n} live)`))
+      .catch(() => {});
 
     // Start the AirWatch military aircraft poller (fire-and-forget).
     warmAirwatch()
