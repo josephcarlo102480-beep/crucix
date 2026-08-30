@@ -15,9 +15,6 @@ import { briefing as safecast } from './sources/safecast.mjs';
 import { briefing as acled } from './sources/acled.mjs';
 import { briefing as reliefweb } from './sources/reliefweb.mjs';
 import { briefing as who } from './sources/who.mjs';
-import { briefing as ofac } from './sources/ofac.mjs';
-import { briefing as opensanctions } from './sources/opensanctions.mjs';
-import { briefing as adsb } from './sources/adsb.mjs';
 
 // === Tier 2: Economic & Financial ===
 import { briefing as fred } from './sources/fred.mjs';
@@ -34,7 +31,6 @@ import { briefing as epa } from './sources/epa.mjs';
 import { briefing as patents } from './sources/patents.mjs';
 import { briefing as bluesky } from './sources/bluesky.mjs';
 import { briefing as reddit } from './sources/reddit.mjs';
-import { briefing as telegram } from './sources/telegram.mjs';
 import { briefing as kiwisdr } from './sources/kiwisdr.mjs';
 
 // === Tier 4: Space & Satellites ===
@@ -71,7 +67,7 @@ export async function runSource(name, fn, ...args) {
 }
 
 export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 29 sources...');
+  console.error('[Crucix] Starting intelligence sweep — 25 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -84,9 +80,6 @@ export async function fullBriefing() {
     runSource('ACLED', acled),
     runSource('ReliefWeb', reliefweb),
     runSource('WHO', who),
-    runSource('OFAC', ofac),
-    runSource('OpenSanctions', opensanctions),
-    runSource('ADS-B', adsb),
 
     // Tier 2: Economic & Financial
     runSource('FRED', fred, process.env.FRED_API_KEY),
@@ -103,7 +96,6 @@ export async function fullBriefing() {
     runSource('Patents', patents),
     runSource('Bluesky', bluesky),
     runSource('Reddit', reddit),
-    runSource('Telegram', telegram),
     runSource('KiwiSDR', kiwisdr),
 
     // Tier 4: Space & Satellites

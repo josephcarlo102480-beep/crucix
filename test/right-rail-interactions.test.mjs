@@ -38,7 +38,7 @@ describe('dashboard right-rail interactions', () => {
   });
 
   it('adds full report context and source actions to OSINT items', () => {
-    assert.match(html, /OSINT report/);
+    assert.match(html, /Official health bulletin/);
     assert.match(html, /right-detail-copy/);
     assert.match(html, /Locate report/);
     assert.match(html, /Open source &#8599;/);

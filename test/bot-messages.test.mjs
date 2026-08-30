@@ -39,7 +39,6 @@ describe('bot message builders', () => {
       currentData: {
         fred: [{ id: 'VIXCLS', value: 28.4 }, { id: 'BAMLH0A0HYM2', value: 4.2 }],
         energy: { wti: 83.1, brent: 86.4, natgas: 2.4 },
-        tg: { posts: 9, urgent: [{ text: 'Border clash intensifying near corridor.' }] },
         ideas: [{ type: 'long', title: 'Long defense basket' }],
       },
       delta: { summary: { direction: 'risk-off', totalChanges: 7, criticalChanges: 2 } },
@@ -52,7 +51,7 @@ describe('bot message builders', () => {
     assert.match(telegram, /VIX: 28.4/);
     assert.match(telegram, /Long defense basket/);
     assert.match(discord, /RISK-OFF/);
-    assert.match(discord, /OSINT: 1 urgent signals, 9 total posts/);
+    assert.match(discord, /HY Spread: 4.2/);
   });
 });
 

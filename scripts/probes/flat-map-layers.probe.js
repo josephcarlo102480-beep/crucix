@@ -4,7 +4,7 @@
  *   node scripts/browser-probe.mjs --wait-for '#flatMapSvg g.markers' \
  *        scripts/probes/flat-map-layers.probe.js
  *
- * drawFlatMap() appends its graticule/border/markers/corridors instead of
+ * drawFlatMap() appends its graticule/border/markers instead of
  * replacing them, and init() kicks off two overlapping draws in one tick
  * (initMap() then syncResponsiveLayout(true) -> refreshMapViewport()). Both
  * fetch callbacks used to land, doubling every marker group — 152 markers
@@ -22,11 +22,10 @@ const count = () => ({
   graticule: document.querySelectorAll('#flatMapSvg path.graticule').length,
   border: document.querySelectorAll('#flatMapSvg path.border').length,
   land: document.querySelectorAll('#flatMapSvg path.land').length,
-  corridors: document.querySelectorAll('#flatMapSvg g.corridors-layer').length,
 });
 
 const checkSingletons = (label, c) => {
-  for (const k of ['markerGroups', 'graticule', 'border', 'corridors']) {
+  for (const k of ['markerGroups', 'graticule', 'border']) {
     if (c[k] > 1) failures.push(`${label}: ${k} duplicated (${c[k]}, expected 1)`);
   }
 };

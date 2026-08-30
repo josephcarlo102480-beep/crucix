@@ -2,7 +2,7 @@
 
 # Crucix
 
-**Your own intelligence terminal. 29 sources. One command. Zero cloud.**
+**Your own intelligence terminal. 25 sources. One command. Zero cloud.**
 
 ## [Visit The Live Site: crucix.live](https://www.crucix.live/)
 
@@ -12,7 +12,7 @@
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-2-orange)](#architecture)
-[![Sources](https://img.shields.io/badge/OSINT%20sources-29-cyan)](#data-sources-29)
+[![Sources](https://img.shields.io/badge/OSINT%20sources-25-cyan)](#data-sources-25)
 [![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](#docker)
 
 **Enter The Signal Network**
@@ -40,7 +40,7 @@
 > **Live website:** [https://www.crucix.live/](https://www.crucix.live/)
 > Explore the public demo first, then clone the repo to run Crucix locally.
 
-Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, sanctions lists, and social sentiment from 29 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
+Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, military aircraft tracking, and social sentiment from 25 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
 Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Telegram and Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
 
@@ -90,7 +90,7 @@ npm run dev
 > ```
 > This bypasses npm's script runner, which can swallow errors on some systems (particularly PowerShell on Windows). You can also run `node diag.mjs` to diagnose the exact issue — it checks your Node version, tests each module import individually, and verifies port availability. See [Troubleshooting](#troubleshooting) for more.
 
-The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 29 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
+The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 25 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
 
 **Requirements:** Node.js 22+ (uses native `fetch`, top-level `await`, ESM)
 
@@ -114,18 +114,35 @@ Docker binds Crucix beyond loopback inside the container. Set `CRUCIX_API_TOKEN`
 ### Live Dashboard
 A self-contained Jarvis-style HUD with:
 - **3D WebGL globe** (Globe.gl) with atmosphere glow, star field, and smooth rotation — plus a classic flat map toggle
-- **9 marker types** across both views: fire detections, air traffic, radiation sites, maritime chokepoints, SDR receivers, OSINT events, health alerts, geolocated news, conflict events
-- **Animated 3D flight corridor arcs** between air traffic hotspots and global hubs
+- **8 marker types** across both views: fire detections, air traffic, radiation sites, maritime chokepoints, SDR receivers, health alerts, geolocated news, conflict events
 - **Region filters** (World, Americas, Europe, Middle East, Asia Pacific, Africa) — rotates the globe or zooms the flat map
 - **Live market data** — indexes, crypto, energy, commodities via Yahoo Finance (no API key needed)
 - **Risk gauges** — VIX, high-yield spread, supply chain pressure index
-- **OSINT feed** — English-language posts from 17 Telegram intelligence channels (expandable)
-- **News ticker** — merged RSS + GDELT headlines + Telegram posts, auto-scrolling
+- **OSINT feed** — WHO outbreak and health bulletins, geolocated on the map
+- **News ticker** — merged RSS + GDELT headlines, auto-scrolling
 - **Sweep delta** — live panel showing what changed since last sweep (new signals, escalations, de-escalations with severity)
 - **Cross-source signals** — correlated intelligence across satellite, economic, conflict, and social domains
 - **Nuclear watch** — real-time radiation readings from Safecast + EPA RadNet
 - **Space watch** — CelesTrak satellite tracking: recent launches, ISS, military constellations, Starlink/OneWeb counts
 - **Leverageable ideas** — AI-generated trade ideas (with LLM) or signal-correlated ideas (without)
+
+### AirWatch — Military Aircraft Tracker
+A standalone page at `/airwatch.html` that tracks military aircraft in near real time from
+the free hobbyist ADS-B networks. **No API key exists for these feeds and none is needed.**
+
+- **Theatres** — US East Coast (default), US West Coast, Middle East, Europe/Baltic, Indo-Pacific, or a worldwide view. The whole military feed is fetched once per cycle and filtered locally, so switching theatres costs nothing upstream.
+- **Recon watch** — reconnaissance, ISR and maritime patrol aircraft are pulled out of the noise and labelled with what they actually do: a `P8` becomes "P-8A Poseidon — maritime patrol / submarine hunting", an `E6` becomes "E-6B Mercury — TACAMO relay to ballistic missile submarines".
+- **Position quality** — roughly a third of military aircraft in these feeds broadcast no usable position. Those that are located by MLAT (ground-station triangulation), or only have a stale last fix or a receiver-area estimate, are drawn faded and tagged rather than presented as hard fixes.
+- **On-station detection** — orbit/racetrack patterns are inferred client-side from successive polls, which is what a tanker or an ISR aircraft holding station looks like.
+- **24h baselines** — per-theatre, per-category hourly counts in SQLite, so a tanker or ISR surge shows as a trend arrow instead of a bare number.
+
+Data comes from [adsb.fi](https://adsb.fi) with [adsb.lol](https://adsb.lol) as an automatic
+fallback; the server polls every 45s and the page reads that cache, so loading the page never
+hits the upstream APIs. Cadence is overridable with `CRUCIX_AIRWATCH_POLL_SECONDS`.
+
+> Absence of aircraft is not absence of activity. Military aircraft routinely fly with ADS-B
+> off, and hobbyist receiver coverage thins out well before the middle of an ocean — an empty
+> map is a coverage gap, not an empty sky.
 
 ### Performance Modes
 The `VISUALS FULL` / `VISUALS LITE` button in the top bar only changes rendering behavior - it does **not** remove data sources or reduce sweep coverage.
@@ -145,7 +162,7 @@ The preference is saved in browser local storage, so the UI will remember your l
 
 ### Auto-Refresh
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
-1. Queries all 29 sources in parallel (~30s)
+1. Queries all 25 sources in parallel (~30s)
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
 4. Generates LLM trade ideas (if configured)
@@ -220,7 +237,6 @@ These three unlock the most valuable economic and satellite data. Each takes abo
 |-----|--------|------------|
 | `ACLED_EMAIL` + `ACLED_PASSWORD` | Armed conflict event data | [acleddata.com/register](https://acleddata.com/register/) — free, OAuth2 |
 | `AISSTREAM_API_KEY` | Maritime AIS vessel tracking | [aisstream.io](https://aisstream.io/) — free |
-| `ADSB_API_KEY` | Unfiltered flight tracking | [RapidAPI](https://rapidapi.com/adsbexchange/api/adsbexchange-com1) — ~$10/mo |
 
 ### LLM Provider (optional, for AI-enhanced ideas and Ask AI)
 
@@ -247,7 +263,6 @@ The dashboard Ask AI panel is available when `LLM_PROVIDER=openai` and an OpenAI
 |-----|------------|
 | `TELEGRAM_BOT_TOKEN` | Create via [@BotFather](https://t.me/BotFather) on Telegram |
 | `TELEGRAM_CHAT_ID` | Get via [@userinfobot](https://t.me/userinfobot) |
-| `TELEGRAM_CHANNELS` | *(Optional)* Comma-separated extra channel IDs to monitor beyond the 17 built-in channels |
 | `TELEGRAM_POLL_INTERVAL` | *(Optional)* Bot command polling interval in ms (default: 5000) |
 
 ### Discord Bot + Alerts (optional)
@@ -287,14 +302,14 @@ crucix/
 ├── docs/                      # Screenshots for README
 │
 ├── apis/
-│   ├── briefing.mjs           # Master orchestrator — runs all 29 sources in parallel
+│   ├── briefing.mjs           # Master orchestrator — runs all 25 sources in parallel
 │   ├── save-briefing.mjs      # CLI: save timestamped + latest.json
 │   ├── BRIEFING_PROMPT.md     # Intelligence synthesis protocol
 │   ├── BRIEFING_TEMPLATE.md   # Briefing output structure
 │   ├── utils/
 │   │   ├── fetch.mjs          # safeFetch() — timeout, retries, abort, auto-JSON
 │   │   └── env.mjs            # .env loader (no dotenv dependency)
-│   └── sources/               # 29 self-contained source modules
+│   └── sources/               # 25 self-contained source modules
 │       ├── gdelt.mjs          # Each exports briefing() → structured data
 │       ├── fred.mjs           # Can run standalone: node apis/sources/fred.mjs
 │       ├── space.mjs          # CelesTrak satellite tracking
@@ -334,16 +349,16 @@ crucix/
 ### Design Principles
 - **Pure ESM** — every file is `.mjs` with explicit imports
 - **Minimal dependencies** — Express and satellite.js are the only runtime dependencies. `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()`, no SDKs.
-- **Parallel execution** — `Promise.allSettled()` fires all 29 sources simultaneously
+- **Parallel execution** — `Promise.allSettled()` fires all 25 sources simultaneously
 - **Graceful degradation** — missing keys produce errors, not crashes. LLM failures don't kill sweeps.
 - **Each source is standalone** — run `node apis/sources/gdelt.mjs` to test any source independently
 - **Self-contained dashboard** — the HTML file works with or without the server
 
 ---
 
-## Data Sources (29)
+## Data Sources (25)
 
-### Tier 1: Core OSINT & Geopolitical (11)
+### Tier 1: Core OSINT & Geopolitical (8)
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
@@ -355,9 +370,6 @@ crucix/
 | **ACLED** | Armed conflict events: battles, explosions, protests | Free (OAuth2) |
 | **ReliefWeb** | UN humanitarian crisis tracking | None |
 | **WHO** | Disease outbreaks and health emergencies | None |
-| **OFAC** | US Treasury sanctions (SDN list) | None |
-| **OpenSanctions** | Aggregated global sanctions (30+ sources) | Partial |
-| **ADS-B Exchange** | Unfiltered flight tracking including military | Paid |
 
 ### Tier 2: Economic & Financial (7)
 
@@ -371,7 +383,7 @@ crucix/
 | **USAspending** | Federal spending and defense contracts | None |
 | **UN Comtrade** | Strategic commodity trade flows between major powers | None |
 
-### Tier 3: Weather, Environment, Tech, Social, SIGINT (7)
+### Tier 3: Weather, Environment, Tech, Social, SIGINT (6)
 
 | Source | What It Tracks | Auth |
 |--------|---------------|------|
@@ -380,7 +392,6 @@ crucix/
 | **USPTO Patents** | Patent filings in 7 strategic tech areas | None |
 | **Bluesky** | Social sentiment on geopolitical/market topics | None |
 | **Reddit** | Social sentiment from key subreddits | OAuth |
-| **Telegram** | 17 curated OSINT/conflict/finance channels (web scraping, expandable via config) | None |
 | **KiwiSDR** | Global HF radio receiver network (~600 receivers) | None |
 
 ### Tier 4: Space & Satellites (1)
@@ -430,7 +441,6 @@ All settings are in `.env` with sensible defaults:
 | `LLM_MODEL` | per-provider default | Override model selection |
 | `TELEGRAM_BOT_TOKEN` | disabled | For Telegram alerts + bot commands |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
-| `TELEGRAM_CHANNELS` | — | Extra channel IDs to monitor (comma-separated) |
 | `TELEGRAM_POLL_INTERVAL` | `5000` | Bot command polling interval (ms) |
 | `DISCORD_BOT_TOKEN` | disabled | For Discord alerts + slash commands |
 | `DISCORD_CHANNEL_ID` | — | Discord channel for alerts |
@@ -500,7 +510,7 @@ Crucix requires Node.js 22 or later. If you have an older version, download the 
 
 ### Dashboard shows empty panels after first start
 
-This is normal — the first sweep takes 30–60 seconds to query all 29 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
+This is normal — the first sweep takes 30–60 seconds to query all 25 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
 
 ### Some sources show errors
 
@@ -541,7 +551,7 @@ To update them: run the dashboard, wait for a sweep to complete, then use your b
 
 ## Contributing
 
-Found a bug? Want to add a 28th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the orchestrator in `apis/briefing.mjs`.
+Found a bug? Want to add a 26th source? PRs welcome. Each source is a standalone module in `apis/sources/` — just export a `briefing()` function that returns structured data and add it to the orchestrator in `apis/briefing.mjs`.
 
 If you find this useful, a star helps others find it too.
 

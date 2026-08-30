@@ -3,11 +3,12 @@
  *
  * Mounted at `/api/airwatch` by server.mjs. Serves ONLY from the poller's
  * in-memory cache — an incoming request never triggers an upstream fetch.
- * Returns 503 { status: "loading" } until the first successful poll,
- * mirroring the telegram/sanctions module pattern.
+ * Returns 503 { status: "loading" } until the first successful poll.
  *
- *   GET /api/airwatch/aircraft?scope=region|global → current filtered list
- *   GET /api/airwatch/stats                        → counts vs 24h baseline
+ *   GET /api/airwatch/aircraft?scope=theatre|global&theatre=<id>
+ *        → current filtered list + the theatre catalogue
+ *   GET /api/airwatch/stats?theatre=<id>
+ *        → per-category counts vs that theatre's rolling 24h baseline
  */
 
 import { Router } from 'express';
@@ -15,7 +16,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import {
   startPoller, stopPoller, getSnapshot, getSourceStatus,
-  countByCategory, CATEGORIES, REGION,
+  countByCategory, CATEGORIES, THEATRES, THEATRE_IDS, DEFAULT_THEATRE,
 } from './airwatchPoller.mjs';
 import {
   initBaseline, recordSample, getBaseline, closeBaseline,
@@ -28,14 +29,28 @@ const DB_PATH = join(__dirname, '..', '..', 'data', 'airwatch.sqlite');
 const BASELINE_MIN_HOURS = 6;
 const STALE_AFTER_SECONDS = 180;
 
-// Military aircraft routinely disable ADS-B over contested airspace, so an
-// empty list is expected behavior, not an error.
+// Military aircraft routinely disable ADS-B, and hobbyist receiver coverage
+// thins out fast over open ocean, so an empty list is expected behavior
+// rather than an error.
 const COVERAGE_NOTE = 'No broadcasting military aircraft in view. Mil aircraft '
   + 'often fly dark (ADS-B off) over contested airspace, and receiver coverage '
-  + 'over Iran, Iraq and Syria is sparse — an empty picture is a coverage gap, '
-  + 'not necessarily an empty sky.';
+  + 'drops off well before the middle of an ocean — an empty picture is a '
+  + 'coverage gap, not necessarily an empty sky.';
 
 const router = Router();
+
+// Catalogue the UI builds its theatre selector from.
+const THEATRE_LIST = THEATRE_IDS.map(id => ({
+  id,
+  label: THEATRES[id].label,
+  center: THEATRES[id].center,
+  zoom: THEATRES[id].zoom,
+  note: THEATRES[id].note,
+}));
+
+function resolveTheatre(raw) {
+  return THEATRE_IDS.includes(raw) ? raw : DEFAULT_THEATRE;
+}
 
 function snapshotMeta(snapshot) {
   const ageSeconds = Math.round((Date.now() - new Date(snapshot.fetchedAt).getTime()) / 1000);
@@ -49,42 +64,54 @@ function snapshotMeta(snapshot) {
   };
 }
 
-// GET /api/airwatch/aircraft?scope=region|global
+// GET /api/airwatch/aircraft?scope=theatre|global&theatre=<id>
 router.get('/aircraft', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const snapshot = getSnapshot();
   if (!snapshot) {
-    return res.status(503).json({ status: 'loading', sourceStatus: getSourceStatus() });
+    return res.status(503).json({
+      status: 'loading',
+      sourceStatus: getSourceStatus(),
+      theatres: THEATRE_LIST,
+    });
   }
-  const scope = req.query.scope === 'global' ? 'global' : 'region';
-  const aircraft = scope === 'global' ? snapshot.aircraft : snapshot.regionAircraft;
+  const theatre = resolveTheatre(req.query.theatre);
+  const scope = req.query.scope === 'global' ? 'global' : 'theatre';
+  const aircraft = scope === 'global' ? snapshot.aircraft : (snapshot.byTheatre[theatre] || []);
   res.json({
     ...snapshotMeta(snapshot),
     scope,
-    region: REGION,
+    theatre,
+    theatres: THEATRE_LIST,
+    region: THEATRES[theatre],
     count: aircraft.length,
     globalCount: snapshot.aircraft.length,
+    reconCount: aircraft.filter(ac => ac.recon).length,
     withoutPosition: snapshot.withoutPosition,
+    onGround: snapshot.onGround,
     note: aircraft.length === 0 ? COVERAGE_NOTE : null,
     aircraft,
   });
 });
 
-// GET /api/airwatch/stats — region-scoped counts vs rolling 24h baseline
+// GET /api/airwatch/stats?theatre=<id> — counts vs that theatre's 24h baseline
 router.get('/stats', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const snapshot = getSnapshot();
   if (!snapshot) {
     return res.status(503).json({ status: 'loading', sourceStatus: getSourceStatus() });
   }
-  const current = countByCategory(snapshot.regionAircraft);
+  const theatre = resolveTheatre(req.query.theatre);
+  const list = snapshot.byTheatre[theatre] || [];
+  const current = countByCategory(list);
   const { perCategory: baseline, hours } = getBaseline();
   const mature = hours >= BASELINE_MIN_HOURS;
 
   const categories = {};
   for (const cat of CATEGORIES) {
     const now = current[cat] || 0;
-    const base = baseline[cat] ?? null;
+    // Baseline rows are keyed `theatre:CATEGORY` so each theatre tracks its own.
+    const base = baseline[`${theatre}:${cat}`] ?? null;
     // Activity score: current vs rolling 24h mean. ±15% dead band so tiny
     // fluctuations around small counts don't flap the trend arrows.
     let trend = 'flat';
@@ -99,9 +126,11 @@ router.get('/stats', (req, res) => {
 
   res.json({
     ...snapshotMeta(snapshot),
-    scope: 'region',
-    region: REGION,
-    totalCurrent: snapshot.regionAircraft.length,
+    scope: 'theatre',
+    theatre,
+    region: THEATRES[theatre],
+    totalCurrent: list.length,
+    reconCurrent: list.filter(ac => ac.recon).length,
     globalCount: snapshot.aircraft.length,
     categories,
     baseline: { hours, mature, minHours: BASELINE_MIN_HOURS },
@@ -110,8 +139,7 @@ router.get('/stats', (req, res) => {
 
 /**
  * Fire-and-forget boot warm: open the baseline store, then start the 45s
- * poller. Exposed so server.mjs can call it once on listen (same pattern as
- * warmTelegram / warmSanctionsCache).
+ * poller. Exposed so server.mjs can call it once on listen.
  */
 export async function warmAirwatch() {
   let backend = 'disabled';

@@ -19,14 +19,12 @@ describe('Ask AI helpers', () => {
     const compact = compactDashboardForAsk({
       meta: { timestamp: '2026-06-21T00:00:00Z', sourcesOk: 28 },
       ideas: [{ title: 'Oil Momentum', rationale: 'WTI up' }],
-      tg: { urgent: [{ text: 'urgent post' }] },
       newsFeed: [{ headline: 'Market headline' }],
       markets: { indexes: [{ symbol: 'SPY', price: 500 }] },
     });
 
     assert.equal(compact.meta.sourcesOk, 28);
     assert.equal(compact.ideas[0].title, 'Oil Momentum');
-    assert.equal(compact.osint.telegram.urgent[0].text, 'urgent post');
     assert.equal(compact.osint.newsFeed[0].headline, 'Market headline');
     assert.equal(compact.markets.indexes[0].symbol, 'SPY');
   });

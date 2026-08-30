@@ -180,8 +180,6 @@ body.view-map #lowerGrid{margin-top:10px}
 #flatMapSvg .border{fill:none;stroke:rgba(200,220,230,0.08);stroke-width:0.3}
 @keyframes pulse-conflict{0%,100%{opacity:0.5;stroke-width:1.5}50%{opacity:0.9;stroke-width:2.5}}
 .conflict-ring{animation:pulse-conflict 2.5s ease-in-out infinite}
-@keyframes dash-flow{to{stroke-dashoffset:-20}}
-.corridor-flow{animation:dash-flow 2s linear infinite}
 .map-legend{position:absolute;bottom:10px;left:12px;display:flex;gap:14px;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:0.06em;text-transform:uppercase;z-index:5;flex-wrap:wrap}
 .leg-item{display:flex;align-items:center;gap:5px}
 .leg-dot{width:8px;height:8px;border-radius:50%}
@@ -190,8 +188,6 @@ body.view-map #lowerGrid{margin-top:10px}
 .map-controls{position:absolute;top:8px;left:12px;z-index:6;display:flex;flex-direction:column;gap:4px}
 .map-ctrl-btn{width:28px;height:28px;border:1px solid var(--border);background:rgba(0,0,0,0.6);color:var(--dim);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:all 0.2s;font-family:var(--mono)}
 .map-ctrl-btn:hover{color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.06)}
-.map-ctrl-btn.map-toggle{font-size:14px}
-.map-ctrl-btn.off{opacity:0.4}
 /* Map popup */
 .map-popup{position:absolute;z-index:20;width:280px;padding:12px;background:rgba(6,10,14,0.95);border:1px solid rgba(100,240,200,0.25);backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.5);pointer-events:auto;display:none}
 .map-popup.show{display:block}
@@ -406,7 +402,7 @@ body.view-map #lowerGrid{margin-top:10px}
 /* LOW PERFORMANCE MODE */
 body.low-perf .bg-grid,body.low-perf .bg-radial,body.low-perf .scanline{display:none!important}
 body.low-perf .topbar,body.low-perf .g-panel,body.low-perf .map-popup,body.low-perf .map-loading{backdrop-filter:none!important}
-body.low-perf .logo-ring::before,body.low-perf .logo-ring::after,body.low-perf .regime-chip .blink,body.low-perf .conflict-ring,body.low-perf .corridor-flow{animation:none!important}
+body.low-perf .logo-ring::before,body.low-perf .logo-ring::after,body.low-perf .regime-chip .blink,body.low-perf .conflict-ring{animation:none!important}
 body.low-perf .ticker-wrap{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.2) transparent}
 body.low-perf .ticker-track{animation:none!important;display:block!important}
 body.low-perf .ticker-wrap::before,body.low-perf .ticker-wrap::after{display:none}
@@ -442,13 +438,6 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 /* CONFLICT LAYER */
 @keyframes pulse-conflict{0%,100%{opacity:0.5;stroke-width:1.5}50%{opacity:0.9;stroke-width:2.5}}
 .conflict-ring{animation:pulse-conflict 2.5s ease-in-out infinite}
-
-/* FLIGHT CORRIDORS */
-.corridor-line{fill:none;opacity:0.6;pointer-events:none}
-@keyframes flicker-ghost{0%,100%{opacity:0.15}30%{opacity:0.45}60%{opacity:0.1}85%{opacity:0.35}}
-.ghost-marker{animation:flicker-ghost 2s ease-in-out infinite}
-@keyframes dash-flow{to{stroke-dashoffset:-20}}
-.corridor-flow{animation:dash-flow 2s linear infinite}
 
 /* SPARKLINES */
 .spark-svg{display:inline-block;width:52px;height:18px;vertical-align:middle;margin-left:4px}
@@ -500,7 +489,6 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
           <div class="map-controls">
             <button class="map-ctrl-btn" onclick="mapZoom(1.5)" title="Zoom in" aria-label="Zoom in">+</button>
             <button class="map-ctrl-btn" onclick="mapZoom(0.67)" title="Zoom out" aria-label="Zoom out">&minus;</button>
-            <button class="map-ctrl-btn map-toggle" id="flightToggle" onclick="toggleFlights()" title="Toggle flight routes" aria-label="Toggle flight routes">&#9992;</button>
           </div>
           <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()" aria-label="Toggle flat and globe map mode">GLOBE MODE</button>
           <div class="map-popup" id="mapPopup"><button class="pp-close" onclick="closePopup()">&times;</button><div class="pp-head"></div><div class="pp-text"></div><div class="pp-meta"></div></div>
@@ -550,7 +538,6 @@ function t(keyPath, fallback) {
 let globe = null;
 let globeFX = null;
 let globeInitialized = false;
-let flightsVisible = true;
 let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
 let primaryView = localStorage.getItem('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
 let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
@@ -692,7 +679,7 @@ function defaultDashboardData(){
   return {
     meta:{timestamp:now,sourcesOk:0,sourcesQueried:0,totalDurationMs:0},
     air:[],thermal:[],tSignals:[],chokepoints:[],nuke:[],nukeSignals:[],
-    airMeta:{},sdr:{total:0,online:0,zones:[]},tg:{posts:0,urgent:[],topPosts:[]},
+    airMeta:{},sdr:{total:0,online:0,zones:[]},
     who:[],fred:[],energy:{wti:null,brent:null,natgas:null,wtiRecent:[],signals:[]},
     bls:[],treasury:{totalDebt:'0',signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:0,alerts:[]},
     epa:{totalReadings:0,stations:[]},acled:{totalEvents:0,totalFatalities:0,regions:[],deadliestEvents:[]},
@@ -719,9 +706,6 @@ function normalizeDashboardData(input){
   merged.nukeSignals = asArray(data.nukeSignals);
   merged.sdr = {...base.sdr,...(data.sdr && typeof data.sdr === 'object' ? data.sdr : {})};
   merged.sdr.zones = asArray(merged.sdr.zones);
-  merged.tg = {...base.tg,...(data.tg && typeof data.tg === 'object' ? data.tg : {})};
-  merged.tg.urgent = asArray(merged.tg.urgent);
-  merged.tg.topPosts = asArray(merged.tg.topPosts);
   merged.who = asArray(data.who);
   merged.fred = asArray(data.fred);
   merged.energy = {...base.energy,...(data.energy && typeof data.energy === 'object' ? data.energy : {})};
@@ -887,7 +871,6 @@ function togglePerfMode(){
   if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LITE' : 'FULL';
   if(globe){
     globe.controls().autoRotate = !lowPerfMode;
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
   }
   if(lowPerfMode && isMobileLayout() && !isFlat){
     toggleMapMode();
@@ -984,9 +967,7 @@ function renderTopbar(){
       <span class="brand">CRUCIX MONITOR</span>
       <span class="regime-chip"><span class="blink"></span>WARTIME STAGFLATION RISK</span>
       <nav class="module-links" aria-label="Crucix modules">
-        <a href="/telegram.html">Telegram</a>
         <a href="/cctv.html">CCTV</a>
-        <a href="/sanctions.html">Sanctions</a>
         <a href="/airwatch.html">AirWatch</a>
       </nav>
     </div>
@@ -1077,7 +1058,6 @@ function renderLeftRail(){
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  const osintGeo=[{lat:45,lon:41},{lat:48,lon:37},{lat:48.5,lon:37.5},{lat:45,lon:40.2},{lat:50.6,lon:36.6},{lat:48.5,lon:35}];
   const layers=[
     {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`,
      items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:a.region.replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total} acft · No CS: ${a.noCallsign} · Hi-alt: ${a.highAlt}`,detail:`Top: ${a.top.slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
@@ -1095,8 +1075,6 @@ function renderLeftRail(){
      items:D.who.slice(0,10).map((w,i)=>{const c=whoGeo[i];return c?{name:w.title?.substring(0,40)||'Alert',lat:c.lat,lon:c.lon,status:'WHO ALERT',meta:w.summary?.substring(0,60)||'',detail:`${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°`}:null}).filter(Boolean)},
     {name:t('layers.worldNews','World News'),count:newsCount,dot:'news',sub:t('layers.rssGeolocated','RSS geolocated'),
      items:(D.news||[]).slice(0,12).filter(n=>Number.isFinite(+n.lat)&&Number.isFinite(+n.lon)).map(n=>({name:n.title?.substring(0,40)||n.source||'News',lat:+n.lat,lon:+n.lon,status:n.source||'NEWS',meta:`${n.region||'Unknown'} · ${getAge(n.date)}`,detail:`${(+n.lat).toFixed(2)}°, ${(+n.lon).toFixed(2)}°`}))},
-    {name:t('layers.osintFeed','OSINT Feed'),count:D.tg.posts,dot:'incident',cat:'osint',sub:`${D.tg.urgent.length} ${t('badges.urgent','urgent').toLowerCase()}`,
-     items:D.tg.urgent.slice(0,6).map((p,i)=>{const c=osintGeo[i];return c?{name:(p.channel||'').toUpperCase(),lat:c.lat,lon:c.lon,status:'URGENT',meta:`${p.views?.toLocaleString()||'?'} views`,detail:cleanText(p.text?.substring(0,50)||'')}:null}).filter(Boolean)},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`,
      items:[
        ...(D.space?.iss?[{name:'ISS',lat:0,lon:0,status:'TRACKING',meta:`Alt: ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km`,detail:'International Space Station'}]:[]),
@@ -1177,7 +1155,7 @@ function bindMapLifecycleEvents(){
 function renderMapLegend(){
   document.getElementById('mapLegend').innerHTML=
     [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#ffb84c',l:t('map.osintEvent','OSINT Event')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
+     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
     .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
 }
 
@@ -1242,14 +1220,6 @@ function initGlobe(){
     .pointLabel(d => `<b>${escapeHtml(d.popHead||'')}</b><br><span style="opacity:0.7">${escapeHtml(d.popMeta||'')}</span>`)
     .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
     .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
-    // Arcs layer (flight corridors)
-    .arcColor(d => d.color)
-    .arcStroke(d => d.stroke || 0.4)
-    .arcDashLength(0.4)
-    .arcDashGap(0.2)
-    .arcDashAnimateTime(2000)
-    .arcAltitudeAutoScale(0.3)
-    .arcLabel(d => d.label || '')
     // Rings layer (pulsing conflict events)
     .ringColor(d => t => d._highlight ? `rgba(100,240,200,${1-t})` : `rgba(255,120,80,${1-t})`)
     .ringMaxRadius(d => d.maxR || 3)
@@ -1339,7 +1309,7 @@ function plotMarkers(){
 
   // === Air hotspots (green) ===
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible) D.air.forEach((a,i)=>{
+  D.air.forEach((a,i)=>{
     const c=airCoords[i]; if(!c) return;
     points.push({
       lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
@@ -1394,18 +1364,6 @@ function plotMarkers(){
         popHead:'SDR Receiver', popMeta:'KiwiSDR Network',
         popText:`${r.name}<br>Zone: ${z.region}<br>${z.count} in zone`
       });
-    });
-  });
-
-  // === OSINT events from Telegram (orange) ===
-  const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
-  osintGeo.forEach(o=>{
-    const post=D.tg.urgent[o.idx]; if(!post) return;
-    points.push({
-      lat:o.lat, lng:o.lon, size:0.3, alt:0.018,
-      color:'rgba(255,184,76,0.8)', type:'osint', priority:2,
-      popHead:(post.channel||'').toUpperCase(), popMeta:`${post.views?.toLocaleString()||'?'} views`,
-      popText:cleanText(post.text?.substring(0,200)||'')
     });
   });
 
@@ -1489,57 +1447,6 @@ function plotMarkers(){
   });
   globe.ringsData(conflictRings);
 
-  // === FLIGHT CORRIDORS (3D arcs) ===
-  const arcs = [];
-  if(flightsVisible){
-  const airCoordsFlight = [
-    {region:'Middle East',lat:30,lon:44}, {region:'Taiwan Strait',lat:24,lon:120},
-    {region:'Ukraine Region',lat:49,lon:32}, {region:'Baltic Region',lat:57,lon:24},
-    {region:'South China Sea',lat:14,lon:114}, {region:'Korean Peninsula',lat:37,lon:127},
-    {region:'Caribbean',lat:25,lon:-80}, {region:'Gulf of Guinea',lat:4,lon:2},
-    {region:'Cape Route',lat:-34,lon:18}, {region:'Horn of Africa',lat:10,lon:51}
-  ];
-  const globalHubs = [
-    {lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},
-    {lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}
-  ];
-  // Inter-hotspot corridors
-  for(let i=0; i<D.air.length; i++){
-    for(let j=i+1; j<D.air.length; j++){
-      const a=D.air[i], b=D.air[j];
-      const from=airCoordsFlight[i], to=airCoordsFlight[j];
-      if(!from||!to) continue;
-      const traffic=a.total+b.total;
-      if(traffic<3) continue;
-      const ncRatio=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
-      const color = ncRatio>0.15 ? ['rgba(255,95,99,0.6)','rgba(255,95,99,0.15)'] :
-                    ncRatio>0.05 ? ['rgba(255,184,76,0.5)','rgba(255,184,76,0.1)'] :
-                                   ['rgba(100,240,200,0.4)','rgba(100,240,200,0.08)'];
-      arcs.push({
-        startLat:from.lat, startLng:from.lon, endLat:to.lat, endLng:to.lon,
-        color, stroke:Math.max(0.3, Math.min(1.2, traffic/120)),
-        label:`${from.region} ↔ ${to.region}: ${traffic} aircraft`
-      });
-    }
-  }
-  // Hub corridors
-  D.air.forEach((a,i)=>{
-    if(!airCoordsFlight[i]||a.total<2) return;
-    globalHubs.forEach(hub=>{
-      const dLat=Math.abs(airCoordsFlight[i].lat-hub.lat);
-      const dLon=Math.abs(airCoordsFlight[i].lon-hub.lon);
-      if(dLat+dLon<20) return;
-      arcs.push({
-        startLat:airCoordsFlight[i].lat, startLng:airCoordsFlight[i].lon,
-        endLat:hub.lat, endLng:hub.lon,
-        color:['rgba(100,240,200,0.2)','rgba(100,240,200,0.05)'],
-        stroke:0.3
-      });
-    });
-  });
-  }
-  globe.arcsData(arcs);
-
   // Zoom-aware marker sizing: scale markers and labels with camera altitude
   const onGlobeZoom = () => {
     const alt = globe.pointOfView().altitude;
@@ -1548,9 +1455,6 @@ function plotMarkers(){
     // Hide labels when zoomed far out to reduce clutter
     const showLabels = alt < 1.8;
     globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
-    // Scale arc strokes with zoom
-    globe.arcStroke(d => (d.stroke || 0.4) * Math.max(0.5, Math.min(1.5, 1.2 / alt)));
-    globe.arcDashAnimateTime(lowPerfMode ? 0 : 2000);
     // Priority-based point visibility: hide low-priority markers when zoomed out
     if(alt > 2.0){
       globe.pointsData(points.filter(p => (p.priority||3) <= 1));
@@ -1599,33 +1503,6 @@ function showPopup(event,head,text,meta,lat,lng,alt){
 function closePopup(){
   const popup = document.getElementById('mapPopup');
   if(popup) popup.classList.remove('show');
-}
-
-// === MAP CONTROLS ===
-function toggleFlights() {
-  flightsVisible = !flightsVisible;
-  const btn = document.getElementById('flightToggle');
-  btn.classList.toggle('off', !flightsVisible);
-  if(isFlat){
-    if(flatG){
-      flatG.selectAll('*').remove();
-      drawFlatMap();
-    }
-    return;
-  }
-  if(!globe){
-    return;
-  }
-  if(flightsVisible) {
-    plotMarkers(); // re-render with arcs
-  } else {
-    globe.arcsData([]); // hide arcs
-    // Remove air-type points
-    const pts = globe.pointsData().filter(p => p.type !== 'air');
-    globe.pointsData(pts);
-    const lbls = globe.labelsData().filter(l => l.text && !l.text.match(/\d+$/));
-    globe.labelsData(lbls);
-  }
 }
 
 // === FLAT/GLOBE TOGGLE ===
@@ -1693,7 +1570,7 @@ function initFlatMap(){
 let flatDrawSeq=0;
 function drawFlatMap(){
   const seq=++flatDrawSeq;
-  flatG.selectAll('path.graticule,path.border,g.markers,g.corridors-layer').remove();
+  flatG.selectAll('path.graticule,path.border,g.markers').remove();
   flatG.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',flatPath);
   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
     .then(r=>r.json()).then(world=>{
@@ -1706,7 +1583,7 @@ function drawFlatMap(){
 }
 
 function plotFlatMarkers(){
-  flatG.selectAll('g.markers,g.corridors-layer').remove();
+  flatG.selectAll('g.markers').remove();
   const mg=flatG.append('g').attr('class','markers');
   const proj=flatProjection;
   const addPt=(lat,lon,r,fill,stroke,onClick,priority)=>{
@@ -1718,14 +1595,12 @@ function plotFlatMarkers(){
   };
   // Air
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  if(flightsVisible){
-    D.air.forEach((a,i)=>{
-      const c=airCoords[i];if(!c)return;
-      const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-        ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
-      if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
-    });
-  }
+  D.air.forEach((a,i)=>{
+    const c=airCoords[i];if(!c)return;
+    const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
+      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
+    if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
+  });
   // Thermal
   D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
@@ -1744,9 +1619,6 @@ function plotFlatMarkers(){
   D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
   // SDR
   D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
-  // OSINT
-  const osintGeo=[{lat:45,lon:41,idx:0},{lat:48,lon:37,idx:1},{lat:48.5,lon:37.5,idx:2},{lat:45,lon:40.2,idx:3},{lat:50.6,lon:36.6,idx:5},{lat:48.5,lon:35,idx:6}];
-  osintGeo.forEach(o=>{const p=D.tg.urgent[o.idx];if(!p)return;addPt(o.lat,o.lon,4,'rgba(255,184,76,0.7)','rgba(255,184,76,0.3)',ev=>showPopup(ev,(p.channel||'').toUpperCase(),cleanText(p.text?.substring(0,200)||''),`${p.views||'?'} views`),2)});
   // WHO
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
   D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
@@ -1772,28 +1644,6 @@ function plotFlatMarkers(){
     g.append('circle').attr('class','conflict-ring marker-circle').attr('r',r).attr('data-base-r',r).attr('fill','none').attr('stroke','rgba(255,120,80,0.7)').attr('stroke-width',1.5);
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
-  // Flight corridors
-  if(flightsVisible){
-    const airCoordsFlight=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-    const hubs=[{lat:40.6,lon:-73.8},{lat:51.5,lon:-0.5},{lat:25.3,lon:55.4},{lat:1.4,lon:103.8},{lat:-33.9,lon:151.2},{lat:-23.4,lon:-46.5}];
-    const cG=flatG.append('g').attr('class','corridors-layer');
-    for(let i=0;i<D.air.length;i++){for(let j=i+1;j<D.air.length;j++){
-      const a=D.air[i],b=D.air[j],from=airCoordsFlight[i],to=airCoordsFlight[j];
-      if(!from||!to)continue;const traffic=a.total+b.total;if(traffic<3)continue;
-      const ncR=(a.noCallsign+b.noCallsign)/Math.max(traffic,1);
-      const clr=ncR>0.15?'rgba(255,95,99,0.4)':ncR>0.05?'rgba(255,184,76,0.35)':'rgba(100,240,200,0.25)';
-      const interp=d3.geoInterpolate([from.lon,from.lat],[to.lon,to.lat]);
-      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-      const feat={type:'Feature',geometry:{type:'LineString',coordinates:coords}};
-      cG.append('path').datum(feat).attr('d',flatPath).attr('fill','none').attr('stroke',clr).attr('stroke-width',Math.max(0.8,Math.min(3,traffic/80)));
-    }}
-    D.air.forEach((a,i)=>{if(!airCoordsFlight[i]||a.total<2)return;hubs.forEach(hub=>{
-      if(Math.abs(airCoordsFlight[i].lat-hub.lat)+Math.abs(airCoordsFlight[i].lon-hub.lon)<20)return;
-      const interp=d3.geoInterpolate([airCoordsFlight[i].lon,airCoordsFlight[i].lat],[hub.lon,hub.lat]);
-      const coords=[];for(let k=0;k<=40;k++)coords.push(interp(k/40));
-      cG.append('path').datum({type:'Feature',geometry:{type:'LineString',coordinates:coords}}).attr('d',flatPath).attr('fill','none').attr('stroke','rgba(100,240,200,0.15)').attr('stroke-width',0.6);
-    })});
-  }
 }
 
 // Update setRegion for flat mode
@@ -1917,7 +1767,7 @@ function buildTickerCard(item, srcClass){
   const signals = asArray(item?.urgentFlags).map(cleanText).filter(Boolean);
   const score = Number(item?.score);
   const age = item?.timestamp || item?.date ? getAge(item.timestamp || item.date) : 'unknown';
-  const type = item?.type || (item?.channel ? 'telegram' : 'news');
+  const type = item?.type || 'news';
   const severity = tickerSeverity(item);
   const safeUrl = safeExternalUrl(item?.url);
   const raw = JSON.stringify(item || {}, null, 2);
@@ -2107,7 +1957,7 @@ function renderLower(){
   const cryptoCards = (mkt.crypto||[]).map(mktCard).join('');
   const hasMarkets = indexCards || cryptoCards;
 
-  // NEWS TICKER — merges RSS + GDELT + Telegram into flowing cards (moved from right rail)
+  // NEWS TICKER — merges RSS + GDELT into flowing cards (moved from right rail)
   const liveFeed = (D.newsFeed || []).slice(0, 20);
   const liveByKey = new Map(liveFeed.map(item => [tickerItemKey(item), item]));
   pinnedTickerItems = pinnedTickerItems
@@ -2120,7 +1970,7 @@ function renderLower(){
     ticker: `${tickerMode === 'pinned' ? 'Pinned feed' : 'Merged feed'} · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
     macro: `FRED · BLS · Yahoo Finance · ${currentSweepAge()}`,
     ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Rules fallback'} · ${currentSweepAge()}`,
-    osint: `Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
+    osint: `WHO · ${D.who.length} bulletins · ${currentSweepAge()}`,
     ask: `Dashboard snapshot · web search · ${currentSweepAge()}`
   };
   const srcClass = s => {
@@ -2134,7 +1984,6 @@ function renderLower(){
     if (sl.includes('bbc')) return 'bbc';
     if (sl.includes('jazeera') || sl.includes('alj')) return 'alj';
     if (sl.includes('gdelt')) return 'gdelt';
-    if (sl.includes('telegram')) return 'tg';
     if (sl.includes('npr')) return 'us';
     if (sl.includes('dw') || sl.includes('deutsche')) return 'dw';
     if (sl.includes('france') || sl.includes('euronews')) return 'eu';
@@ -2243,10 +2092,6 @@ const rightMapRefs = {
   who: [
     {lat:0.3,lng:32.6},{lat:-6.2,lng:106.8},{lat:-4.3,lng:15.3},{lat:35,lng:105},
     {lat:12.5,lng:105},{lat:35,lng:105},{lat:28,lng:84},{lat:24,lng:45},{lat:30,lng:70},{lat:-0.8,lng:11.6}
-  ],
-  osint: [
-    {lat:45,lng:41},{lat:48,lng:37},{lat:48.5,lng:37.5},
-    {lat:45,lng:40.2},null,{lat:50.6,lng:36.6},{lat:48.5,lng:35}
   ]
 };
 
@@ -2292,12 +2137,7 @@ function getCategoryMapTarget(category){
     const c=rightMapRefs.nuke[idx];
     return c && normalizeMapTarget({...c,head:site.site,text:`${site.anom?'Anomaly':'Normal'} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:'Radiation monitoring'});
   }
-  if(category==='osint' && D.tg.urgent.length){
-    const post=D.tg.urgent[0];
-    const c=rightMapRefs.osint[0];
-    return normalizeMapTarget({...c,head:(post.channel||'OSINT').toUpperCase(),text:post.text,meta:`${post.views?.toLocaleString()||'?'} views`});
-  }
-  if(category==='health' && D.who.length){
+  if((category==='osint' || category==='health') && D.who.length){
     const alert=D.who[0];
     const c=rightMapRefs.who[0];
     return normalizeMapTarget({...c,head:alert.title,text:alert.summary,meta:'WHO alert'});
@@ -2429,15 +2269,13 @@ function classifySignal(signal){
   else if(/radiation|nuclear|cpm|radnet/.test(lower)){category='nuke';explanation='Radiation readings should be judged against the site baseline and consecutive observations; one raw reading is not a safety verdict.';}
   else if(/who|health|outbreak|disease/.test(lower)){category='health';explanation='Health alerts can affect mobility, borders, and supply chains. Severity depends on location, spread, and corroborating official guidance.';}
   else if(/sdr|radio|receiver|signal/.test(lower)){category='sdr';explanation='Receiver coverage shows where public radio monitoring is available. It indicates observation capacity, not hostile activity.';}
-  else if(/telegram|osint|strike|attack|incident/.test(lower)){category='osint';explanation='Fast OSINT reporting is useful for early warning but may be incomplete. Check timestamps, source history, and independent confirmation.';}
+  else if(/osint|strike|attack|incident/.test(lower)){category='osint';explanation='Fast OSINT reporting is useful for early warning but may be incomplete. Check timestamps, source history, and independent confirmation.';}
   else if(/acled|conflict|fatalit|clash/.test(lower)){category='conflict';explanation='Conflict data adds event and fatality context. Recent items may lag breaking reports and should be read alongside current OSINT.';}
   else if(/oil|wti|brent|vix|spread|market|yield|debt|gscpi/.test(lower)){category='macro';explanation='This is a macro or market stress observation. It can confirm a broader regime but does not map cleanly to one physical location.';}
   return {text,category,explanation,target:findTextMapTarget(text,category)};
 }
 
 function buildSignalCoreMetrics(){
-  const urgent=D.tg.urgent.length;
-  const tgTotal=Math.max(urgent,Number(D.tg.posts)||0);
   const activeAir=D.air.filter(a=>(Number(a.total)||0)>0).length;
   const thermalSpikes=D.thermal.reduce((sum,item)=>sum+(Number(item.hc)||asArray(item.fires).filter(f=>(Number(f.frp)||0)>=50).length),0);
   const online=Number(D.sdr.online)||0;
@@ -2447,7 +2285,6 @@ function buildSignalCoreMetrics(){
     return rounded<=0?0:Math.max(4,Math.min(100,rounded));
   };
   return [
-    {key:'incident',l:'Incident Tempo',v:urgent,p:clamp((urgent/Math.max(tgTotal,1))*100),category:'osint',summary:`${urgent} urgent posts in the latest Telegram snapshot.`,context:tgTotal?`${tgTotal} total posts observed; ${Math.round((urgent/tgTotal)*100)}% are currently urgent.`:'No Telegram posts were available in this sweep.'},
     {key:'air',l:'Air Theaters',v:D.air.length,p:clamp((activeAir/Math.max(D.air.length,1))*100),category:'air',summary:`${activeAir} of ${D.air.length} tracked theaters currently report aircraft.`,context:'OpenSky theater counts are point-in-time snapshots and may contain coverage gaps or rate-limit fallbacks.'},
     {key:'thermal',l:'Thermal Spikes',v:thermalSpikes,p:clamp((thermalSpikes/Math.max(D.thermal.length*3,1))*100),category:'thermal',summary:`${thermalSpikes} high-confidence or high-FRP thermal points are surfaced.`,context:`Across ${D.thermal.length} FIRMS region buckets; open the map to inspect the strongest available point.`},
     {key:'sdr',l:'SDR Nodes',v:sdrTotal,p:clamp((online/Math.max(sdrTotal,1))*100),category:'sdr',summary:`${online} of ${sdrTotal} public SDR receivers are online.`,context:'Coverage indicates where public radio observation is available, not the presence of a threat.'},
@@ -2554,7 +2391,7 @@ function renderRight(){
   const deltaHtml=hasDelta?deltaRows.join(''):`<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset?'Baseline reset after stale gap':t('delta.noChanges','No changes since last sweep')}</div>`;
   const rightMeta={
     delta:`Latest sweep ${currentSweepAge()} · ${ds.totalChanges||0} total changes`,
-    osint:`Telegram + WHO · ${D.tg.urgent.length} urgent · ${currentSweepAge()}`,
+    osint:`WHO · ${D.who.length} bulletins · ${currentSweepAge()}`,
     core:`Cross-domain stress gauges · ${currentSweepAge()}`
   };
 
@@ -2605,11 +2442,11 @@ function runBoot(){
     {text:t('boot.connecting','CONNECTING {count} OSINT SOURCES...').replace('{count}',D.meta.sourcesQueried),delay:400},
     {text:'&#9500;&#9472; '+t('boot.sourceGroup1','OPENSKY · FIRMS · KIWISDR · MARITIME'),delay:700},
     {text:'&#9500;&#9472; '+t('boot.sourceGroup2','FRED · BLS · EIA · TREASURY · GSCPI'),delay:900},
-    {text:'&#9500;&#9472; '+t('boot.sourceGroup3','TELEGRAM · SAFECAST · EPA · WHO · OFAC'),delay:1100},
+    {text:'&#9500;&#9472; '+t('boot.sourceGroup3','SAFECAST · EPA · WHO · ACLED'),delay:1100},
     {text:'&#9492;&#9472; '+t('boot.sourceGroup4','GDELT · NOAA · PATENTS · BLUESKY · REDDIT'),delay:1300},
     {text:t('boot.sweepComplete','SWEEP COMPLETE — {ok}/{total} SOURCES').replace('{ok}',`<span class="count">${D.meta.sourcesOk}</span>`).replace('{total}',D.meta.sourcesQueried)+' <span class="ok">'+t('boot.ok','OK')+'</span>',delay:1700},
     {text:t('boot.acledLayer','ACLED CONFLICT LAYER')+': '+acledStatus,delay:1900},
-    {text:t('boot.flightCorridors','FLIGHT CORRIDORS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span> &#183; '+t('boot.dualProjection','DUAL PROJECTION')+': <span class="ok">'+t('boot.ready','READY')+'</span>',delay:2100},
+    {text:t('boot.dualProjection','DUAL PROJECTION')+': <span class="ok">'+t('boot.ready','READY')+'</span>',delay:2100},
     {text:t('boot.intelligenceSynthesis','INTELLIGENCE SYNTHESIS')+': <span class="ok">'+t('boot.active','ACTIVE')+'</span>',delay:2400},
   ];
   const container=document.getElementById('bootLines');
@@ -2648,58 +2485,36 @@ function runBoot(){
 function isMobileLayout(){ return window.innerWidth <= 1100; }
 
 function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
-  const seen=new Set();
-  const allPosts=[...D.tg.urgent,...D.tg.topPosts].sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).filter(post=>{
-    const key=tickerItemKey(post);
-    if(seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0,15).map(post=>{
-    const urgentIndex=D.tg.urgent.indexOf(post);
-    const c=urgentIndex>=0?rightMapRefs.osint[urgentIndex]:null;
-    return {
-      ...post,
-      _kind:'telegram',
-      _target:c&&normalizeMapTarget({...c,head:(post.channel||'OSINT').toUpperCase(),text:post.text,meta:`${post.views?.toLocaleString()||'?'} views`})
-    };
-  });
-  const whoItems=D.who.slice(0,4).map((item,index)=>({
+  const osintItems=D.who.slice(0,10).map((item,index)=>({
     ...item,
     channel:'WHO ALERT',
     text:item.summary?`${item.title} — ${item.summary}`:item.title,
     _kind:'who',
     _target:rightMapRefs.who[index]&&normalizeMapTarget({...rightMapRefs.who[index],head:item.title,text:item.summary,meta:'WHO alert'})
   }));
-  const osintItems=[...allPosts,...whoItems];
   const osintCards=osintItems.length ? osintItems.map((item,index)=>{
-    const isU=asArray(item.urgentFlags).length>0;
-    const views=item.views?item.views>=1000?`${(item.views/1000).toFixed(0)}K`:item.views:'';
     const age=item.date?getAge(item.date):'';
-    const flags=asArray(item.urgentFlags).map(flag=>`<span class="tk-src tg" style="margin-right:2px">${escapeHtml(flag)}</span>`).join('');
-    const sourceClass=item._kind==='who'?'style="color:#69f0ae;border-color:rgba(105,240,174,0.4)"':'class="tk-src tg"';
     const sourceUrl=safeExternalUrl(item.url);
     const fullText=cleanText(item.text||item.title||'');
-    return `<div class="tk-card osint-card right-interactive ${isU?'urgent':''}" tabindex="0" role="button" aria-expanded="false" data-right-item="osint" data-osint-key="${escapeAttr(`${item._kind}-${index}-${tickerItemKey(item)}`)}">
-      <span ${sourceClass}>${escapeHtml((item.channel||item.source||'OSINT').toUpperCase().substring(0,14))}</span>${views?`<span class="tk-src other">${escapeHtml(views)}</span>`:''}<span class="tk-time">${escapeHtml(age)}</span>${flags}
+    return `<div class="tk-card osint-card right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="osint" data-osint-key="${escapeAttr(`${item._kind}-${index}-${tickerItemKey(item)}`)}">
+      <span style="color:#69f0ae;border-color:rgba(105,240,174,0.4)">${escapeHtml((item.channel||item.source||'WHO').toUpperCase().substring(0,14))}</span><span class="tk-time">${escapeHtml(age)}</span>
       <div class="tk-head">${escapeHtml(fullText.substring(0,160))}</div><span class="right-chevron" aria-hidden="true">&#9656;</span>
       <div class="right-item-detail">
-        <div class="right-detail-kicker">${item._kind==='who'?'Official health bulletin':'OSINT report'}</div>
+        <div class="right-detail-kicker">Official health bulletin</div>
         <div class="right-detail-copy">${escapeHtml(fullText)}</div>
         <dl class="right-detail-grid">
-          <dt>Source</dt><dd>${escapeHtml(item.channel||item.source||'OSINT')}</dd>
+          <dt>Source</dt><dd>${escapeHtml(item.channel||item.source||'WHO')}</dd>
           <dt>Observed</dt><dd>${escapeHtml(item.date?new Date(item.date).toLocaleString():'Timestamp unavailable')}</dd>
-          ${item.views?`<dt>Audience</dt><dd>${escapeHtml(Number(item.views).toLocaleString())} views</dd>`:''}
-          ${asArray(item.urgentFlags).length?`<dt>Flags</dt><dd>${escapeHtml(item.urgentFlags.join(', '))}</dd>`:''}
         </dl>
         <div class="right-detail-actions">${rightMapActionMarkup(item._target,'Locate report')}${sourceUrl?`<a class="right-source-link" href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener">Open source &#8599;</a>`:''}</div>
       </div>
     </div>`;
-  }).join('') : `<div class="empty-state">No OSINT or WHO items are available yet.</div>`;
+  }).join('') : `<div class="empty-state">No WHO bulletins are available yet.</div>`;
   const osintDuration=Math.max(25,osintItems.length*3);
   return `<div class="g-panel ${panelClass}" style="display:flex;flex-direction:column">
       <div class="sec-head">
-        <div class="sec-title"><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-meta">${meta || `Telegram + WHO · ${currentSweepAge()}`}</div></div>
-        <div class="sec-actions">${showPin ? `<button class="pin-btn focusable ${pinnedLowerPanel==='osint'?'active':''}" onclick="setPinnedPanel('osint')">${pinnedLowerPanel==='osint'?'Pinned':'Pin'}</button>` : ''}<span class="badge">${D.tg.urgent.length} ${t('badges.urgent','URGENT')}</span></div>
+        <div class="sec-title"><h3>${t('panels.osintStream','OSINT Stream')}</h3><div class="sec-meta">${meta || `WHO · ${currentSweepAge()}`}</div></div>
+        <div class="sec-actions">${showPin ? `<button class="pin-btn focusable ${pinnedLowerPanel==='osint'?'active':''}" onclick="setPinnedPanel('osint')">${pinnedLowerPanel==='osint'?'Pinned':'Pin'}</button>` : ''}<span class="badge">${D.who.length} ${t('badges.active','ACTIVE')}</span></div>
       </div>
       <div class="right-panel-hint">Click a report to read it and locate mapped items</div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">

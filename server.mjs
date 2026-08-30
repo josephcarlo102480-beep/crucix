@@ -28,10 +28,7 @@ import {
   formatTelegramStatus,
 } from './lib/bot/messages.mjs';
 // --- Isolated OSINT modules (ported from OSIRIS) ---
-import sanctionsRouter from './services/sanctions/sanctionsRouter.mjs';
-import { warmCache as warmSanctionsCache } from './services/sanctions/ofacSanctions.mjs';
 import cctvRouter from './services/cctv/cctvRouter.mjs';
-import telegramRouter, { warmTelegram } from './services/telegram/telegramRouter.mjs';
 import airwatchRouter, { warmAirwatch, stopAirwatch } from './services/airwatch/airwatchRouter.mjs';
 import tleRouter from './services/space/tleRouter.mjs';
 import { warmTle } from './services/space/tleCatalog.mjs';
@@ -192,9 +189,7 @@ app.use(express.json({ limit: '256kb' }));
 app.use(express.static(join(ROOT, 'dashboard/public')));
 
 // --- Isolated OSINT module routers (ported from OSIRIS) ---
-app.use('/api/sanctions', sanctionsRouter);
 app.use('/api/cctv', cctvRouter);
-app.use('/api/telegram', telegramRouter);
 app.use('/api/airwatch', airwatchRouter);
 app.use('/api/tle', tleRouter);
 
@@ -508,7 +503,7 @@ async function start() {
 
   const lines = [
     '           CRUCIX INTELLIGENCE ENGINE         ',
-    '          Local Palantir · 29 Sources         ',
+    '          Local Palantir · 25 Sources         ',
     null, // separator
     `  Dashboard:  http://${displayHost}:${port}`,
     `  Health:     http://${displayHost}:${port}/api/health`,
@@ -542,16 +537,6 @@ async function start() {
 
   httpServer.on('listening', async () => {
     console.log(`[Crucix] Server running on http://${displayHost}:${port} (bound to ${config.host})`);
-
-    // Warm the OFAC SDN sanctions cache on boot (fire-and-forget).
-    warmSanctionsCache()
-      .then(ok => console.log(`[Crucix] Sanctions SDN cache ${ok ? 'warmed' : 'warm-up failed (will retry on first query)'}`))
-      .catch(() => {});
-
-    // Warm the Telegram geoparse gazetteer + kick the first scrape (fire-and-forget).
-    warmTelegram()
-      .then(ok => console.log(`[Crucix] Telegram gazetteer ${ok ? 'warmed' : 'warm-up failed (will retry on first query)'}`))
-      .catch(() => {});
 
     // Start the AirWatch military aircraft poller (fire-and-forget).
     warmAirwatch()

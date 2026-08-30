@@ -121,15 +121,6 @@ function decodeFeedText(raw = '') {
     .trim();
 }
 
-function telegramPostUrl(post = {}) {
-  const explicit = sanitizeExternalUrl(post.url);
-  if (explicit) return explicit;
-
-  let postId = String(post.postId || '').replace(/^@/, '');
-  if (/^\d+$/.test(postId) && post.channel) postId = `${post.channel}/${postId}`;
-  return /^[a-z0-9_]+\/\d+$/i.test(postId) ? `https://t.me/${postId}` : undefined;
-}
-
 function sumAirHotspots(hotspots = []) {
   return hotspots.reduce((sum, hotspot) => sum + (hotspot.totalAircraft || 0), 0);
 }
@@ -314,13 +305,6 @@ export function generateIdeas(V2) {
   const hy = V2.fred.find(f => f.id === 'BAMLH0A0HYM2');
   const spread = V2.fred.find(f => f.id === 'T10Y2Y');
 
-  if (V2.tg.urgent.length > 3 && V2.energy.wti > 68) {
-    ideas.push({
-      title: 'Conflict-Energy Nexus Active',
-      text: `${V2.tg.urgent.length} urgent conflict signals with WTI at $${V2.energy.wti}. Geopolitical risk premium may expand. Consider energy exposure.`,
-      type: 'long', confidence: 'Medium', horizon: 'swing'
-    });
-  }
   if (vix && vix.value > 20) {
     ideas.push({
       title: 'Elevated Volatility Regime',
@@ -362,15 +346,6 @@ export function generateIdeas(V2) {
       type: 'long', confidence: 'High', horizon: 'strategic'
     });
   }
-  const totalThermal = V2.thermal.reduce((s, t) => s + t.det, 0);
-  if (totalThermal > 30000 && V2.tg.urgent.length > 2) {
-    ideas.push({
-      title: 'Satellite Confirms Conflict Intensity',
-      text: `${totalThermal.toLocaleString()} thermal detections + ${V2.tg.urgent.length} urgent OSINT flags. Defense sector procurement may accelerate.`,
-      type: 'watch', confidence: 'Medium', horizon: 'swing'
-    });
-  }
-
   // Yield Curve + Labor Interaction
   const unemployment = V2.bls.find(b => b.id === 'LNS14000000' || b.id === 'UNRATE');
   const payrolls = V2.bls.find(b => b.id === 'CES0000000001' || b.id === 'PAYEMS');
@@ -475,15 +450,6 @@ export async function synthesize(data) {
   const sdrZones = Object.values(sdrConflict).map(z => ({
     region: z.region, count: z.count || 0,
     receivers: (z.receivers || []).slice(0, 5).map(r => ({ name: r.name || '', lat: r.lat || 0, lon: r.lon || 0 }))
-  }));
-  const tgData = data.sources.Telegram || {};
-  const tgUrgent = (tgData.urgentPosts || []).filter(p => isEnglish(p.text)).map(p => ({
-    channel: p.channel, postId: p.postId, text: p.text, views: p.views, date: p.date,
-    urgentFlags: p.urgentFlags || [], score: p.score, hasMedia: Boolean(p.hasMedia), url: p.url
-  }));
-  const tgTop = (tgData.topPosts || []).filter(p => isEnglish(p.text)).map(p => ({
-    channel: p.channel, postId: p.postId, text: p.text, views: p.views, date: p.date,
-    urgentFlags: p.urgentFlags || [], score: p.score, hasMedia: Boolean(p.hasMedia), url: p.url
   }));
   const who = (data.sources.WHO?.diseaseOutbreakNews || []).slice(0, 10).map(w => ({
     title: w.title?.substring(0, 120), date: w.date, summary: w.summary?.substring(0, 150)
@@ -663,12 +629,11 @@ export async function synthesize(data) {
       ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
-    tg: { posts: tgData.totalPosts || 0, urgent: tgUrgent, topPosts: tgTop },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
-    // newsFeed for ticker (merged RSS + GDELT + Telegram)
-    newsFeed: buildNewsFeed(news, gdeltData, tgUrgent, tgTop),
+    // newsFeed for ticker (merged RSS + GDELT)
+    newsFeed: buildNewsFeed(news, gdeltData),
   };
 
   return V2;
@@ -682,7 +647,7 @@ export function serializeForInlineScript(value) {
 }
 
 // === Unified News Feed for Ticker ===
-export function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
+export function buildNewsFeed(rssNews, gdeltData) {
   const feed = [];
 
   // RSS news
@@ -707,30 +672,6 @@ export function buildNewsFeed(rssNews, gdeltData, tgUrgent, tgTop) {
         region: geo?.region || 'Global', urgent: false, url: sanitizeExternalUrl(a.url)
       });
     }
-  }
-
-  // Telegram urgent
-  for (const p of tgUrgent.slice(0, 10)) {
-    const text = (p.text || '').replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
-    feed.push({
-      headline: text.substring(0, 100), source: p.channel?.toUpperCase() || 'TELEGRAM',
-      summary: text, publisher: p.channel || 'Telegram', type: 'telegram',
-      timestamp: p.date, region: 'OSINT', urgent: true, url: telegramPostUrl(p),
-      views: p.views, urgentFlags: p.urgentFlags || [], score: p.score,
-      postId: p.postId, hasMedia: Boolean(p.hasMedia)
-    });
-  }
-
-  // Telegram top (non-urgent)
-  for (const p of tgTop.slice(0, 5)) {
-    const text = (p.text || '').replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '').trim();
-    feed.push({
-      headline: text.substring(0, 100), source: p.channel?.toUpperCase() || 'TELEGRAM',
-      summary: text, publisher: p.channel || 'Telegram', type: 'telegram',
-      timestamp: p.date, region: 'OSINT', urgent: false, url: telegramPostUrl(p),
-      views: p.views, urgentFlags: p.urgentFlags || [], score: p.score,
-      postId: p.postId, hasMedia: Boolean(p.hasMedia)
-    });
   }
 
   // Filter to last 30 days, sort by timestamp descending, limit to 50

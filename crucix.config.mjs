@@ -40,7 +40,6 @@ export default {
     botToken: process.env.TELEGRAM_BOT_TOKEN || null,
     chatId: process.env.TELEGRAM_CHAT_ID || null,
     botPollingInterval: parseIntegerEnv('TELEGRAM_POLL_INTERVAL', 5000, { min: 250 }),
-    channels: process.env.TELEGRAM_CHANNELS || null, // Comma-separated extra channel IDs
   },
 
   discord: {
@@ -60,7 +59,6 @@ export default {
         // wti: 5,       // less sensitive to oil moves
       },
       count: {
-        // urgent_posts: 3,     // need ±3 urgent posts to flag
         // thermal_total: 1000, // need ±1000 thermal detections
       },
     },
