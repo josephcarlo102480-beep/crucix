@@ -1,7 +1,13 @@
 // USPTO PatentsView — Patent Intelligence
-// No auth required. Tracks patent filings in strategic technology areas.
-// API v1: https://search.patentsview.org/api/v1/patent/
+// Tracks patent filings in strategic technology areas.
 // Useful for detecting R&D trends, tech competition, state-backed innovation.
+//
+// UPSTREAM STATUS (verified 2026-09-02): the PatentsView API has been retired.
+// search.patentsview.org no longer resolves (NXDOMAIN) and api.patentsview.org
+// redirects to https://data.uspto.gov/support/transition-guide/patentsview.
+// The replacement is the USPTO Open Data Portal, which requires a (free)
+// API key. Until this source is migrated it reports `error` every sweep —
+// which is correct: it must not look like "no patent activity".
 
 import { safeFetch, daysAgo } from '../utils/fetch.mjs';
 
@@ -214,7 +220,7 @@ export async function briefing(opts = {}) {
     ),
     ...(failures.length ? {
       error: failures.length === results.length
-        ? `PatentsView unavailable for all ${results.length} domains: ${failures[0].error}`
+        ? `PatentsView unavailable for all ${results.length} domains: ${failures[0].error} (API retired — see data.uspto.gov/support/transition-guide/patentsview)`
         : `PatentsView unavailable for ${failures.length}/${results.length} domains: ${failures[0].error}`,
       failedDomains: failures.map(f => ({ domain: f.key, error: f.error })),
     } : {}),

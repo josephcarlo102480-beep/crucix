@@ -33,7 +33,8 @@ const KEY_SERIES = {
   BAMLH0A0HYM2: 'High Yield Spread (Credit Stress)',
   // Commodities via FRED
   DCOILWTICO: 'WTI Crude Oil',
-  GOLDAMGBD228NLBM: 'Gold Price (London Fix)',
+  // GOLDAMGBD228NLBM (LBMA gold fix) was discontinued on FRED; gold comes from
+  // the Yahoo Finance source (GC=F) instead.
   // Housing
   MORTGAGE30US: '30-Year Mortgage Rate',
   // Global

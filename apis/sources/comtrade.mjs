@@ -3,7 +3,7 @@
 // Tracks commodity trade flows between nations: crude oil, gas, gold, semiconductors, arms.
 // Reporter codes: 842 (US), 156 (China), 276 (Germany), 392 (Japan), 826 (UK), 643 (Russia), 356 (India)
 
-import { safeFetch } from '../utils/fetch.mjs';
+import { delay, safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://comtradeapi.un.org/public/v1';
 
@@ -38,7 +38,12 @@ const COUNTRIES = {
 // Comtrade is slow and the sweep kills a source at 30s, so single attempts are
 // kept short and the briefing fans out with a small concurrency limit.
 const REQUEST_TIMEOUT_MS = 6000;
-const CONCURRENCY = 4;
+// The keyless preview endpoint rate-limits hard ("Rate limit is exceeded. Try
+// again in 2 seconds"): four workers in parallel 429'd half the pairs. One
+// request in flight, spaced REQUEST_GAP_MS apart, with a single Retry-After
+// aware retry from safeFetch.
+const CONCURRENCY = 1;
+const REQUEST_GAP_MS = 1100;
 // Leave headroom inside the 30s source budget for the optional second-year pass.
 const BUDGET_MS = 22_000;
 
@@ -63,7 +68,7 @@ export async function getTradeData(opts = {}) {
 
   return safeFetch(`${BASE}/preview/C/A/HS?${params}`, {
     timeout: REQUEST_TIMEOUT_MS,
-    retries: 0,
+    retries: 1,
     signal,
   });
 }
@@ -86,6 +91,7 @@ async function mapWithConcurrency(items, limit, fn) {
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (cursor < items.length) {
       const i = cursor++;
+      if (i > 0 && REQUEST_GAP_MS > 0) await delay(REQUEST_GAP_MS);
       out[i] = await fn(items[i], i);
     }
   });

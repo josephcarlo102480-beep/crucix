@@ -15,15 +15,22 @@ export async function getActiveAlerts(opts = {}) {
     signal,
   } = opts;
 
-  const params = new URLSearchParams({ limit: String(limit), status: 'actual' });
+  // /alerts/active does not accept `limit` (it 400s with "not recognized" —
+  // every sweep before Sep 2026 silently reported zero alerts because of it).
+  // Filter server-side, trim client-side.
+  const params = new URLSearchParams({ status: 'actual' });
   if (severity) params.set('severity', severity);
   if (urgency) params.set('urgency', urgency);
   if (event) params.set('event', event);
 
-  return safeFetch(`${NWS_BASE}/alerts/active?${params}`, {
+  const data = await safeFetch(`${NWS_BASE}/alerts/active?${params}`, {
     headers: { 'Accept': 'application/geo+json' },
     signal,
   });
+  if (data && Array.isArray(data.features) && limit > 0 && data.features.length > limit) {
+    return { ...data, features: data.features.slice(0, limit), truncatedFrom: data.features.length };
+  }
+  return data;
 }
 
 // Get severe alerts only
