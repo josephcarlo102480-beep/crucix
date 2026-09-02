@@ -24,6 +24,7 @@ export async function searchAwards(opts = {}) {
     order = 'desc',
     awardTypeCodes = CONTRACT_CODES,
     days = 30,
+    signal,
   } = opts;
 
   const body = {
@@ -47,33 +48,33 @@ export async function searchAwards(opts = {}) {
     order,
   };
 
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(`${BASE}/search/spending_by_award/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      return { error: `HTTP ${res.status}: ${errBody.slice(0, 300)}`, results: [] };
-    }
-    return res.json();
-  } catch (e) {
-    return { error: e.message, results: [] };
+  // safeFetch owns the timeout/abort/retry plumbing and never rejects. The old
+  // hand-rolled version returned `res.json()` un-awaited inside the try, so a
+  // malformed body rejected past the catch and took the whole source down.
+  const data = await safeFetch(`${BASE}/search/spending_by_award/`, {
+    method: 'POST',
+    body,
+    timeout: 15000,
+    signal,
+  });
+
+  if (!data || data.error) return { error: data?.error || 'no response from USAspending', results: [] };
+  if (data.rawText !== undefined) {
+    return { error: `USAspending returned a non-JSON body: ${String(data.rawText).slice(0, 200)}`, results: [] };
   }
+  if (!Array.isArray(data.results)) {
+    return { error: 'USAspending response had no results array', results: [] };
+  }
+  return data;
 }
 
 // Get top agencies by spending
-export async function getAgencySpending() {
-  return safeFetch(`${BASE}/references/toptier_agencies/`);
+export async function getAgencySpending(opts = {}) {
+  return safeFetch(`${BASE}/references/toptier_agencies/`, { timeout: 15000, signal: opts.signal });
 }
 
 // Search for defense-specific spending
-export async function getDefenseSpending(days = 30) {
+export async function getDefenseSpending(days = 30, opts = {}) {
   return searchAwards({
     keywords: ['defense', 'military', 'missile', 'ammunition', 'aircraft', 'naval'],
     limit: 20,
@@ -81,20 +82,29 @@ export async function getDefenseSpending(days = 30) {
     order: 'desc',
     awardTypeCodes: CONTRACT_CODES,
     days,
+    signal: opts.signal,
   });
 }
 
 // Briefing
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
   const [defense, agencies] = await Promise.all([
-    getDefenseSpending(14),
-    getAgencySpending(),
+    getDefenseSpending(14, { signal }),
+    getAgencySpending({ signal }),
   ]);
+
+  const errors = [];
+  if (defense?.error) errors.push(`defense contracts: ${defense.error}`);
+  const agencyResults = Array.isArray(agencies?.results) ? agencies.results : [];
+  if (!Array.isArray(agencies?.results)) {
+    errors.push(`agency spending: ${agencies?.error || 'response had no results array'}`);
+  }
 
   return {
     source: 'USAspending',
     timestamp: new Date().toISOString(),
-    recentDefenseContracts: (defense?.results || []).slice(0, 10).map(r => ({
+    recentDefenseContracts: (Array.isArray(defense?.results) ? defense.results : []).slice(0, 10).map(r => ({
       awardId: r['Award ID'],
       recipient: r['Recipient Name'],
       amount: r['Award Amount'],
@@ -103,13 +113,14 @@ export async function briefing() {
       date: r['Start Date'],
       type: r['Award Type'],
     })),
-    topAgencies: (agencies?.results || []).slice(0, 10).map(a => ({
+    topAgencies: agencyResults.slice(0, 10).map(a => ({
       name: a.agency_name,
       budget: a.budget_authority_amount,
       obligations: a.obligated_amount,
       outlays: a.outlay_amount,
     })),
     ...(defense?.error ? { defenseError: defense.error } : {}),
+    ...(errors.length ? { error: `USAspending partial failure — ${errors.join('; ')}` } : {}),
   };
 }
 

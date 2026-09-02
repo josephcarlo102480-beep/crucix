@@ -41,6 +41,7 @@
    * back as the empty string, which is falsy at every call site.
    */
   function safeExternalUrl(url) {
+    if (typeof url !== 'string' || !url.trim()) return '';
     try {
       const base = typeof global.location !== 'undefined' ? global.location.href : undefined;
       const parsed = base ? new URL(url, base) : new URL(url);

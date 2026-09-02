@@ -27,7 +27,13 @@
  * use; we poll once per 45s across all theatres. No API keys are needed.
  */
 
-const POLL_MS = clampInt(process.env.CRUCIX_AIRWATCH_POLL_SECONDS, 45, 30, 600) * 1000;
+import { clampInt, fetchWithTimeout } from '../../lib/util/net.mjs';
+
+const POLL_MS = clampInt(process.env.CRUCIX_AIRWATCH_POLL_SECONDS, {
+  min: 30,
+  max: 600,
+  fallback: 45,
+}) * 1000;
 const BACKOFF_MAX_MS = 5 * 60 * 1000;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15_000;
@@ -362,12 +368,6 @@ export function countByCategory(aircraft) {
   return counts;
 }
 
-function clampInt(raw, fallback, min, max) {
-  const n = Number.parseInt(raw ?? '', 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(Math.max(n, min), max);
-}
-
 /** Exponential backoff delay after `failStreak` consecutive all-source failures. */
 export function backoffDelay(failStreak, baseMs = POLL_MS, maxMs = BACKOFF_MAX_MS) {
   if (failStreak <= 0) return baseMs;
@@ -387,25 +387,19 @@ const state = {
 };
 
 async function fetchSource(source) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(source.url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': USER_AGENT, 'Accept': 'application/json' },
-    });
-    if (res.status === 429) {
-      const err = new Error('HTTP 429 (rate limited)');
-      err.rateLimited = true;
-      throw err;
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!Array.isArray(data?.ac)) throw new Error('Malformed response (no ac array)');
-    return data;
-  } finally {
-    clearTimeout(timer);
+  const res = await fetchWithTimeout(source.url, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    headers: { 'User-Agent': USER_AGENT, 'Accept': 'application/json' },
+  });
+  if (res.status === 429) {
+    const err = new Error('HTTP 429 (rate limited)');
+    err.rateLimited = true;
+    throw err;
   }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data?.ac)) throw new Error('Malformed response (no ac array)');
+  return data;
 }
 
 async function pollOnce() {

@@ -7,12 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   classify, hexCountry, inRegion, normalizeAircraft, countByCategory,
-  backoffDelay, missionFor, isUsMilHex, buildSample,
+  backoffDelay, missionFor, isUsMilHex, buildSample, getSnapshot, getSourceStatus,
   CATEGORIES, REGION, THEATRES, THEATRE_IDS, DEFAULT_THEATRE,
 } from '../services/airwatch/airwatchPoller.mjs';
 import {
   initBaseline, recordSample, getBaseline, closeBaseline, hourKey,
 } from '../services/airwatch/airwatchBaseline.mjs';
+import airwatchRouter from '../services/airwatch/airwatchRouter.mjs';
 
 describe('airwatch classification', () => {
   test('classifies tankers by type designator', () => {
@@ -293,5 +294,40 @@ describe('airwatch baseline store', () => {
   test('hourKey buckets by UTC hour', () => {
     assert.equal(hourKey(new Date('2026-07-18T14:59:59Z')), '2026-07-18T14');
     assert.equal(hourKey(new Date('2026-07-18T15:00:00Z')), '2026-07-18T15');
+  });
+
+  test('rethrows and logs sqlite initialization errors instead of silently using JSON', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'airwatch-sqlite-error-'));
+    const realError = console.error;
+    const logged = [];
+    console.error = (...args) => logged.push(args);
+    try {
+      await assert.rejects(initBaseline(dir));
+      assert.equal(logged.length, 1);
+      assert.match(String(logged[0][0]), /SQLite baseline initialization failed/);
+      assert.ok(logged[0][1] instanceof Error);
+    } finally {
+      console.error = realError;
+      closeBaseline();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('airwatch router freshness', () => {
+  test('marks data stale at twice the configured poll interval plus 30 seconds', async () => {
+    const snapshot = getSnapshot();
+    assert.ok(snapshot, 'the stubbed failover poll should have populated a snapshot');
+    const threshold = 2 * getSourceStatus().pollSeconds + 30;
+    snapshot.fetchedAt = new Date(Date.now() - (threshold + 2) * 1000).toISOString();
+
+    const layer = airwatchRouter.stack.find((item) => item.route?.path === '/aircraft');
+    const response = { headers: {} };
+    response.set = (key, value) => { response.headers[key] = value; return response; };
+    response.status = (code) => { response.statusCode = code; return response; };
+    response.json = (body) => { response.body = body; return response; };
+    layer.route.stack[0].handle({ query: {} }, response);
+    assert.equal(response.body.ageSeconds, threshold + 2);
+    assert.equal(response.body.stale, true);
   });
 });

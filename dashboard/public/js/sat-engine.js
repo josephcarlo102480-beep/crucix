@@ -20,6 +20,8 @@
  *    computed only for the things that actually need it — the 2D map, the
  *    detail panel, passes and footprints.
  *
+ * Requires /js/crucix-common.js to be loaded first.
+ *
  * Global: window.SatEngine
  */
 (function (global) {
@@ -66,20 +68,11 @@
   }
 
   // --- solar geometry --------------------------------------------------
-  function normalizeDeg(v) { return ((v % 360) + 360) % 360; }
-
-  /** Subsolar point (Earth-fixed lat/lng) — low-precision solar ephemeris. */
+  /** Subsolar point (Earth-fixed lat/lng) — see /js/crucix-common.js. */
   function subsolar(ms) {
-    const jd = ms / 86400000 + 2440587.5;
-    const d = jd - 2451545.0;
-    const g = normalizeDeg(357.529 + 0.98560028 * d) * DEG;
-    const q = normalizeDeg(280.459 + 0.98564736 * d);
-    const lambda = normalizeDeg(q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * DEG;
-    const eps = (23.439 - 0.00000036 * d) * DEG;
-    const ra = normalizeDeg(Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) / DEG);
-    const dec = Math.asin(Math.sin(eps) * Math.sin(lambda)) / DEG;
-    const gmstDeg = normalizeDeg(280.46061837 + 360.98564736629 * d);
-    return { lat: dec, lng: ((ra - gmstDeg + 540) % 360) - 180 };
+    const api = global.CrucixCommon;
+    if (!api) throw new Error('sat-engine.js requires /js/crucix-common.js to be loaded first');
+    return api.subsolar(ms);
   }
 
   /** Unit vector toward the Sun, Earth-fixed (ECF). */

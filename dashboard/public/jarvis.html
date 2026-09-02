@@ -31,6 +31,7 @@ window.Globe = Globe;
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
+  color-scheme: dark;
   --bg:#020408;--panel:rgba(6,14,22,0.82);--glass:rgba(10,20,32,0.55);
   --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
   --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
@@ -74,6 +75,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .region-btn.active{color:#03140d;background:var(--accent);border-color:var(--accent)}
 .top-right{display:flex;align-items:center;gap:10px}
 .meta-pill{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.06em;padding:5px 10px;border:1px solid var(--border)}
+.sweep-pill{display:inline-flex;align-items:center;gap:6px;color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.07);text-transform:uppercase}
+.sweep-pill .blink{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse-blink 1.5s ease-in-out infinite}
+body.low-perf .sweep-pill .blink{animation:none}
 .meta-pill .v{color:var(--text);font-weight:500}
 .alert-badge{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(255,95,99,0.4);color:#fff;background:linear-gradient(135deg,rgba(255,95,99,0.2),rgba(255,95,99,0.08))}
 .guide-btn{padding:5px 12px;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(68,204,255,0.28);color:var(--accent2);background:rgba(68,204,255,0.07);cursor:pointer;transition:all 0.2s}
@@ -328,6 +332,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .ticker-wrap::before,.ticker-wrap::after{content:'';position:absolute;left:0;right:0;height:30px;z-index:2;pointer-events:none}
 .ticker-wrap::before{top:0;background:linear-gradient(to bottom,rgba(14,17,22,0.95),transparent)}
 .ticker-wrap::after{bottom:0;background:linear-gradient(to top,rgba(14,17,22,0.95),transparent)}
+.marquee-clone{display:flex;flex-direction:column}
 .ticker-track{display:flex;flex-direction:column;animation:tickerScroll var(--ticker-duration,30s) linear infinite;will-change:transform;contain:layout style}
 .ticker-wrap:hover .ticker-track,.ticker-wrap.has-expanded .ticker-track{animation-play-state:paused}
 .ticker-wrap.has-expanded .ticker-track{animation:none;transform:none}
@@ -344,7 +349,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .tk-src.nyt{color:#b0bec5;border-color:rgba(176,190,197,0.3)}
 .tk-src.alj{color:#ffd54f;border-color:rgba(255,213,79,0.3)}
 .tk-src.gdelt{color:#4dd0e1;border-color:rgba(77,208,225,0.3)}
-.tk-src.tg{color:#ffb74d;border-color:rgba(255,183,77,0.3)}
+.tk-src.pin{color:#ffb74d;border-color:rgba(255,183,77,0.3)}
 .tk-src.dw{color:#ef9a9a;border-color:rgba(239,154,154,0.3)}
 .tk-src.eu{color:#ce93d8;border-color:rgba(206,147,216,0.3)}
 .tk-src.af{color:#a5d6a7;border-color:rgba(165,214,167,0.3)}
@@ -1040,10 +1045,20 @@ function renderTopbar(){
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <button class="meta-pill perf-pill focusable" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
       <button class="meta-pill perf-pill fullscreen-btn focusable" id="fullscreenToggle" onclick="toggleFullscreen()" aria-pressed="false">FULL <span class="v">SCREEN</span></button>
+      <span class="meta-pill sweep-pill" id="sweepStatus" role="status" aria-live="polite"${sweepInFlight?'':' hidden'}><span class="blink"></span>${t('dashboard.sweeping','SWEEPING')}&hellip;</span>
       <button class="guide-btn focusable" onclick="openGlossary()">${t('dashboard.guideBtn','What Signals Mean')}</button>
     </div>`;
   renderRegionControls();
   updateFullscreenControl();
+  setSweepIndicator(sweepInFlight);
+}
+
+// Shown by the SSE `sweep_start` event, cleared by `update`/`sweep_error`.
+// The flag is module-level so a re-render mid-sweep keeps the pill visible.
+function setSweepIndicator(active){
+  sweepInFlight = !!active;
+  const pill = document.getElementById('sweepStatus');
+  if(pill) pill.hidden = !sweepInFlight;
 }
 
 function renderHero(){
@@ -1191,8 +1206,8 @@ function renderLeftRail(){
         <div class="econ-row"><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
         <div class="econ-row"><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
         ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${fmtNum(issAltitudeKm(D.space.iss),0)} km</span></div>` : ''}
-        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
-        ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
+        ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${escapeHtml(c)}</span><span class="eval" style="font-size:10px">${escapeHtml(n)} mil sats</span></div>`).join('')}
+        ${asArray(D.space.signals).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${asArray(D.space.signals).slice(0,2).map(escapeHtml).join('<br>')}</div>` : ''}
       ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
       <a href="/satellites.html" style="display:block;margin-top:8px;padding:6px 10px;border:1px solid rgba(100,240,200,0.2);background:rgba(100,240,200,0.04);color:var(--accent);font-family:var(--mono);font-size:10px;text-decoration:none;text-align:center;letter-spacing:0.1em;transition:all 0.2s" onmouseover="this.style.borderColor='rgba(100,240,200,0.5)';this.style.background='rgba(100,240,200,0.1)'" onmouseout="this.style.borderColor='rgba(100,240,200,0.2)';this.style.background='rgba(100,240,200,0.04)'">&raquo; SATELLITE TRACKER</a>
     </div>`;
@@ -1204,7 +1219,13 @@ let mapLifecycleBound = false;
 function bindMapLifecycleEvents(){
   if(mapLifecycleBound) return;
   mapLifecycleBound = true;
-  window.addEventListener('resize', () => syncResponsiveLayout());
+  // Debounced: a drag-resize fires `resize` dozens of times a second and each
+  // one would otherwise re-render five panels and re-project the flat map.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => syncResponsiveLayout(), 150);
+  });
   window.addEventListener('orientationchange', () => setTimeout(() => syncResponsiveLayout(true), 150));
   document.addEventListener('fullscreenchange', updateFullscreenControl);
   document.addEventListener('webkitfullscreenchange', updateFullscreenControl);
@@ -1365,7 +1386,6 @@ function initGlobe(){
 }
 
 function plotMarkers(){
-  if(!globe) return;
   const points = [];
   const labels = [];
 
@@ -1491,8 +1511,15 @@ function plotMarkers(){
     });
   });
 
+  // Publish the *complete* marker set before anything narrows it. Both the zoom
+  // handler and the Sensor Grid filter derive their views from these arrays, so
+  // a re-plot (reinit/SSE/resize) refreshes both without either one snapshotting
+  // the other's already-filtered output.
+  allMapPoints = points;
+  allMapLabels = labels;
+  if(!globe) return;
+
   // Set points on globe
-  globe.pointsData(points);
   globe.labelsData(labels);
 
   // === ACLED CONFLICT EVENTS (pulsing rings) ===
@@ -1509,24 +1536,50 @@ function plotMarkers(){
   });
   globe.ringsData(conflictRings);
 
-  // Zoom-aware marker sizing: scale markers and labels with camera altitude
-  const onGlobeZoom = () => {
-    const alt = globe.pointOfView().altitude;
-    const sf = Math.max(0.6, Math.min(2.5, 1.5 / alt));
-    globe.pointRadius(d => (d.size || 0.3) * sf);
-    // Hide labels when zoomed far out to reduce clutter
-    const showLabels = alt < 1.8;
-    globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
-    // Priority-based point visibility: hide low-priority markers when zoomed out
-    if(alt > 2.0){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 1));
-    } else if(alt > 1.2){
-      globe.pointsData(points.filter(p => (p.priority||3) <= 2));
-    } else {
-      globe.pointsData(points);
-    }
-  };
-  if(typeof globe.onZoom==='function') globe.onZoom(onGlobeZoom);
+  // Apply the current zoom + Sensor Grid filter to the freshly plotted set.
+  applyGlobeMarkerVisibility();
+  if(typeof globe.onZoom==='function') globe.onZoom(applyGlobeMarkerVisibility);
+}
+
+// Category -> marker `type` values. Shared by the Sensor Grid filter and the
+// zoom handler so the two can never disagree about what a category contains.
+const sensorCatToTypes = {
+  air: ['air'],
+  thermal: ['thermal'],
+  sdr: ['sdr'],
+  maritime: ['maritime'],
+  nuke: ['nuke'],
+  conflict: ['conflict'],
+  health: ['health'],
+  news: ['news'],
+  space: ['space'],
+};
+
+function sensorFilterTypes(cat){
+  return cat ? (sensorCatToTypes[cat] || [cat]) : null;
+}
+
+// Markers surviving the active Sensor Grid filter (all of them when none is set).
+function filteredMapPoints(){
+  const types = sensorFilterTypes(sensorActiveFilter);
+  return types ? allMapPoints.filter(p => types.includes(p.type)) : allMapPoints;
+}
+
+// Zoom-aware marker sizing + priority culling, layered on top of the Sensor Grid
+// filter. Safe to call at any time: it always recomputes from allMapPoints.
+function applyGlobeMarkerVisibility(){
+  if(!globe) return;
+  const alt = globe.pointOfView().altitude;
+  const sf = Math.max(0.6, Math.min(2.5, 1.5 / alt));
+  globe.pointRadius(d => (d.size || 0.3) * sf);
+  // Hide labels when zoomed far out to reduce clutter
+  const showLabels = alt < 1.8;
+  globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
+  globe.labelsData(allMapLabels);
+  // Priority-based point visibility: hide low-priority markers when zoomed out
+  const maxPriority = alt > 2.0 ? 1 : alt > 1.2 ? 2 : 3;
+  const base = filteredMapPoints();
+  globe.pointsData(maxPriority >= 3 ? base : base.filter(p => (p.priority||3) <= maxPriority));
 }
 
 function showPopup(event,head,text,meta,lat,lng,alt){
@@ -1630,17 +1683,39 @@ function initFlatMap(){
 }
 
 let flatDrawSeq=0;
+
+// The country topology never changes, but drawFlatMap() runs on every resize,
+// region change, and flat/globe toggle. Fetch it once and hand every later draw
+// the same promise; on failure the promise is dropped so a retry can happen.
+const WORLD_ATLAS_URL='https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+let worldAtlasPromise=null;
+function loadWorldAtlas(){
+  if(!worldAtlasPromise){
+    worldAtlasPromise=fetch(WORLD_ATLAS_URL)
+      .then(r=>{ if(!r.ok) throw new Error(`world-atlas returned ${r.status}`); return r.json(); })
+      .catch(err=>{ worldAtlasPromise=null; throw err; });
+  }
+  return worldAtlasPromise;
+}
+
 function drawFlatMap(){
   const seq=++flatDrawSeq;
   flatG.selectAll('path.graticule,path.border,g.markers').remove();
   flatG.append('path').datum(d3.geoGraticule()()).attr('class','graticule').attr('d',flatPath);
-  fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-    .then(r=>r.json()).then(world=>{
+  loadWorldAtlas()
+    .then(world=>{
       if(seq!==flatDrawSeq)return;
       const countries=topojson.feature(world,world.objects.countries);
+      // Re-project land only once the topology is in hand, so a failed load
+      // leaves the previously drawn coastlines on screen.
+      flatG.selectAll('path.land').remove();
       flatG.selectAll('path.land').data(countries.features).enter().append('path').attr('class','land').attr('d',flatPath);
       flatG.append('path').datum(topojson.mesh(world,world.objects.countries,(a,b)=>a!==b)).attr('class','border').attr('d',flatPath);
       plotFlatMarkers();
+    })
+    .catch(err=>{
+      console.warn('[Crucix] World atlas unavailable; keeping the previous basemap:', err?.message || err);
+      if(seq===flatDrawSeq) plotFlatMarkers();
     });
 }
 
@@ -1648,9 +1723,21 @@ function plotFlatMarkers(){
   flatG.selectAll('g.markers').remove();
   const mg=flatG.append('g').attr('class','markers');
   const proj=flatProjection;
-  const addPt=(lat,lon,r,fill,stroke,onClick,priority)=>{
-    const[x,y]=proj([lon,lat]);if(!x||!y)return null;
-    const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',priority||3);
+  // Every flat marker carries class="flat-marker" + data-type so the Sensor Grid
+  // filter can dim non-matching layers (its selector had nothing to match before).
+  const markerGroup=(lat,lon,type,priority)=>{
+    const[x,y]=proj([lon,lat]);
+    if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+    return mg.append('g')
+      .attr('class','flat-marker')
+      .attr('data-type',type||'')
+      .attr('data-priority',priority||3)
+      .attr('transform',`translate(${x},${y})`)
+      .style('cursor','pointer');
+  };
+  const addPt=(lat,lon,r,fill,stroke,onClick,priority,type)=>{
+    const g=markerGroup(lat,lon,type,priority);
+    if(!g)return null;
     if(onClick) g.on('click',ev=>{ev.stopPropagation();onClick(ev)});
     g.append('circle').attr('class','marker-circle').attr('r',r).attr('data-base-r',r).attr('fill',fill).attr('stroke',stroke).attr('stroke-width',0.8);
     return g;
@@ -1660,59 +1747,53 @@ function plotFlatMarkers(){
   D.air.forEach((a,i)=>{
     const c=airCoords[i];if(!c)return;
     const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1);
+      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1,'air');
     if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
   });
   // Thermal
   D.thermal.forEach(t=>t.fires.forEach(f=>{
     addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
-      ev=>showPopup(ev,'Thermal',`${t.region}<br>FRP: ${f.frp.toFixed(1)} MW`,'FIRMS'),3);
+      ev=>showPopup(ev,'Thermal',`${t.region}<br>FRP: ${fmtNum(f.frp,1)} MW`,'FIRMS'),3,'thermal');
   }));
   // Chokepoints
   D.chokepoints.forEach(cp=>{
-    const[x,y]=proj([cp.lon,cp.lat]);if(!x||!y)return;
-    const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
-      .on('click',ev=>{ev.stopPropagation();showPopup(ev,cp.label,cp.note,'Maritime')});
+    const g=markerGroup(cp.lat,cp.lon,'maritime',1);
+    if(!g)return;
+    g.on('click',ev=>{ev.stopPropagation();showPopup(ev,cp.label,cp.note,'Maritime')});
     g.append('rect').attr('x',-4).attr('y',-4).attr('width',8).attr('height',8).attr('fill','rgba(179,136,255,0.7)').attr('stroke','rgba(179,136,255,0.3)').attr('stroke-width',0.5).attr('transform','rotate(45)');
     g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','var(--dim)').attr('font-size','8px').attr('font-family','var(--mono)').text(cp.label);
   });
   // Nuclear
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${n.cpm?.toFixed(1)||'--'}`,'Radiation'),2)});
+  D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${fmtNum(n.cpm,1)}`,'Radiation'),2,'nuke')});
   // SDR
-  D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3)}));
+  D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3,'sdr')}));
   // WHO
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2)});
+  D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2,'health')});
   // News
-  (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3)});
+  (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3,'news')});
   // NOAA weather
-  (D.noaa?.alerts||[]).forEach(a=>{addPt(a.lat,a.lon,4,'rgba(255,152,0,0.7)','rgba(255,152,0,0.3)',ev=>showPopup(ev,a.event,a.headline||'','NOAA/NWS'),2)});
+  (D.noaa?.alerts||[]).forEach(a=>{addPt(a.lat,a.lon,4,'rgba(255,152,0,0.7)','rgba(255,152,0,0.3)',ev=>showPopup(ev,a.event,a.headline||'','NOAA/NWS'),2,'weather')});
   // EPA RadNet
-  (D.epa?.stations||[]).forEach(s=>{addPt(s.lat,s.lon,3,'rgba(205,220,57,0.6)','rgba(205,220,57,0.2)',ev=>showPopup(ev,'RadNet: '+s.location,`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}`,'EPA'),3)});
+  (D.epa?.stations||[]).forEach(s=>{addPt(s.lat,s.lon,3,'rgba(205,220,57,0.6)','rgba(205,220,57,0.2)',ev=>showPopup(ev,'RadNet: '+s.location,`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}`,'EPA'),3,'radiation')});
   // Space stations
   (D.space?.stationPositions||[]).forEach(s=>{
-    const g=addPt(s.lat,s.lon,5,'rgba(255,255,255,0.9)','rgba(255,255,255,0.4)',ev=>showPopup(ev,s.name,'Orbital position estimate','Space Station'),1);
+    const g=addPt(s.lat,s.lon,5,'rgba(255,255,255,0.9)','rgba(255,255,255,0.4)',ev=>showPopup(ev,s.name,'Orbital position estimate','Space Station'),1,'space');
     if(g) g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','rgba(255,255,255,0.7)').attr('font-size','8px').attr('font-family','var(--mono)').text(s.name.split('(')[0].trim());
   });
   // GDELT geo events
-  (D.gdelt?.geoPoints||[]).forEach(g=>{addPt(g.lat,g.lon,2.5,'rgba(100,149,237,0.5)','rgba(100,149,237,0.2)',ev=>showPopup(ev,'GDELT Event',g.name||'','GDELT · '+g.count+' reports'),3)});
+  (D.gdelt?.geoPoints||[]).forEach(g=>{addPt(g.lat,g.lon,2.5,'rgba(100,149,237,0.5)','rgba(100,149,237,0.2)',ev=>showPopup(ev,'GDELT Event',g.name||'','GDELT · '+g.count+' reports'),3,'gdelt')});
   // ACLED
   (D.acled?.deadliestEvents||[]).filter(e=>e.lat&&e.lon).forEach(e=>{
-    const[x,y]=proj([e.lon,e.lat]);if(!x||!y)return;
+    const g=markerGroup(e.lat,e.lon,'conflict',1);
+    if(!g)return;
     const r=Math.max(4,Math.min(14,2+Math.log2(Math.max(e.fatalities,1))*1.5));
-    const g=mg.append('g').attr('transform',`translate(${x},${y})`).style('cursor','pointer').attr('data-priority',1)
-      .on('click',ev=>{ev.stopPropagation();showPopup(ev,e.type||'CONFLICT',`${e.fatalities} fatalities<br>${e.location}, ${e.country}`,'ACLED')});
+    g.on('click',ev=>{ev.stopPropagation();showPopup(ev,e.type||'CONFLICT',`${e.fatalities} fatalities<br>${e.location}, ${e.country}`,'ACLED')});
     g.append('circle').attr('class','conflict-ring marker-circle').attr('r',r).attr('data-base-r',r).attr('fill','none').attr('stroke','rgba(255,120,80,0.7)').attr('stroke-width',1.5);
     g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
   });
 }
-
-// Update setRegion for flat mode
-const _origSetRegion = setRegion;
-
-// Override mapZoom for flat mode
-const _origMapZoom = mapZoom;
 
 function setRegion(r){
   currentRegion = r;
@@ -1837,8 +1918,8 @@ function buildTickerCard(item, srcClass){
       <div class="tk-line">
         <span class="tk-src ${sc}">${escapeHtml(String(source).substring(0,12) || 'NEWS')}</span>
         <span class="tk-src other">${escapeHtml(String(type).toUpperCase().substring(0,12))}</span>
-        ${isPinned ? '<span class="tk-src tg">PINNED</span>' : ''}
-        ${severity ? `<span class="tk-src ${item?.urgent?'tg':'other'}">${escapeHtml(String(severity).toUpperCase().substring(0,14))}</span>` : ''}
+        ${isPinned ? '<span class="tk-src pin">PINNED</span>' : ''}
+        ${severity ? `<span class="tk-src ${item?.urgent?'pin':'other'}">${escapeHtml(String(severity).toUpperCase().substring(0,14))}</span>` : ''}
         <span class="tk-time">${escapeHtml(age)}</span>
         <span class="tk-link" aria-hidden="true">${isOpen?'&#9662;':'&#9656;'}</span>
       </div>
@@ -1904,6 +1985,10 @@ async function submitAskAI(event){
     }
     const data = await res.json().catch(() => ({}));
     if(!res.ok) throw new Error(data.error || `Ask AI returned ${res.status}`);
+    if(data.model){
+      askModelLabel = data.model;
+      askLlmEnabled = true;
+    }
     askMessages.push({
       role:'assistant',
       text: data.answer || 'No answer returned.',
@@ -2078,9 +2163,11 @@ function renderLower(){
       <div style="font-size:9px;margin-top:6px;opacity:0.6">Set LLM_PROVIDER + credentials in .env to enable AI-powered trade ideas</div>
     </div>`;
 
-  const tickerTabs = `<span class="ticker-tabs" role="tablist" aria-label="Ticker feed">
-        <button type="button" class="ticker-tab focusable ${tickerMode==='live'?'active':''}" role="tab" aria-selected="${tickerMode==='live'?'true':'false'}" onclick="setTickerMode('live')">Live</button>
-        <button type="button" class="ticker-tab focusable ${tickerMode==='pinned'?'active':''}" role="tab" aria-selected="${tickerMode==='pinned'?'true':'false'}" onclick="setTickerMode('pinned')">Pinned ${pinnedTickerItems.length}</button>
+  // Toggle buttons, not tabs: there is one ticker list, swapped in place, with no
+  // tabpanel for a `role="tab"` to own. aria-pressed is the correct state here.
+  const tickerTabs = `<span class="ticker-tabs" role="group" aria-label="Ticker feed">
+        <button type="button" class="ticker-tab focusable ${tickerMode==='live'?'active':''}" aria-pressed="${tickerMode==='live'?'true':'false'}" onclick="setTickerMode('live')">Live</button>
+        <button type="button" class="ticker-tab focusable ${tickerMode==='pinned'?'active':''}" aria-pressed="${tickerMode==='pinned'?'true':'false'}" onclick="setTickerMode('pinned')">Pinned ${pinnedTickerItems.length}</button>
       </span>`;
   const panelHead = (title, meta, badge, pinKey, beforeActions='') => `
       <div class="sec-head">
@@ -2091,7 +2178,7 @@ function renderLower(){
   const tickerPanel = `<div class="g-panel lp-ticker ${expandedTickerKey?'ticker-expanded':''} ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
       ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker', tickerTabs)}
       <div class="ticker-wrap ${expandedTickerKey?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerKey) ? '' : tickerCards}</div>
+        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerKey) ? '' : marqueeClone(tickerCards)}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel(`lp-osint ${pinnedLowerPanel==='osint'?'lp-pinned':''}`, 240, panelMeta.osint, true) : '';
@@ -2125,7 +2212,7 @@ function renderLower(){
     </div>`;
   const askActions = askMessages.length ? `<button type="button" class="ask-clear" onclick="clearAskAI()">Clear</button>` : '';
   const askPanel = `<div class="g-panel lp-ask ${pinnedLowerPanel==='ask'?'lp-pinned':''}">
-      ${panelHead('Ask AI', panelMeta.ask, '<span class="ideas-src llm">GPT-5.6</span>', 'ask', askActions)}
+      ${panelHead('Ask AI', panelMeta.ask, askProviderBadge(), 'ask', askActions)}
       <div class="ask-log" id="askLog">${renderAskMessages()}</div>
       <form class="ask-form" onsubmit="submitAskAI(event)">
         <textarea id="askInput" class="ask-input" maxlength="1200" placeholder="Ask about this sweep, a signal, or live context"></textarea>
@@ -2141,7 +2228,53 @@ function renderLower(){
   ];
   if(mobile && osintPanel) panels.splice(1,0,{ key:'osint', html:osintPanel });
   panels.sort((a,b) => (a.key===pinnedLowerPanel?-1:b.key===pinnedLowerPanel?1:0));
+  // renderLower() runs on every SSE update, pin, resize and ticker toggle, and it
+  // replaces the Ask AI form wholesale. Carry the half-typed question, the caret
+  // and the focus across the swap so an update mid-sentence is not destructive.
+  const priorAsk = document.getElementById('askInput');
+  const askState = priorAsk ? {
+    value: priorAsk.value,
+    start: priorAsk.selectionStart,
+    end: priorAsk.selectionEnd,
+    focused: document.activeElement === priorAsk,
+  } : null;
   document.getElementById('lowerGrid').innerHTML = panels.map(p => p.html).join('');
+  if(askState){
+    const nextAsk = document.getElementById('askInput');
+    if(nextAsk){
+      nextAsk.value = askState.value;
+      if(askState.focused) nextAsk.focus({preventScroll:true});
+      try{ nextAsk.setSelectionRange(askState.start ?? nextAsk.value.length, askState.end ?? nextAsk.value.length); }catch{}
+    }
+  }
+}
+
+// Decorative duplicate half of a CSS marquee. Screen readers and the tab order
+// must see the list once, so the clone is inert and its controls unfocusable.
+function marqueeClone(html){
+  return `<div class="marquee-clone" aria-hidden="true" inert>${String(html).replace(/tabindex="0"/g,'tabindex="-1"')}</div>`;
+}
+
+// Ask AI badge: whatever the server actually has configured.
+function askProviderBadge(){
+  if(askLlmEnabled === false) return `<span class="ideas-src static">${escapeHtml(t('ideas.llmOff','LLM OFF'))}</span>`;
+  const label = askModelLabel || (askLlmEnabled === null ? 'AI' : 'LLM');
+  return `<span class="ideas-src llm">${escapeHtml(String(label).toUpperCase().substring(0,28))}</span>`;
+}
+
+// Read the provider from /api/health once at boot; the per-answer `model` is a
+// better label when we have it, so submitAskAI() upgrades this afterwards.
+function loadAskProvider(){
+  if(location.protocol === 'file:') return;
+  fetch('/api/health')
+    .then(r => r.ok ? r.json() : null)
+    .then(health => {
+      if(!health) return;
+      askLlmEnabled = !!health.llmEnabled;
+      if(health.llmProvider) askModelLabel = health.llmProvider;
+      renderLower();
+    })
+    .catch(() => {});
 }
 
 // === RIGHT RAIL ===
@@ -2334,8 +2467,7 @@ function classifySignal(signal){
   else if(/radiation|nuclear|cpm|radnet/.test(lower)){category='nuke';explanation='Radiation readings should be judged against the site baseline and consecutive observations; one raw reading is not a safety verdict.';}
   else if(/who|health|outbreak|disease/.test(lower)){category='health';explanation='Health alerts can affect mobility, borders, and supply chains. Severity depends on location, spread, and corroborating official guidance.';}
   else if(/sdr|radio|receiver|signal/.test(lower)){category='sdr';explanation='Receiver coverage shows where public radio monitoring is available. It indicates observation capacity, not hostile activity.';}
-  else if(/osint|strike|attack|incident/.test(lower)){category='osint';explanation='Fast OSINT reporting is useful for early warning but may be incomplete. Check timestamps, source history, and independent confirmation.';}
-  else if(/acled|conflict|fatalit|clash/.test(lower)){category='conflict';explanation='Conflict data adds event and fatality context. Recent items may lag breaking reports and should be read alongside current OSINT.';}
+  else if(/acled|conflict|fatalit|clash|strike|attack|incident/.test(lower)){category='conflict';explanation='Conflict data adds event and fatality context. Recent items may lag breaking reports and should be read alongside current OSINT.';}
   else if(/oil|wti|brent|vix|spread|market|yield|debt|gscpi/.test(lower)){category='macro';explanation='This is a macro or market stress observation. It can confirm a broader regime but does not map cleanly to one physical location.';}
   return {text,category,explanation,target:findTextMapTarget(text,category)};
 }
@@ -2583,7 +2715,7 @@ function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
       </div>
       <div class="right-panel-hint">Click a report to read it and locate mapped items</div>
       <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
-        <div class="ticker-track">${osintCards}${lowPerfMode ? '' : osintCards}</div>
+        <div class="ticker-track">${osintCards}${lowPerfMode ? '' : marqueeClone(osintCards)}</div>
       </div>
     </div>`;
 }
@@ -2683,6 +2815,7 @@ function connectSSE(){
       const msg = JSON.parse(e.data);
       if (msg.type === 'update' && msg.data) {
         D = normalizeDashboardData(msg.data);
+        sweepInFlight = false;
         reinit();
         // Flash the topbar to indicate update
         const topbar = document.querySelector('.topbar');
@@ -2690,12 +2823,10 @@ function connectSSE(){
           topbar.style.borderColor = 'var(--accent)';
           setTimeout(() => topbar.style.borderColor = '', 1500);
         }
-      } else if (msg.type === 'sweep_start') {
-        const badge = document.querySelector('.alert-badge');
-        if (badge) { badge.textContent = 'SWEEPING...'; badge.style.borderColor = 'var(--accent)'; }
-      } else if (msg.type === 'sweep_error') {
-        console.warn('[Crucix] Sweep error:', msg.error || 'unknown error');
-      }
+      if (msg.type === 'update' && msg.data) {
+        D = normalizeDashboardData(msg.data);
+        sweepInFlight = false;
+        reinit();
     } catch (err) {
       console.warn('[Crucix] Ignoring malformed SSE message:', err?.message || err);
     }
@@ -2743,6 +2874,7 @@ function init(){
   });
   applyPrimaryView();
   syncResponsiveLayout(true);
+  loadAskProvider();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2794,6 +2926,10 @@ document.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
+  // The document-level "click outside to dismiss" handler for the popup that is
+  // currently open, so opening another one can remove it first.
+  let activeCloseHandler = null;
+
   function hookNukeClicks() {
     const rail = document.getElementById('leftRail');
     if (!rail || rail._nukeClicksBound) return;
@@ -2834,13 +2970,24 @@ document.addEventListener('DOMContentLoaded', () => {
         popup.style.transform = 'translate(-50%,-50%)';
         popup.style.zIndex = '9999';
 
+        // Tear down the handler from the previously opened site first. Otherwise
+        // clicking a second site fires the old handler on the same click (the new
+        // row is outside the old row) and hides the popup we just opened.
+        if (activeCloseHandler) {
+          document.removeEventListener('click', activeCloseHandler);
+          activeCloseHandler = null;
+        }
         const closeHandler = (e) => {
           if (!popup.contains(e.target) && !el.contains(e.target)) {
             popup.style.display = 'none';
             document.removeEventListener('click', closeHandler);
+            if (activeCloseHandler === closeHandler) activeCloseHandler = null;
           }
         };
-        setTimeout(() => document.addEventListener('click', closeHandler), 100);
+        activeCloseHandler = closeHandler;
+        setTimeout(() => {
+          if (activeCloseHandler === closeHandler) document.addEventListener('click', closeHandler);
+        }, 100);
     });
   }
 

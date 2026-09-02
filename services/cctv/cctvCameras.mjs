@@ -141,7 +141,7 @@ async function fetchCanadaCameras() {
         const view = (cam.Views || []).find((v) => v.Status === 'Enabled' && v.Url) || cam.Views?.[0];
         if (!cam.Latitude || !cam.Longitude || !view?.Url) continue;
         cams.push({
-          id: cam.Id != null ? `on-${cam.Id}` : stableCameraId('on', view.Url), lat: cam.Latitude, lng: cam.Longitude,
+          id: cam.Id ? `on-${cam.Id}` : stableCameraId('on', view.Url), lat: cam.Latitude, lng: cam.Longitude,
           name: cam.Location || cam.Roadway || 'Ontario Camera', city: 'Ontario', country: 'Canada',
           feed_url: view.Url, source: '511 Ontario',
         });
@@ -176,7 +176,7 @@ async function fetchCanadaCameras() {
       for (const cam of (data || [])) {
         if (!cam.Latitude || !cam.Longitude || !cam.Views?.[0]?.Url) continue;
         cams.push({
-          id: cam.Id != null ? `ab-${cam.Id}` : stableCameraId('ab', cam.Views[0].Url), lat: cam.Latitude, lng: cam.Longitude,
+          id: cam.Id ? `ab-${cam.Id}` : stableCameraId('ab', cam.Views[0].Url), lat: cam.Latitude, lng: cam.Longitude,
           name: cam.Location || 'Alberta Camera', city: 'Alberta', country: 'Canada',
           feed_url: cam.Views[0].Url, source: 'Alberta 511',
         });

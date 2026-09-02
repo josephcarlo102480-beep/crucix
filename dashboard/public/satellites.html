@@ -6,6 +6,8 @@
 <title>CRUCIX — Satellite Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/css/crucix-theme.css">
+<script src="/js/crucix-common.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
 <script type="importmap">
@@ -31,11 +33,12 @@ window.Globe = Globe;
 <script src="/js/sat-globe3d.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Shared palette lives in /css/crucix-theme.css; the tracker runs a slightly
+   deeper background and denser panels over the top of it. */
 :root{
   --bg:#01050a;--panel:rgba(6,14,22,0.94);--glass:rgba(7,16,26,0.92);
   --border:rgba(100,240,200,0.13);--border-bright:rgba(100,240,200,0.34);
-  --text:#e8f4f0;--dim:#6f8f88;--dimmer:#4b6660;--accent:#64f0c8;--accent2:#44ccff;
-  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
+  --dim:#6f8f88;--dimmer:#4b6660;
 }
 *{scrollbar-width:thin;scrollbar-color:rgba(100,240,200,0.22) transparent}
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -82,7 +85,7 @@ details.sec>summary.sec-head:hover{background:rgba(100,240,200,0.055)}
 #search::placeholder{color:var(--dimmer)}
 #searchResults{margin-top:6px;max-height:170px;overflow-y:auto}
 .sr{padding:5px 7px;font-size:10px;cursor:pointer;border-left:2px solid transparent}
-.sr:hover{background:rgba(100,240,200,0.08);border-left-color:var(--accent)}
+.sr:hover,.sr:focus-visible{background:rgba(100,240,200,0.08);border-left-color:var(--accent);outline:none}
 .sr .id{color:var(--dimmer);font-size:9px;margin-left:6px}
 .sr-note{padding:4px 7px;font-size:9px;color:var(--dimmer)}
 
@@ -139,6 +142,7 @@ details.sec>summary.sec-head:hover{background:rgba(100,240,200,0.055)}
 .row{padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.028);font-size:10px;cursor:pointer;
   transition:background 0.15s}
 .row:hover,.row:focus{background:rgba(68,204,255,0.07);outline:none}
+.row:focus-visible{box-shadow:inset 0 0 0 1px var(--accent2)}
 .row.sel{background:rgba(100,240,200,0.1);box-shadow:inset 2px 0 0 var(--accent)}
 .row .r1{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;
   align-items:center;gap:6px}
@@ -339,8 +343,8 @@ const E = window.SatEngine;
 E.setObserver(OBSERVER.lat, OBSERVER.lng);
 
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s == null ? '' : s)
-  .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Shared helper (see /js/crucix-common.js, loaded above).
+const esc = window.CrucixCommon.escapeHtml;
 
 let view = '3d';
 let globe3d = null;
@@ -356,6 +360,26 @@ let passJob = 0;
 
 // ---------- status ----------
 function setStatus(msg) { $('status').innerHTML = msg; }
+
+// ---------- keyboard rows ----------
+// The overhead / passes / conjunction lists are rows with role="button" and
+// tabindex="0", and every one of them is rebuilt by innerHTML on a timer.
+// One delegated keydown per container therefore beats re-binding handlers:
+// it survives the rebuild, and forwarding to .click() guarantees the keyboard
+// path and the mouse path can never drift apart.
+function enableRowKeys(hostId, selector = '.row[role="button"]') {
+  const host = $(hostId);
+  if (!host) return;
+  host.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest(selector);
+    if (!row || !host.contains(row)) return;
+    event.preventDefault();
+    row.click();
+  });
+}
+['visnow', 'passes', 'conj'].forEach((id) => enableRowKeys(id));
+enableRowKeys('searchResults', '.sr[role="button"]');
 
 // ---------- catalogue UI ----------
 async function loadCatalogue() {
@@ -457,7 +481,7 @@ async function runSearch(q) {
       return;
     }
     host.innerHTML = body.sats.map((s, i) =>
-      `<div class="sr" data-i="${i}">${esc(s.name)}<span class="id">#${s.id}</span></div>`).join('')
+      `<div class="sr" data-i="${i}" role="button" tabindex="0">${esc(s.name)}<span class="id">#${esc(s.id)}</span></div>`).join('')
       + (body.scope === 'cached'
         ? '<div class="sr-note">Searching cached groups only — full catalogue still refreshing.</div>' : '');
     host.querySelectorAll('.sr').forEach((el) => {
@@ -531,7 +555,7 @@ function renderSelection() {
   panel.querySelector('.swatch').style.background = sat.color;
   panel.querySelector('.name').textContent = sat.name;
   panel.querySelector('.sel-sub').innerHTML =
-    `NORAD ${sat.id} · ${esc((E.groups.get(sat.group) || {}).label || sat.group)} · `
+    `NORAD ${esc(sat.id)} · ${esc((E.groups.get(sat.group) || {}).label || sat.group)} · `
     + `<span class="badge ${sat.sunlit ? 'lit' : 'ecl'}">${sat.sunlit ? 'SUNLIT' : 'ECLIPSE'}</span>`;
 
   const cells = [
@@ -669,7 +693,7 @@ function showTooltip(sat, event) {
   const tip = $('tooltip');
   if (!sat) { tip.style.display = 'none'; return; }
   tip.innerHTML = `<div class="t" style="color:${esc(sat.color)}">${esc(sat.name)}</div>`
-    + `<div><span class="k">NORAD</span> ${sat.id}</div>`
+    + `<div><span class="k">NORAD</span> ${esc(sat.id)}</div>`
     + `<div><span class="k">Alt</span> ${sat.altKm.toFixed(0)} km &nbsp; `
     + `<span class="k">Vel</span> ${sat.speed.toFixed(2)} km/s</div>`
     + `<div><span class="k">${sat.sunlit ? 'In sunlight' : 'In eclipse'}</span></div>`;

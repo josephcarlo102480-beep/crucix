@@ -33,9 +33,12 @@ function summarizeVulnerabilities(vulns) {
   // Ransomware-linked
   const ransomwareLinked = vulns.filter(v => v.knownRansomwareCampaignUse === 'Known');
 
-  // Overdue (due date has passed)
+  // Overdue, scoped to the recent-additions window. Across the whole catalog
+  // "overdue" is a monotonically growing count of every CVE ever listed whose
+  // remediation date has passed — it is ~the catalog size and says nothing
+  // about the current week. Only overdue items among recent additions are news.
   const now = new Date();
-  const overdue = vulns.filter(v => {
+  const overdue = recent.filter(v => {
     const due = new Date(v.dueDate);
     return !isNaN(due) && due < now;
   });
@@ -58,28 +61,44 @@ function summarizeVulnerabilities(vulns) {
       cves: vs.map(v => v.cveID)
     }));
 
+  // Baseline: how many entries CISA adds in a typical 30-day window, measured
+  // over the catalog's own history. Used to decide whether "N new entries" is
+  // actually elevated instead of just "it is Tuesday".
+  const addedTimes = vulns
+    .map(v => new Date(v.dateAdded).getTime())
+    .filter(t => Number.isFinite(t));
+  const earliest = addedTimes.length ? Math.min(...addedTimes) : null;
+  const spanDays = earliest ? Math.max((Date.now() - earliest) / 86400_000, 30) : null;
+  const baselineAdditions30d = spanDays ? (vulns.length / spanDays) * 30 : null;
+
   return {
     totalInCatalog: vulns.length,
     recentAdditions: recent.length,
+    recentOverdue: overdue.length,
     ransomwareLinked: ransomwareLinked.length,
     overdueCount: overdue.length,
+    baselineAdditions30d: baselineAdditions30d === null ? null : +baselineAdditions30d.toFixed(1),
     topVendors,
     hotProducts,
   };
 }
 
-export async function briefing() {
-  const data = await safeFetch(KEV_URL, { timeout: 20000 });
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+  const data = await safeFetch(KEV_URL, { timeout: 20000, signal });
 
-  if (data.error) {
+  if (!data || data.error || !Array.isArray(data.vulnerabilities)) {
     return {
       source: 'CISA-KEV',
       timestamp: new Date().toISOString(),
-      error: data.error,
+      error: data?.error || 'CISA KEV feed returned no vulnerabilities array',
+      summary: {},
+      vulnerabilities: [],
+      signals: [],
     };
   }
 
-  const vulns = data.vulnerabilities || [];
+  const vulns = data.vulnerabilities;
   const catalogVersion = data.catalogVersion || null;
   const dateReleased = data.dateReleased || null;
 
@@ -103,10 +122,20 @@ export async function briefing() {
   // Signals — actionable intelligence
   const signals = [];
 
-  if (summary.recentAdditions > 5) {
+  // Fire only when the last 30 days genuinely outrun the catalog's own long-run
+  // rate (1.75x, and at least 8 entries). The old `> 5` threshold was below the
+  // ordinary cadence, so this signal fired on literally every sweep and carried
+  // no information.
+  const baseline = summary.baselineAdditions30d;
+  const elevated = baseline !== null
+    ? summary.recentAdditions >= 8 && summary.recentAdditions > baseline * 1.75
+    : summary.recentAdditions >= 20;
+  if (elevated) {
     signals.push({
       severity: 'high',
-      signal: `${summary.recentAdditions} new KEV entries in last 30 days — elevated exploit activity`,
+      signal: `${summary.recentAdditions} new KEV entries in last 30 days`
+        + (baseline !== null ? ` vs a ${baseline}/30d baseline` : '')
+        + ' — elevated exploit activity',
     });
   }
 

@@ -38,7 +38,7 @@ describe('dashboard ticker expansion', () => {
   });
 
   it('supports live and pinned ticker modes', () => {
-    assert.match(html, /let tickerMode = localStorage\.getItem\('crucix_ticker_mode'\)/);
+    assert.match(html, /let tickerMode = safeStorage\.get\('crucix_ticker_mode'\)/);
     assert.match(html, /function setTickerMode/);
     assert.match(html, /class="ticker-tabs"/);
     assert.match(html, /onclick="setTickerMode\('live'\)">Live/);

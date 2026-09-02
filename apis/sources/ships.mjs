@@ -2,7 +2,7 @@
 // Also includes fallback to public vessel tracking data
 // Detects: dark ships, sanctions evasion, naval deployments, port congestion
 
-import { safeFetch } from '../utils/fetch.mjs';
+import '../utils/env.mjs';
 
 // aisstream.io requires a WebSocket connection for real-time data
 // For briefing mode, we'll use snapshot-based approaches
@@ -23,7 +23,11 @@ const CHOKEPOINTS = {
   capeOfGoodHope: { label: 'Cape of Good Hope', lat: -34.4, lon: 18.5, note: 'Suez alternative' },
 };
 
-// For non-realtime briefing, use web-searchable vessel data
+// Briefing mode has no live AIS: aisstream.io is WebSocket-only, so this
+// returns the static chokepoint reference set plus an honest statement of what
+// is (not) being observed. Without a key there is no vessel tracking at all,
+// and that is reported as an error so the sweep marks the source degraded
+// instead of counting an empty maritime picture as a success.
 export async function briefing() {
   const hasKey = !!process.env.AISSTREAM_API_KEY;
 
@@ -32,8 +36,11 @@ export async function briefing() {
     timestamp: new Date().toISOString(),
     status: hasKey ? 'ready' : 'limited',
     message: hasKey
-      ? 'AIS stream connected — use WebSocket listener for real-time data'
+      ? 'AIS stream credentials present — run the WebSocket listener for real-time vessel data'
       : 'Set AISSTREAM_API_KEY for real-time global vessel tracking (free at aisstream.io)',
+    ...(hasKey ? {} : {
+      error: 'No AISSTREAM_API_KEY — no vessel positions collected; chokepoints below are static reference geometry only',
+    }),
     chokepoints: CHOKEPOINTS,
     monitoringCapabilities: [
       'Dark ship detection (AIS transponder shutoffs)',

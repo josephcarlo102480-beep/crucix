@@ -3,26 +3,27 @@
 // Values above 0 = above average pressure. Above 1.0 = elevated. Below -1.0 = unusually loose.
 // Data fetched directly from NY Fed — no API key required.
 
+import { safeFetch } from '../utils/fetch.mjs';
+
 const GSCPI_CSV_URL = 'https://www.newyorkfed.org/medialibrary/research/interactives/data/gscpi/gscpi_interactive_data.csv';
 
-// Fetch and parse the GSCPI CSV from the NY Fed
-// The CSV is wide-format: each column is a revision vintage, last column is latest estimate.
-// Uses raw fetch instead of safeFetch because safeFetch truncates non-JSON to 500 chars.
-export async function getGSCPI(months = 12) {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20000);
-    const res = await fetch(GSCPI_CSV_URL, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Crucix/1.0' },
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    return { data: parseCSV(text, months) };
-  } catch (e) {
-    return { error: e.message || 'Failed to fetch GSCPI data', data: [] };
-  }
+// Fetch and parse the GSCPI CSV from the NY Fed.
+// The CSV is wide-format: each column is a revision vintage, last column is the
+// latest estimate. `responseType: 'text'` keeps the full body (the default JSON
+// mode would truncate a non-JSON payload to 500 chars).
+export async function getGSCPI(months = 12, opts = {}) {
+  const res = await safeFetch(GSCPI_CSV_URL, {
+    timeout: 20000,
+    responseType: 'text',
+    signal: opts.signal,
+  });
+  if (res?.error) return { error: res.error, data: [] };
+
+  const rows = parseCSV(String(res?.text || ''), months);
+  // An unparseable CSV (redirect page, HTML error, changed layout) is a failure,
+  // not a supply chain with no history.
+  if (!rows.length) return { error: 'GSCPI CSV contained no parseable rows', data: [] };
+  return { data: rows };
 }
 
 // Parse the wide-format CSV, extracting the latest vintage value for each date
@@ -101,14 +102,19 @@ function detectTrend(history) {
 }
 
 // Briefing — latest GSCPI, trend, and signals
-export async function briefing() {
-  const result = await getGSCPI(12);
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+  const result = await getGSCPI(12, { signal });
 
   if (result.error) {
     return {
       source: 'NY Fed GSCPI',
       error: result.error,
       timestamp: new Date().toISOString(),
+      latest: null,
+      trend: 'unknown',
+      history: [],
+      signals: [],
     };
   }
 

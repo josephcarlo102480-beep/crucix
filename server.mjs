@@ -29,7 +29,7 @@ import {
 import cctvRouter, { warmCctv } from './services/cctv/cctvRouter.mjs';
 import airwatchRouter, { warmAirwatch, stopAirwatch } from './services/airwatch/airwatchRouter.mjs';
 import tleRouter from './services/space/tleRouter.mjs';
-import { warmTle } from './services/space/tleCatalog.mjs';
+import { warmTle, stopTleWarm } from './services/space/tleCatalog.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -588,6 +588,7 @@ async function shutdown(signal, exitCode = 0) {
   if (sweepTimer) clearInterval(sweepTimer);
   clearInterval(sseHeartbeatTimer);
   try { stopAirwatch(); } catch { }
+  try { stopTleWarm(); } catch { }
   for (const client of sseClients) {
     try { client.end(); } catch { }
   }

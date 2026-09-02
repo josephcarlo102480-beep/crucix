@@ -517,9 +517,10 @@ function flyToTheatre() {
 // backend warms up, and each 503 used to queue its own 10 s retry — after a
 // couple of minutes of 503s the page was hammering the API from a dozen
 // independent chains. Now: at most one pending retry, and a poll that lands
-// while a request is still in flight is dropped rather than stacked.
+// while a request is still in flight is coalesced instead of stacked.
 let retryTimer = null;
 let loadPending = false;
+let loadAgain = false;        // a request arrived mid-flight (scope/theatre change)
 
 function scheduleRetry() {
   clearTimeout(retryTimer);
@@ -527,7 +528,10 @@ function scheduleRetry() {
 }
 
 async function load() {
-  if (loadPending) return;
+  // Never two fetches at once. A load asked for while one is in flight is
+  // remembered and replayed after it settles, so switching scope or theatre
+  // still repaints with the right data instead of being silently dropped.
+  if (loadPending) { loadAgain = true; return; }
   loadPending = true;
   clearTimeout(retryTimer);
   retryTimer = null;
@@ -570,6 +574,7 @@ async function load() {
     scheduleRetry();
   } finally {
     loadPending = false;
+    if (loadAgain) { loadAgain = false; load(); }
   }
 }
 

@@ -13,6 +13,8 @@
  * That leaves Globe.gl's own layers (paths, rings, HTML labels) for the small
  * number of things attached to the *selected* satellite, where they are cheap.
  *
+ * Requires /js/crucix-common.js to be loaded first.
+ *
  * Global: window.SatGlobe3D
  */
 (function (global) {
@@ -192,8 +194,10 @@
   }
 
   function latLngToVec3(lat, lng) {
-    const cl = Math.cos(lat * DEG);
-    return new THREE.Vector3(cl * Math.sin(lng * DEG), Math.sin(lat * DEG), cl * Math.cos(lng * DEG));
+    const api = global.CrucixCommon;
+    if (!api) throw new Error('sat-globe3d.js requires /js/crucix-common.js to be loaded first');
+    const v = api.latLngToVec3(lat, lng);
+    return new THREE.Vector3(v.x, v.y, v.z);
   }
 
   function create(container, opts = {}) {
@@ -648,8 +652,14 @@
       }
       const paths = [];
 
+      // The path altitude has to use the same vertical mapping as the point
+      // cloud (sat-engine's stepOne: displayR = SCENE_RADIUS * (r / R_EARTH)
+      // at true scale, SCENE_RADIUS * (1 + compressAlt) otherwise), or the
+      // orbit line floats away from the satellite it belongs to.
+      const trueScale = engine.scaleMode === 'true';
+      const pathAlt = (altKm) => (trueScale ? altKm / engine.R_EARTH : engine.compressAlt(altKm));
       const orbit = engine.orbitPath(sat, 220)
-        .map(([lat, lng, altKm]) => [lat, lng, engine.compressAlt(altKm)]);
+        .map(([lat, lng, altKm]) => [lat, lng, pathAlt(altKm)]);
       for (const run of splitAtAntimeridian(orbit)) {
         paths.push({ coords: run, color: sat.color, stroke: 0.55 });
       }

@@ -1,3 +1,9 @@
+/**
+ * globe-fx.js — atmosphere shells, starfield and sun direction for the
+ * Crucix globes. Requires /js/crucix-common.js to be loaded first.
+ *
+ * Global: window.CrucixGlobeFX
+ */
 (function (global) {
   'use strict';
 
@@ -129,52 +135,21 @@
     }
   }
 
-  function normalizeDegrees(value) {
-    return ((value % 360) + 360) % 360;
-  }
-
-  function normalizeLongitude(value) {
-    return ((value + 540) % 360) - 180;
+  // Shared with the tracker and the dashboard — see /js/crucix-common.js,
+  // which MUST be loaded before this file.
+  function common() {
+    const api = global.CrucixCommon;
+    if (!api) throw new Error('globe-fx.js requires /js/crucix-common.js to be loaded first');
+    return api;
   }
 
   function subsolar(ms) {
-    const radians = Math.PI / 180;
-    const julianDay = ms / 86400000 + 2440587.5;
-    const daysSinceJ2000 = julianDay - 2451545.0;
-    const meanAnomaly = normalizeDegrees(357.529 + 0.98560028 * daysSinceJ2000) * radians;
-    const meanLongitude = normalizeDegrees(280.459 + 0.98564736 * daysSinceJ2000);
-    const eclipticLongitude = normalizeDegrees(
-      meanLongitude + 1.915 * Math.sin(meanAnomaly) + 0.020 * Math.sin(2 * meanAnomaly)
-    ) * radians;
-    const obliquity = (23.439 - 0.00000036 * daysSinceJ2000) * radians;
-    const rightAscension = normalizeDegrees(
-      Math.atan2(
-        Math.cos(obliquity) * Math.sin(eclipticLongitude),
-        Math.cos(eclipticLongitude)
-      ) / radians
-    );
-    const declination = Math.asin(
-      Math.sin(obliquity) * Math.sin(eclipticLongitude)
-    ) / radians;
-    const greenwichSiderealTime = normalizeDegrees(
-      280.46061837 + 360.98564736629 * daysSinceJ2000
-    );
-
-    return {
-      lat: declination,
-      lng: normalizeLongitude(rightAscension - greenwichSiderealTime),
-    };
+    return common().subsolar(ms);
   }
 
   function latLngToDirection(lat, lng) {
-    const latRadians = lat * Math.PI / 180;
-    const lngRadians = lng * Math.PI / 180;
-    const cosLat = Math.cos(latRadians);
-    return new THREE.Vector3(
-      cosLat * Math.sin(lngRadians),
-      Math.sin(latRadians),
-      cosLat * Math.cos(lngRadians)
-    ).normalize();
+    const v = common().latLngToVec3(lat, lng);
+    return new THREE.Vector3(v.x, v.y, v.z);
   }
 
   function createShell(radius, scaleHeight, intensity, color, sunDirection, sunStrength, type) {

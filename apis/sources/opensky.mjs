@@ -7,7 +7,7 @@
 //   - Query hotspots sequentially with delays (not all at once)
 //   - Identify via User-Agent to reduce 429s
 
-import { safeFetch } from '../utils/fetch.mjs';
+import { safeFetch, delay } from '../utils/fetch.mjs';
 
 const BASE = 'https://opensky-network.org/api';
 const OPENSKY_HEADERS = { 'User-Agent': 'Crucix-OSINT-Dashboard/1.0' };
@@ -20,19 +20,23 @@ let cachedBriefing = null;
 let cacheTimestamp = 0;
 
 // Get all current flights (global state vector)
-export async function getAllFlights() {
-  return safeFetch(`${BASE}/states/all`, { timeout: 30000, headers: OPENSKY_HEADERS });
+export async function getAllFlights(opts = {}) {
+  return safeFetch(`${BASE}/states/all`, { timeout: 30000, headers: OPENSKY_HEADERS, signal: opts.signal });
 }
 
 // Get flights in a bounding box (lat/lon)
-export async function getFlightsInArea(lamin, lomin, lamax, lomax) {
+export async function getFlightsInArea(lamin, lomin, lamax, lomax, opts = {}) {
   const params = new URLSearchParams({
     lamin: String(lamin),
     lomin: String(lomin),
     lamax: String(lamax),
     lomax: String(lomax),
   });
-  return safeFetch(`${BASE}/states/all?${params}`, { timeout: 20000, headers: OPENSKY_HEADERS });
+  return safeFetch(`${BASE}/states/all?${params}`, {
+    timeout: 20000,
+    headers: OPENSKY_HEADERS,
+    signal: opts.signal,
+  });
 }
 
 // Get flights by specific aircraft (ICAO24 hex codes)
@@ -79,12 +83,15 @@ const HOTSPOTS = {
 // Briefing — check hotspot regions for flight activity
 // Uses a 10-minute cache to avoid hammering OpenSky every sweep cycle.
 // Queries hotspots sequentially with delays to reduce 429 rate-limit hits.
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+
   // Return cached result if still fresh
   const now = Date.now();
   if (cachedBriefing && (now - cacheTimestamp) < CACHE_TTL_MS) {
     const ageMin = ((now - cacheTimestamp) / 60000).toFixed(1);
-    console.log(`[OpenSky] Returning cached result (${ageMin}m old, TTL ${CACHE_TTL_MS / 60000}m)`);
+    // Diagnostics go to stderr — stdout carries the sweep's JSON document.
+    console.error(`[OpenSky] Returning cached result (${ageMin}m old, TTL ${CACHE_TTL_MS / 60000}m)`);
     return { ...cachedBriefing, cached: true, cacheAgeMs: now - cacheTimestamp };
   }
 
@@ -93,9 +100,11 @@ export async function briefing() {
 
   // Query hotspots sequentially with delays to avoid rate-limiting
   for (const [key, box] of hotspotEntries) {
-    const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax);
-    const error = data?.error || null;
-    const states = data?.states || [];
+    if (signal?.aborted) break;
+
+    const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax, { signal });
+    const error = data?.error || (Array.isArray(data?.states) ? null : 'OpenSky response had no states array');
+    const states = Array.isArray(data?.states) ? data.states : [];
 
     const is429 = error && error.includes('429');
 
@@ -116,25 +125,29 @@ export async function briefing() {
     });
 
     // Wait between queries — longer if we just got rate-limited (skip after last)
-    if (results.length < hotspotEntries.length) {
-      const delay = is429 ? RATE_LIMIT_BACKOFF_MS : INTER_QUERY_DELAY_MS;
-      await new Promise(r => setTimeout(r, delay));
+    if (results.length < hotspotEntries.length && !signal?.aborted) {
+      await delay(is429 ? RATE_LIMIT_BACKOFF_MS : INTER_QUERY_DELAY_MS);
     }
   }
+
+  const skipped = hotspotEntries.length - results.length;
 
   const hotspotErrors = results
     .filter(r => r.error)
     .map(r => ({ region: r.region, error: r.error }));
 
+  const failedAll = results.length === 0 || hotspotErrors.length === results.length;
   const briefingResult = {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
     hotspots: results,
-    ...(hotspotErrors.length ? {
-      error: hotspotErrors.length === results.length
-        ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0].error}`
-        : `OpenSky unavailable for ${hotspotErrors.length}/${results.length} hotspots`,
+    ...(hotspotErrors.length || skipped ? {
+      error: failedAll
+        ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0]?.error || 'aborted before any hotspot answered'}`
+        : `OpenSky unavailable for ${hotspotErrors.length}/${hotspotEntries.length} hotspots`
+          + (skipped ? ` (${skipped} not queried — aborted)` : ''),
       hotspotErrors,
+      ...(skipped ? { skippedHotspots: skipped } : {}),
     } : {}),
   };
 
@@ -144,12 +157,19 @@ export async function briefing() {
   if (totalAircraft > 0 || successfulHotspots > 0) {
     cachedBriefing = briefingResult;
     cacheTimestamp = now;
-    console.log(`[OpenSky] Cached result: ${totalAircraft} aircraft across ${successfulHotspots}/${results.length} hotspots`);
+    console.error(`[OpenSky] Cached result: ${totalAircraft} aircraft across ${successfulHotspots}/${results.length} hotspots`);
   } else if (cachedBriefing) {
-    // All failed — return stale cache rather than all-zeros
+    // All failed — return stale cache rather than all-zeros, and keep the
+    // error on it so the sweep still reports the source as degraded.
     const staleAge = ((now - cacheTimestamp) / 60000).toFixed(1);
-    console.log(`[OpenSky] All hotspots failed, returning stale cache (${staleAge}m old)`);
-    return { ...cachedBriefing, cached: true, stale: true, cacheAgeMs: now - cacheTimestamp };
+    console.error(`[OpenSky] All hotspots failed, returning stale cache (${staleAge}m old)`);
+    return {
+      ...cachedBriefing,
+      cached: true,
+      stale: true,
+      cacheAgeMs: now - cacheTimestamp,
+      error: briefingResult.error || 'OpenSky returned no data this sweep; serving cached hotspots',
+    };
   }
 
   return briefingResult;

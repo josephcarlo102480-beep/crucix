@@ -27,6 +27,7 @@ import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { atomicWriteJsonSync } from '../../lib/util/fs.mjs';
+import { fetchWithTimeout } from '../../lib/util/net.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = process.env.CRUCIX_TLE_CACHE_DIR
@@ -207,24 +208,18 @@ function writeDisk(source, entry) {
 const NOT_MODIFIED = Symbol('celestrak-not-modified');
 
 async function fetchSourceText(source) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(sourceUrl(source), {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Crucix/1.0 (satellite tracker)' },
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      if (res.status === 403 && /has not updated/i.test(text)) return NOT_MODIFIED;
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 120).trim()}`);
-    }
-    // CelesTrak answers 200 with a plain-text error for a bad group name.
-    if (/Invalid query/i.test(text.slice(0, 200))) throw new Error(text.slice(0, 120).trim());
-    return text;
-  } finally {
-    clearTimeout(timer);
+  const res = await fetchWithTimeout(sourceUrl(source), {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    headers: { 'User-Agent': 'Crucix/1.0 (satellite tracker)' },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    if (res.status === 403 && /has not updated/i.test(text)) return NOT_MODIFIED;
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 120).trim()}`);
   }
+  // CelesTrak answers 200 with a plain-text error for a bad group name.
+  if (/Invalid query/i.test(text.slice(0, 200))) throw new Error(text.slice(0, 120).trim());
+  return text;
 }
 
 /**
@@ -381,11 +376,14 @@ export async function search(query, limit = 40) {
 
   let scope = 'catalog';
   let pool;
+  let directIndexes;
   try {
     pool = [(await loadGroup('active')).sats];
+    directIndexes = [idsBySource.get('active')];
   } catch {
     scope = 'cached';
     pool = [...memory.values()].map((entry) => entry.sats);
+    directIndexes = [...idsBySource.values()];
     if (!pool.length) return { query: q, count: 0, sats: [], scope: 'unavailable' };
   }
 
@@ -399,7 +397,8 @@ export async function search(query, limit = 40) {
   // scan. This prevents an exact id near the end of the 16k-object catalogue
   // from being skipped after enough incidental name matches fill the scan cap.
   if (numeric !== null) {
-    for (const sourceIds of idsBySource.values()) {
+    for (const sourceIds of directIndexes) {
+      if (!sourceIds) continue;
       const sat = sourceIds.get(numeric);
       if (sat && isUsable(sat, now)) {
         seen.add(sat.id);

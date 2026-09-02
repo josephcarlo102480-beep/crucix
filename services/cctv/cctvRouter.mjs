@@ -100,6 +100,8 @@ async function fetchSnapshot(url, headers) {
     const location = upstream.headers.get('location');
     if (!location) throw new Error(`Upstream redirect ${upstream.status} had no location`);
     if (redirects === 3) throw new Error('Too many snapshot redirects');
+    await upstream.body?.cancel().catch(() => {});
+    controller.abort();
     current = checkedSnapshotUrl(new URL(location, current).href);
   }
   throw new Error('Too many snapshot redirects');
