@@ -150,8 +150,8 @@ The `VISUALS FULL` / `VISUALS LITE` button in the top bar only changes rendering
 When you switch to **VISUALS LITE**, the dashboard:
 - Disables decorative background effects such as the radial/grid overlays and scanlines
 - Removes expensive blur/backdrop-filter effects on panels and overlays
-- Stops non-essential animations like the logo ring blink, conflict rings, and corridor flow effects
-- Disables globe auto-rotation and turns off animated flight-arc dashes
+- Stops non-essential animations like the logo ring blink and conflict rings
+- Disables globe auto-rotation
 - Converts the horizontal news ticker and OSINT stream into static, scrollable lists instead of continuously animated marquees
 
 Mobile-specific behavior:

@@ -52,13 +52,23 @@ export async function runSource(name, fn, ...args) {
   const start = Date.now();
   let timer;
   const timeoutMs = SOURCE_TIMEOUT_OVERRIDES[name] || SOURCE_TIMEOUT_MS;
+  // Sources may accept a trailing `{ signal }` and abandon in-flight fetches
+  // when the source-level timeout fires; ones that ignore it just get an
+  // unused extra argument.
+  const controller = new AbortController();
   try {
-    const dataPromise = fn(...args);
+    const dataPromise = fn(...args, { signal: controller.signal });
     const timeoutPromise = new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Source ${name} timed out after ${timeoutMs / 1000}s`)), timeoutMs);
+      timer = setTimeout(() => {
+        controller.abort(new Error(`Source ${name} timed out`));
+        reject(new Error(`Source ${name} timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
     });
     const data = await Promise.race([dataPromise, timeoutPromise]);
-    return { name, status: 'ok', durationMs: Date.now() - start, data };
+    // A source that resolves with `.error` still ran — it just came back
+    // partial or stale. That is 'degraded', not 'ok'.
+    const degraded = Boolean(data && typeof data === 'object' && data.error);
+    return { name, status: degraded ? 'degraded' : 'ok', durationMs: Date.now() - start, data };
   } catch (e) {
     return { name, status: 'error', durationMs: Date.now() - start, error: e.message };
   } finally {
@@ -116,6 +126,8 @@ export async function fullBriefing() {
   const sources = results.map(r => r.status === 'fulfilled' ? r.value : { status: 'failed', error: r.reason?.message });
   const totalMs = Date.now() - start;
 
+  const returnedData = sources.filter(s => s.status === 'ok' || s.status === 'degraded');
+
   const output = {
     crucix: {
       version: '2.0.0',
@@ -123,12 +135,17 @@ export async function fullBriefing() {
       totalDurationMs: totalMs,
       sourcesQueried: sources.length,
       sourcesOk: sources.filter(s => s.status === 'ok').length,
+      sourcesDegraded: sources.filter(s => s.status === 'degraded').length,
+      // 'degraded' counts as failed here so consumers that only know ok/failed
+      // are not told a partial source was fine.
       sourcesFailed: sources.filter(s => s.status !== 'ok').length,
     },
-    sources: Object.fromEntries(
-      sources.filter(s => s.status === 'ok').map(s => [s.name, s.data])
-    ),
-    errors: sources.filter(s => s.status !== 'ok').map(s => ({ name: s.name, error: s.error })),
+    // Degraded sources keep their payload: it carries `.error` plus whatever
+    // partial/stale data the source salvaged, which the dashboard renders.
+    sources: Object.fromEntries(returnedData.map(s => [s.name, s.data])),
+    errors: sources
+      .filter(s => s.status !== 'ok' && s.status !== 'degraded')
+      .map(s => ({ name: s.name, error: s.error })),
     timing: Object.fromEntries(
       sources.map(s => [s.name, { status: s.status, ms: s.durationMs }])
     ),
