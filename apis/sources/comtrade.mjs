@@ -170,6 +170,12 @@ export async function briefing(opts = {}) {
   );
 
   const fetched = await mapWithConcurrency(pairs, CONCURRENCY, async ({ reporter, cmdCode }) => {
+    // Sequential pacing means later pairs start late; stop cleanly at the
+    // budget so the source comes back partial (degraded) rather than being
+    // killed by runSource's 30 s cap with nothing to show.
+    if (Date.now() > deadline || signal?.aborted) {
+      return { reporter, cmdCode, period: prevYear, error: 'skipped: source time budget exhausted' };
+    }
     const first = readRecords(await getTradeData({
       reporterCode: reporter,
       cmdCode,
