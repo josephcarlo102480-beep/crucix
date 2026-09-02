@@ -2815,7 +2815,7 @@ function connectSSE(){
       const msg = JSON.parse(e.data);
       if (msg.type === 'update' && msg.data) {
         D = normalizeDashboardData(msg.data);
-        sweepInFlight = false;
+        setSweepIndicator(false);
         reinit();
         // Flash the topbar to indicate update
         const topbar = document.querySelector('.topbar');
@@ -2823,10 +2823,12 @@ function connectSSE(){
           topbar.style.borderColor = 'var(--accent)';
           setTimeout(() => topbar.style.borderColor = '', 1500);
         }
-      if (msg.type === 'update' && msg.data) {
-        D = normalizeDashboardData(msg.data);
-        sweepInFlight = false;
-        reinit();
+      } else if (msg.type === 'sweep_start') {
+        setSweepIndicator(true);
+      } else if (msg.type === 'sweep_error') {
+        setSweepIndicator(false);
+        console.warn('[Crucix] Sweep error:', msg.error || 'unknown error');
+      }
     } catch (err) {
       console.warn('[Crucix] Ignoring malformed SSE message:', err?.message || err);
     }
