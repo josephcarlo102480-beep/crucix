@@ -27,7 +27,6 @@ const DB_PATH = join(__dirname, '..', '..', 'data', 'airwatch.sqlite');
 
 // Baseline needs ~this many hour-buckets before surge deltas mean anything.
 const BASELINE_MIN_HOURS = 6;
-const STALE_AFTER_SECONDS = 180;
 
 // Military aircraft routinely disable ADS-B, and hobbyist receiver coverage
 // thins out fast over open ocean, so an empty list is expected behavior
@@ -54,13 +53,15 @@ function resolveTheatre(raw) {
 
 function snapshotMeta(snapshot) {
   const ageSeconds = Math.round((Date.now() - new Date(snapshot.fetchedAt).getTime()) / 1000);
+  const sourceStatus = getSourceStatus();
+  const staleAfterSeconds = 2 * sourceStatus.pollSeconds + 30;
   return {
     ready: true,
     source: snapshot.source,
-    sourceStatus: getSourceStatus(),
+    sourceStatus,
     fetchedAt: snapshot.fetchedAt,
     ageSeconds,
-    stale: ageSeconds > STALE_AFTER_SECONDS,
+    stale: ageSeconds > staleAfterSeconds,
   };
 }
 

@@ -47,12 +47,13 @@ function buildUrl(apiKey, path, params, length = 10) {
   url.searchParams.set('sort[0][direction]', 'desc');
   url.searchParams.set('length', String(length));
 
-  // Add facets
+  // Add facets. `facets[key][]` is a repeated parameter — `set` would keep only
+  // the last value, silently dropping every series but one.
   if (params.facets) {
     for (const [facetKey, facetValues] of Object.entries(params.facets)) {
-      facetValues.forEach((v, i) => {
-        url.searchParams.set(`facets[${facetKey}][]`, v);
-      });
+      for (const v of facetValues) {
+        url.searchParams.append(`facets[${facetKey}][]`, v);
+      }
     }
   }
 
@@ -60,9 +61,20 @@ function buildUrl(apiKey, path, params, length = 10) {
 }
 
 // Fetch a single EIA series
-export async function fetchSeries(apiKey, seriesDef, length = 10) {
+export async function fetchSeries(apiKey, seriesDef, length = 10, opts = {}) {
   const url = buildUrl(apiKey, seriesDef.path, seriesDef.params, length);
-  return safeFetch(url);
+  return safeFetch(url, { timeout: 12000, signal: opts.signal });
+}
+
+// EIA answers a bad key with a JSON error envelope, so a missing `response.data`
+// is a failure and not "this series has no observations".
+function seriesError(resp, label) {
+  if (!resp || resp.error) return `${label}: ${resp?.error || 'no response'}`;
+  if (resp.rawText !== undefined) return `${label}: non-JSON body ${String(resp.rawText).slice(0, 100)}`;
+  if (!Array.isArray(resp.response?.data)) {
+    return `${label}: ${resp.error?.message || resp.message || 'response contained no data array'}`;
+  }
+  return null;
 }
 
 // Extract latest value from EIA response
@@ -87,7 +99,10 @@ function extractRecent(resp, count = 5) {
 }
 
 // Briefing — oil prices, gas prices, inventories
-export async function briefing(apiKey) {
+export async function briefing(apiKey, opts = {}) {
+  if (apiKey && typeof apiKey === 'object') { opts = apiKey; apiKey = undefined; }
+  const { signal } = opts || {};
+
   if (!apiKey) {
     return {
       source: 'EIA',
@@ -98,11 +113,32 @@ export async function briefing(apiKey) {
   }
 
   const [wtiResp, brentResp, gasResp, inventoryResp] = await Promise.all([
-    fetchSeries(apiKey, OIL_SERIES.wti),
-    fetchSeries(apiKey, OIL_SERIES.brent),
-    fetchSeries(apiKey, GAS_SERIES.henryHub),
-    fetchSeries(apiKey, INVENTORY_SERIES.crudeStocks),
+    fetchSeries(apiKey, OIL_SERIES.wti, 10, { signal }),
+    fetchSeries(apiKey, OIL_SERIES.brent, 10, { signal }),
+    fetchSeries(apiKey, GAS_SERIES.henryHub, 10, { signal }),
+    fetchSeries(apiKey, INVENTORY_SERIES.crudeStocks, 10, { signal }),
   ]);
+
+  const errors = [
+    seriesError(wtiResp, 'WTI'),
+    seriesError(brentResp, 'Brent'),
+    seriesError(gasResp, 'Henry Hub'),
+    seriesError(inventoryResp, 'Crude stocks'),
+  ].filter(Boolean);
+
+  // All four dead means the key or the API is broken — say so instead of
+  // returning a fully-null price panel that renders as "no data, all fine".
+  if (errors.length === 4) {
+    return {
+      source: 'EIA',
+      timestamp: new Date().toISOString(),
+      error: `EIA returned no usable series: ${errors.join('; ')}`,
+      oilPrices: { wti: null, brent: null, spread: null },
+      gasPrice: null,
+      inventories: { crudeStocks: null },
+      signals: [],
+    };
+  }
 
   const signals = [];
 
@@ -149,6 +185,7 @@ export async function briefing(apiKey) {
       crudeStocks: inv ? { ...inv, label: INVENTORY_SERIES.crudeStocks.label, recent: invRecent } : null,
     },
     signals,
+    ...(errors.length ? { error: `EIA partial failure: ${errors.join('; ')}` } : {}),
   };
 }
 

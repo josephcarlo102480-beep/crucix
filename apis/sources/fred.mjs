@@ -2,7 +2,8 @@
 // 840,000+ time series. Free API key required.
 // Key indicators: yield curve, CPI, unemployment, money supply, GDP, fed funds rate
 
-import { safeFetch, today, daysAgo } from '../utils/fetch.mjs';
+import { safeFetch, daysAgo } from '../utils/fetch.mjs';
+import '../utils/env.mjs';
 
 const BASE = 'https://api.stlouisfed.org/fred';
 
@@ -40,7 +41,7 @@ const KEY_SERIES = {
 };
 
 // Get latest value for a series
-async function getSeriesLatest(seriesId, apiKey) {
+async function getSeriesLatest(seriesId, apiKey, signal) {
   const params = new URLSearchParams({
     series_id: seriesId,
     api_key: apiKey,
@@ -49,25 +50,44 @@ async function getSeriesLatest(seriesId, apiKey) {
     limit: '5',
     observation_start: daysAgo(90),
   });
-  return safeFetch(`${BASE}/series/observations?${params}`);
+  return safeFetch(`${BASE}/series/observations?${params}`, { timeout: 12000, signal });
 }
 
 // Briefing — pull all key indicators
-export async function briefing(apiKey) {
+export async function briefing(apiKey, opts = {}) {
+  if (apiKey && typeof apiKey === 'object') { opts = apiKey; apiKey = undefined; }
+  const { signal } = opts || {};
+  const apiKeyFromEnv = apiKey || process.env.FRED_API_KEY;
+  apiKey = apiKeyFromEnv;
+
   if (!apiKey) {
     return {
       source: 'FRED',
+      timestamp: new Date().toISOString(),
       error: 'No FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html',
       hint: 'Set FRED_API_KEY environment variable',
+      indicators: [],
+      signals: [],
     };
   }
 
   const entries = Object.entries(KEY_SERIES);
   const results = await Promise.all(
     entries.map(async ([id, label]) => {
-      const data = await getSeriesLatest(id, apiKey);
-      const obs = data?.observations;
-      if (!obs?.length) return { id, label, value: null, date: null, recent: [] };
+      const data = await getSeriesLatest(id, apiKey, signal);
+      // A failed request and a series with no recent observations are different
+      // facts: only the first one is an error worth reporting upstream.
+      if (!data || data.error || data.rawText !== undefined) {
+        return {
+          id, label, value: null, date: null, recent: [],
+          error: data?.error || `FRED returned a non-JSON body for ${id}`,
+        };
+      }
+      const obs = data.observations;
+      if (!Array.isArray(obs)) {
+        return { id, label, value: null, date: null, recent: [], error: data.error_message || `FRED response for ${id} had no observations` };
+      }
+      if (!obs.length) return { id, label, value: null, date: null, recent: [] };
       const latest = obs.find(o => o.value !== '.');
       const validObs = obs.filter(o => o.value !== '.');
       return {
@@ -79,6 +99,8 @@ export async function briefing(apiKey) {
       };
     })
   );
+
+  const failures = results.filter(r => r.error);
 
   // Compute derived signals
   const get = (id) => results.find(r => r.id === id)?.value;
@@ -99,6 +121,12 @@ export async function briefing(apiKey) {
     timestamp: new Date().toISOString(),
     indicators: results.filter(r => r.value !== null),
     signals,
+    ...(failures.length ? {
+      error: failures.length === results.length
+        ? `FRED unavailable for all ${results.length} series: ${failures[0].error}`
+        : `FRED unavailable for ${failures.length}/${results.length} series: ${failures[0].error}`,
+      failedSeries: failures.map(f => ({ id: f.id, error: f.error })),
+    } : {}),
   };
 }
 

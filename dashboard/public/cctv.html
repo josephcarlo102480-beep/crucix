@@ -14,13 +14,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Crucix — CCTV</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/crucix-theme.css" />
+<script src="/js/crucix-common.js"></script>
 <script src="https://unpkg.com/globe.gl@2.33.0"></script>
 <style>
+/* Palette lives in /css/crucix-theme.css; only the page-specific accent is here. */
 :root{
-  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
-  --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
-  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
-  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;
   --cctv:#ff8c42;
 }
 *{box-sizing:border-box}
@@ -88,7 +87,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 <!-- IMPORTANT: keep #popup OUTSIDE #globe-container — Globe.gl wipes its mount
      element's children on init, which would delete the popup. It is
      position:fixed, so DOM location here is fine. -->
-<div id="popup"></div>
+<div id="popup" role="dialog" aria-modal="true" aria-labelledby="popupTitle" aria-hidden="true" tabindex="-1"></div>
 
 <script>
 // ─── The backend now caps the global set (~500 cameras), so we render them
@@ -108,13 +107,15 @@ let hlsPlayer = null;          // active hls.js instance (destroyed on close/swi
 let ytErrorWatch = null;       // active YouTube load/message listeners
 let currentCluster = [];       // cameras overlapping the last clicked dot
 const CLUSTER_PX = 22;         // screen distance (px) that counts as "same spot"
+let popupOpener = null;        // element focus returns to when the popup closes
 // Live-ish refresh cadence for JPEG feeds. Most traffic cams only update
 // every minute+; this also matches the server-side snapshot cache TTL, so
 // faster polling here would just replay cached frames.
 const SNAPSHOT_REFRESH_MS = 5000;
 
-function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function safeHttpUrl(raw){ try { const u = new URL(raw, location.href); return /^https?:$/.test(u.protocol) ? u.toString() : null; } catch { return null; } }
+// Shared helpers (see /js/crucix-common.js, loaded above).
+const esc = window.CrucixCommon.escapeHtml;
+const safeHttpUrl = window.CrucixCommon.safeExternalUrl;   // '' when not http(s)
 function setStatus(m){ statusEl.innerHTML = m; }
 
 const globe = Globe()(document.getElementById('globe-container'))
@@ -263,7 +264,21 @@ function teardownYtErrorWatch(){
   window.removeEventListener('message', ytErrorWatch.onMessage);
   ytErrorWatch = null;
 }
-window.cctvClose = function(){ stopLive(); destroyHlsPlayer(); teardownYtErrorWatch(); popup.style.display = 'none'; };
+window.cctvClose = function(){
+  stopLive(); destroyHlsPlayer(); teardownYtErrorWatch();
+  popup.style.display = 'none';
+  popup.setAttribute('aria-hidden', 'true');
+  // Send focus back where it came from, so keyboard users are not dumped at
+  // the top of the document every time they dismiss a feed.
+  const opener = popupOpener;
+  popupOpener = null;
+  if (opener && opener.isConnected && typeof opener.focus === 'function') opener.focus();
+};
+
+// Escape closes the popup from anywhere on the page.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && popup.style.display === 'block') { e.preventDefault(); cctvClose(); }
+});
 
 // Render a camera's popup body in place and (re)start its feed.
 function renderCameraInto(cam){
@@ -300,14 +315,14 @@ function popupHtml(cam){
   }
   // Best link-out target for "open ↗".
   const ext = safeHttpUrl(cam.external_url || cam.stream_url || cam.feed_url || '');
-  return `${clusterChooserHtml(cam.id)}<div class="ptitle">${esc(cam.name)}</div>
+  return `${clusterChooserHtml(cam.id)}<div class="ptitle" id="popupTitle">${esc(cam.name)}</div>
     <div class="pmeta">${meta} <span style="opacity:.6">· ${esc(cam.stream_type || 'image')}</span></div>
     <div id="camMedia">${media}</div>
     ${kind === 'image' ? `<div class="pmsg" style="padding:4px 0">Live snapshot — refreshes every ${(SNAPSHOT_REFRESH_MS/1000)}s.</div>` : ''}
     <div class="prow">
       ${kind === 'image' ? `<button data-action="refresh" data-cam-id="${esc(cam.id)}">↻ refresh</button>` : ''}
       ${ext ? `<a href="${esc(ext)}" target="_blank" rel="noopener">open ↗</a>` : ''}
-      <button class="pclose" data-action="close">✕</button>
+      <button class="pclose" type="button" data-action="close" aria-label="Close">✕</button>
     </div>`;
 }
 
@@ -329,7 +344,14 @@ window.cctvRefresh = function(id){
 // strings (HTML entity escaping does not protect that context).
 popup.addEventListener('click', (e) => {
   const item = e.target.closest('.cl-item');
-  if (item){ selectClusterCam(item.dataset.camId); return; }
+  if (item){
+    const id = item.dataset.camId;
+    selectClusterCam(id);
+    // The body was just re-rendered; put focus back on the equivalent button.
+    const again = popup.querySelector(`.cl-item[data-cam-id="${CSS.escape(id)}"]`);
+    if (again) again.focus({ preventScroll: true }); else popup.focus({ preventScroll: true });
+    return;
+  }
   const act = e.target.closest('[data-action]');
   if (!act) return;
   if (act.dataset.action === 'refresh') cctvRefresh(act.dataset.camId);
@@ -381,8 +403,11 @@ async function setupHls(streamUrl){
 function showCamera(cam, event){
   // Group all dots stacked under the click so the user can pick the exact one.
   currentCluster = getNearby(cam);
+  if (popup.style.display !== 'block') popupOpener = document.activeElement;
   renderCameraInto(cam);
   popup.style.display = 'block';
+  popup.setAttribute('aria-hidden', 'false');
+  popup.focus({ preventScroll: true });
   // On phones the CSS centers the popup as a modal; don't fight it.
   if (window.innerWidth <= 760){ popup.style.left = ''; popup.style.top = ''; return; }
   // Desktop: place near the cursor, clamped to the viewport (position:fixed,

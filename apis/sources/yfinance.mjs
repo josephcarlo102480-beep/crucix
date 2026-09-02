@@ -30,18 +30,31 @@ const SYMBOLS = {
   '^VIX': 'VIX',
 };
 
-async function fetchQuote(symbol) {
+function quoteError(symbol, message) {
+  return { symbol, name: SYMBOLS[symbol] || symbol, error: message };
+}
+
+async function fetchQuote(symbol, opts = {}) {
   try {
     const url = `${BASE}/${encodeURIComponent(symbol)}?range=5d&interval=1d&includePrePost=false`;
     const data = await safeFetch(url, {
       timeout: 8000,
+      signal: opts.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
 
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
+    if (!data || data.error) {
+      return quoteError(symbol, data?.error || 'no response from Yahoo Finance');
+    }
+    if (data.rawText !== undefined) {
+      return quoteError(symbol, `non-JSON body: ${String(data.rawText).slice(0, 100)}`);
+    }
+    const result = data.chart?.result?.[0];
+    if (!result) {
+      return quoteError(symbol, data.chart?.error?.description || 'Yahoo Finance returned no chart result');
+    }
 
     const meta = result.meta || {};
     const quotes = result.indicators?.quote?.[0] || {};
@@ -65,6 +78,10 @@ async function fetchQuote(symbol) {
       }
     }
 
+    if (!Number.isFinite(price)) {
+      return quoteError(symbol, 'Yahoo Finance returned no price for this symbol');
+    }
+
     return {
       symbol,
       name: SYMBOLS[symbol] || meta.shortName || symbol,
@@ -78,43 +95,47 @@ async function fetchQuote(symbol) {
       history,
     };
   } catch (e) {
-    return { symbol, name: SYMBOLS[symbol] || symbol, error: e.message };
+    return quoteError(symbol, e.message);
   }
 }
 
-export async function briefing() {
-  return collect();
+export async function briefing(opts = {}) {
+  return collect(opts);
 }
 
-export async function collect() {
+export async function collect(opts = {}) {
+  const { signal } = opts || {};
   const symbols = Object.keys(SYMBOLS);
   const results = await Promise.allSettled(
-    symbols.map(s => fetchQuote(s))
+    symbols.map(s => fetchQuote(s, { signal }))
   );
 
   const quotes = {};
+  const failures = [];
   let ok = 0;
-  let failed = 0;
 
-  for (const r of results) {
-    const q = r.status === 'fulfilled' ? r.value : null;
-    if (q && !q.error) {
-      quotes[q.symbol] = q;
-      ok++;
-    } else {
-      failed++;
-      const sym = q?.symbol || 'unknown';
-      quotes[sym] = q || { symbol: sym, error: 'fetch failed' };
-    }
-  }
+  // Every failure is filed under its own symbol. The old code collapsed
+  // rejections into a single `quotes.unknown` entry, so a broken symbol both
+  // vanished from its group and overwrote the previous broken symbol.
+  results.forEach((r, i) => {
+    const symbol = symbols[i];
+    const q = r.status === 'fulfilled'
+      ? (r.value || quoteError(symbol, 'fetch returned nothing'))
+      : quoteError(symbol, r.reason?.message || 'fetch failed');
+    quotes[symbol] = q;
+    if (q.error) failures.push({ symbol, error: q.error });
+    else ok++;
+  });
 
   // Categorize for easy dashboard consumption
   return {
+    source: 'YFinance',
+    timestamp: new Date().toISOString(),
     quotes,
     summary: {
       totalSymbols: symbols.length,
       ok,
-      failed,
+      failed: failures.length,
       timestamp: new Date().toISOString(),
     },
     indexes: pickGroup(quotes, ['SPY', 'QQQ', 'DIA', 'IWM']),
@@ -122,9 +143,17 @@ export async function collect() {
     commodities: pickGroup(quotes, ['GC=F', 'SI=F', 'CL=F', 'BZ=F', 'NG=F']),
     crypto: pickGroup(quotes, ['BTC-USD', 'ETH-USD']),
     volatility: pickGroup(quotes, ['^VIX']),
+    ...(failures.length ? {
+      error: failures.length === symbols.length
+        ? `Yahoo Finance returned no usable quotes: ${failures[0].error}`
+        : `Yahoo Finance failed for ${failures.length}/${symbols.length} symbols: ${failures.map(f => f.symbol).join(', ')}`,
+      failures,
+    } : {}),
   };
 }
 
+// Only quotes that actually carry a price belong in a group — an errored entry
+// rendered as a tile with `undefined` price.
 function pickGroup(quotes, symbols) {
-  return symbols.map(s => quotes[s]).filter(Boolean);
+  return symbols.map(s => quotes[s]).filter(q => q && !q.error);
 }

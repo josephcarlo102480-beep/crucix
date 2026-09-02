@@ -12,6 +12,7 @@
  */
 
 import { Router } from 'express';
+import { clampInt } from '../../lib/util/net.mjs';
 import { getGroup, search, groupCatalog } from './tleCatalog.mjs';
 
 const router = Router();
@@ -21,9 +22,8 @@ const router = Router();
 const BROWSER_CACHE = 'public, max-age=300';
 
 function clampLimit(raw, max) {
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  return Math.min(n, max);
+  const n = clampInt(raw, { min: 0, max, fallback: 0 });
+  return n < 1 ? undefined : n;
 }
 
 router.get('/groups', (req, res) => {

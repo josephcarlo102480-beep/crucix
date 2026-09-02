@@ -46,6 +46,7 @@ export async function searchPatents(query, opts = {}) {
     limit = 10,
     sort = 'patent_date',
     sortDir = 'desc',
+    signal,
   } = opts;
 
   // PatentsView v1 API uses query params with JSON values
@@ -74,12 +75,12 @@ export async function searchPatents(query, opts = {}) {
     s: String(limit),
   });
 
-  return safeFetch(`${BASE}/patent/?${params}`, { timeout: 20000 });
+  return safeFetch(`${BASE}/patent/?${params}`, { timeout: 20000, signal });
 }
 
 // Search by assignee organization
 export async function searchByAssignee(orgName, opts = {}) {
-  const { since = daysAgo(180), limit = 10 } = opts;
+  const { since = daysAgo(180), limit = 10, signal } = opts;
 
   const q = JSON.stringify({
     _and: [
@@ -105,7 +106,7 @@ export async function searchByAssignee(orgName, opts = {}) {
     s: String(limit),
   });
 
-  return safeFetch(`${BASE}/patent/?${params}`, { timeout: 20000 });
+  return safeFetch(`${BASE}/patent/?${params}`, { timeout: 20000, signal });
 }
 
 // Compact patent record for briefing output
@@ -119,19 +120,32 @@ function compactPatent(p) {
   };
 }
 
-// Search a single domain, combining its keyword terms
-async function searchDomain(domain, since) {
+// Search a single domain, combining its keyword terms.
+// Returns `{ patents, error }` — an empty list from a failed request is not
+// the same fact as "this domain had no filings", and the caller needs to tell
+// them apart before it claims nothing unusual is happening.
+async function searchDomain(domain, since, signal) {
   const terms = domain.terms.join(' ');
-  const data = await searchPatents(terms, { since, limit: 10 });
+  const data = await searchPatents(terms, { since, limit: 10, signal });
+
+  if (!data || data.error) {
+    return { patents: [], error: data?.error || 'PatentsView returned no response' };
+  }
+  if (data.rawText !== undefined) {
+    return { patents: [], error: `PatentsView returned a non-JSON body: ${String(data.rawText).slice(0, 120)}` };
+  }
 
   // PatentsView v1 returns { patents: [...] } or similar
-  const patents = data?.patents || data?.results || [];
-  if (!Array.isArray(patents)) return [];
-  return patents.map(compactPatent);
+  const patents = data.patents || data.results;
+  if (!Array.isArray(patents)) {
+    return { patents: [], error: 'PatentsView response had no patents array' };
+  }
+  return { patents: patents.map(compactPatent) };
 }
 
 // Briefing — search recent patents in key strategic tech areas
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
   const since = daysAgo(90);
   const domainEntries = Object.entries(STRATEGIC_DOMAINS);
   const recentPatents = {};
@@ -140,10 +154,12 @@ export async function briefing() {
   // Run all domain searches in parallel
   const results = await Promise.all(
     domainEntries.map(async ([key, domain]) => {
-      const patents = await searchDomain(domain, since);
-      return { key, label: domain.label, patents };
+      const { patents, error } = await searchDomain(domain, since, signal);
+      return { key, label: domain.label, patents, error };
     })
   );
+
+  const failures = results.filter(r => r.error);
 
   let totalFound = 0;
   for (const { key, label, patents } of results) {
@@ -189,12 +205,19 @@ export async function briefing() {
     searchWindow: `${since} to ${new Date().toISOString().split('T')[0]}`,
     totalFound,
     recentPatents,
+    // "Nothing unusual" is only sayable when every domain search actually ran.
     signals: signals.length > 0
       ? signals
-      : ['No unusual patent filing patterns detected in strategic domains'],
+      : (failures.length ? [] : ['No unusual patent filing patterns detected in strategic domains']),
     domains: Object.fromEntries(
       domainEntries.map(([key, domain]) => [key, domain.label])
     ),
+    ...(failures.length ? {
+      error: failures.length === results.length
+        ? `PatentsView unavailable for all ${results.length} domains: ${failures[0].error}`
+        : `PatentsView unavailable for ${failures.length}/${results.length} domains: ${failures[0].error}`,
+      failedDomains: failures.map(f => ({ domain: f.key, error: f.error })),
+    } : {}),
   };
 }
 

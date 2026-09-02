@@ -23,12 +23,14 @@
  * name-filtered pseudo-groups like `military`.
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { atomicWriteJsonSync } from '../../lib/util/fs.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = join(__dirname, '..', '..', 'data', 'tle');
+const CACHE_DIR = process.env.CRUCIX_TLE_CACHE_DIR
+  || join(__dirname, '..', '..', 'data', 'tle');
 
 const CELESTRAK = 'https://celestrak.org/NORAD/elements/gp.php';
 const SUPPLEMENTAL = 'https://celestrak.org/NORAD/elements/supplemental/sup-gp.php';
@@ -39,6 +41,7 @@ const FETCH_TIMEOUT_MS = 30000;
 const TTL_MS = 2.5 * 60 * 60 * 1000;
 // How long to sit on a not-modified before asking again.
 const NOT_MODIFIED_BACKOFF_MS = 30 * 60 * 1000;
+const FAILURE_RETRY_MS = 5 * 60 * 1000;
 const DISK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Elements older than this propagate to garbage — SGP4 error grows fast.
@@ -123,6 +126,13 @@ export const GROUPS = {
 
 const memory = new Map();   // celestrak group name -> { fetchedAt, sats }
 const inFlight = new Map(); // celestrak group name -> Promise
+const idsBySource = new Map(); // celestrak group name -> Map<NORAD id, sat>
+
+function remember(source, entry) {
+  memory.set(source, entry);
+  idsBySource.set(source, new Map(entry.sats.map((sat) => [sat.id, sat])));
+  return entry;
+}
 
 function ensureCacheDir() {
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
@@ -188,7 +198,7 @@ function readDisk(source) {
 function writeDisk(source, entry) {
   try {
     ensureCacheDir();
-    writeFileSync(cacheFile(source), JSON.stringify(entry));
+    atomicWriteJsonSync(cacheFile(source), entry);
   } catch (err) {
     console.warn(`[tle] could not cache ${source} to disk: ${err.message}`);
   }
@@ -226,7 +236,7 @@ async function fetchSourceText(source) {
 async function loadGroup(source) {
   const cached = memory.get(source) || (() => {
     const disk = readDisk(source);
-    if (disk) memory.set(source, disk);
+    if (disk) remember(source, disk);
     return disk;
   })();
 
@@ -243,15 +253,18 @@ async function loadGroup(source) {
             { status: 503 },
           );
         }
-        const held = { ...cached, checkedAt: Date.now() - TTL_MS + NOT_MODIFIED_BACKOFF_MS };
-        memory.set(source, held);
-        writeDisk(source, held);
+        const held = {
+          ...cached,
+          checkedAt: Date.now() - TTL_MS + NOT_MODIFIED_BACKOFF_MS,
+          stale: false,
+        };
+        remember(source, held);
         return held;
       }
       const sats = parseTleText(text);
       if (!sats.length) throw new Error('no elements parsed');
       const entry = { fetchedAt: Date.now(), checkedAt: Date.now(), sats, stale: false };
-      memory.set(source, entry);
+      remember(source, entry);
       writeDisk(source, entry);
       return entry;
     } catch (err) {
@@ -259,8 +272,12 @@ async function loadGroup(source) {
       // to a few km a day out. Only a total absence of data is an error.
       if (cached) {
         console.warn(`[tle] ${source} refresh failed (${err.message}), serving cached copy`);
-        const stale = { ...cached, checkedAt: Date.now(), stale: true };
-        memory.set(source, stale);
+        const stale = {
+          ...cached,
+          checkedAt: Date.now() - TTL_MS + FAILURE_RETRY_MS,
+          stale: true,
+        };
+        remember(source, stale);
         return stale;
       }
       throw err;
@@ -302,7 +319,7 @@ export async function getGroup(groupId, limit) {
     try {
       entry = await loadGroup(source);
     } catch (err) {
-      failures.push(`${source}: ${err.message}`);
+      failures.push({ group: source, error: err.message });
       continue;
     }
     fetchedAt = Math.min(fetchedAt, entry.fetchedAt);
@@ -316,7 +333,10 @@ export async function getGroup(groupId, limit) {
   }
 
   if (!sats.length && failures.length) {
-    throw Object.assign(new Error(failures.join('; ')), { status: 502 });
+    throw Object.assign(
+      new Error(failures.map(({ group, error }) => `${group}: ${error}`).join('; ')),
+      { status: 502 },
+    );
   }
 
   // Freshest elements first, so a cap keeps the most trustworthy objects.
@@ -330,6 +350,7 @@ export async function getGroup(groupId, limit) {
     color: def.color,
     fetchedAt,
     stale,
+    failures,
     total: sats.length,
     count: shown.length,
     sats: shown,
@@ -374,13 +395,24 @@ export async function search(query, limit = 40) {
   const seen = new Set();
   const hits = [];
 
+  // A numeric query gets a direct NORAD lookup before the bounded substring
+  // scan. This prevents an exact id near the end of the 16k-object catalogue
+  // from being skipped after enough incidental name matches fill the scan cap.
+  if (numeric !== null) {
+    for (const sourceIds of idsBySource.values()) {
+      const sat = sourceIds.get(numeric);
+      if (sat && isUsable(sat, now)) {
+        seen.add(sat.id);
+        hits.push(sat);
+        break;
+      }
+    }
+  }
+
   for (const sats of pool) {
     for (const sat of sats) {
       if (seen.has(sat.id) || !isUsable(sat, now)) continue;
-      if (numeric !== null && sat.id === numeric) {
-        seen.add(sat.id);
-        hits.unshift(sat);
-      } else if (sat.name.toUpperCase().includes(needle)) {
+      if (sat.name.toUpperCase().includes(needle)) {
         seen.add(sat.id);
         hits.push(sat);
       }
@@ -419,6 +451,7 @@ export function groupCatalog() {
  * what search needs — better to pay for it at boot than on a keystroke.
  */
 export async function warmTle(groups = ['stations', 'visual', 'military']) {
+  startTleWarm(groups);
   for (const id of groups) {
     try {
       await getGroup(id);
@@ -426,4 +459,24 @@ export async function warmTle(groups = ['stations', 'visual', 'military']) {
       console.warn(`[tle] warm ${id} failed: ${err.message}`);
     }
   }
+}
+
+let warmTimer = null;
+let warmGroups = ['stations', 'visual', 'military'];
+
+function startTleWarm(groups) {
+  warmGroups = [...groups];
+  if (warmTimer) return;
+  warmTimer = setInterval(() => {
+    warmTle(warmGroups).catch((err) => {
+      console.warn(`[tle] periodic warm failed: ${err.message}`);
+    });
+  }, TTL_MS);
+  warmTimer.unref?.();
+}
+
+/** Stop the periodic background re-warm (called during server shutdown). */
+export function stopTleWarm() {
+  if (warmTimer) clearInterval(warmTimer);
+  warmTimer = null;
 }

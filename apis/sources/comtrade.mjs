@@ -3,7 +3,7 @@
 // Tracks commodity trade flows between nations: crude oil, gas, gold, semiconductors, arms.
 // Reporter codes: 842 (US), 156 (China), 276 (Germany), 392 (Japan), 826 (UK), 643 (Russia), 356 (India)
 
-import { safeFetch, daysAgo, today } from '../utils/fetch.mjs';
+import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://comtradeapi.un.org/public/v1';
 
@@ -35,6 +35,13 @@ const COUNTRIES = {
   380: 'Italy',
 };
 
+// Comtrade is slow and the sweep kills a source at 30s, so single attempts are
+// kept short and the briefing fans out with a small concurrency limit.
+const REQUEST_TIMEOUT_MS = 6000;
+const CONCURRENCY = 4;
+// Leave headroom inside the 30s source budget for the optional second-year pass.
+const BUDGET_MS = 22_000;
+
 // Get trade data for a specific reporter, commodity, and period
 export async function getTradeData(opts = {}) {
   const {
@@ -43,6 +50,7 @@ export async function getTradeData(opts = {}) {
     cmdCode = '2709',          // default: crude oil
     flowCode = 'M',            // M = imports, X = exports
     partnerCode = null,        // null = all partners
+    signal,
   } = opts;
 
   const params = new URLSearchParams({
@@ -53,7 +61,36 @@ export async function getTradeData(opts = {}) {
   });
   if (partnerCode) params.set('partnerCode', String(partnerCode));
 
-  return safeFetch(`${BASE}/preview/C/A/HS?${params}`, { timeout: 20000 });
+  return safeFetch(`${BASE}/preview/C/A/HS?${params}`, {
+    timeout: REQUEST_TIMEOUT_MS,
+    retries: 0,
+    signal,
+  });
+}
+
+// Pull `records` out of whichever envelope Comtrade used, or report the failure.
+function readRecords(data) {
+  if (!data || data.error) return { error: data?.error || 'Comtrade returned no response' };
+  if (data.rawText !== undefined) {
+    return { error: `Comtrade returned a non-JSON body: ${String(data.rawText).slice(0, 120)}` };
+  }
+  const records = data.data || data.dataset;
+  if (!Array.isArray(records)) return { error: 'Comtrade response had no data array' };
+  return { records };
+}
+
+// Run `fn` over `items` at most `limit` at a time, preserving input order.
+async function mapWithConcurrency(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.allSettled(workers);
+  return out;
 }
 
 // Get bilateral trade between two countries for a commodity
@@ -64,25 +101,6 @@ export async function getBilateralTrade(reporter, partner, cmdCode, period) {
     cmdCode,
     period: period || new Date().getFullYear(),
   });
-}
-
-// Check multiple commodities for a given reporter
-async function checkReporterCommodities(reporterCode, commodityCodes, period) {
-  const results = [];
-  for (const cmdCode of commodityCodes) {
-    const data = await getTradeData({
-      reporterCode,
-      cmdCode,
-      period,
-      flowCode: 'M', // imports
-    });
-    results.push({
-      commodity: STRATEGIC_COMMODITIES[cmdCode] || cmdCode,
-      cmdCode,
-      data,
-    });
-  }
-  return results;
 }
 
 // Compact a trade record for briefing output
@@ -126,71 +144,101 @@ function detectAnomalies(tradeRecords) {
 }
 
 // Briefing — check recent trade data for key commodities, detect anomalies
-export async function briefing() {
-  const currentYear = new Date().getFullYear();
-  const prevYear = currentYear - 1;
+//
+// Annual ("A") HS data for the *current* year does not exist mid-year, so the
+// old code spent one guaranteed-empty request per pair before retrying the
+// previous year. We ask for the previous year first and only reach further
+// back when that year genuinely returned nothing (never when it errored).
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+  const deadline = Date.now() + BUDGET_MS;
 
-  // Key combinations to check: US imports of strategic commodities
+  const prevYear = new Date().getFullYear() - 1;
+
+  // Key combinations to check: US/China imports of strategic commodities
   const keyCommodities = ['2709', '2711', '7108', '8542', '93'];
   const keyReporters = [842, 156]; // US, China
 
+  const pairs = keyReporters.flatMap(reporter =>
+    keyCommodities.map(cmdCode => ({ reporter, cmdCode }))
+  );
+
+  const fetched = await mapWithConcurrency(pairs, CONCURRENCY, async ({ reporter, cmdCode }) => {
+    const first = readRecords(await getTradeData({
+      reporterCode: reporter,
+      cmdCode,
+      period: prevYear,
+      flowCode: 'M',
+      signal,
+    }));
+
+    // An upstream failure is terminal for this pair — retrying an older year
+    // would just burn another request against the same broken endpoint.
+    if (first.error) return { reporter, cmdCode, period: prevYear, error: first.error };
+    if (first.records.length) return { reporter, cmdCode, period: prevYear, records: first.records };
+
+    // Genuinely empty year: reach back one more, budget permitting.
+    if (Date.now() > deadline || signal?.aborted) {
+      return { reporter, cmdCode, period: prevYear, records: [] };
+    }
+    const second = readRecords(await getTradeData({
+      reporterCode: reporter,
+      cmdCode,
+      period: prevYear - 1,
+      flowCode: 'M',
+      signal,
+    }));
+    if (second.error) return { reporter, cmdCode, period: prevYear - 1, error: second.error };
+    return { reporter, cmdCode, period: prevYear - 1, records: second.records };
+  });
+
   const tradeFlows = [];
   const signals = [];
+  const failures = [];
 
-  for (const reporter of keyReporters) {
-    for (const cmdCode of keyCommodities) {
-      // Try current year first, fall back to previous year
-      let data = await getTradeData({
-        reporterCode: reporter,
-        cmdCode,
-        period: currentYear,
-        flowCode: 'M',
+  for (const entry of fetched) {
+    if (!entry) continue;
+    if (entry.error) {
+      failures.push({
+        reporter: COUNTRIES[entry.reporter] || entry.reporter,
+        commodity: STRATEGIC_COMMODITIES[entry.cmdCode] || entry.cmdCode,
+        error: entry.error,
       });
-
-      // Comtrade returns data in different structures; normalize
-      let records = data?.data || data?.dataset || [];
-      if (!Array.isArray(records)) records = [];
-
-      // If no current year data, try previous year
-      if (records.length === 0) {
-        data = await getTradeData({
-          reporterCode: reporter,
-          cmdCode,
-          period: prevYear,
-          flowCode: 'M',
-        });
-        records = data?.data || data?.dataset || [];
-        if (!Array.isArray(records)) records = [];
-      }
-
-      const compact = records.slice(0, 10).map(compactRecord);
-      if (compact.length > 0) {
-        tradeFlows.push({
-          reporter: COUNTRIES[reporter] || reporter,
-          commodity: STRATEGIC_COMMODITIES[cmdCode] || cmdCode,
-          cmdCode,
-          topPartners: compact,
-          totalRecords: records.length,
-        });
-
-        // Run anomaly detection
-        const anomalies = detectAnomalies(compact);
-        signals.push(...anomalies);
-      }
+      continue;
     }
+
+    const compact = entry.records.slice(0, 10).map(compactRecord);
+    if (!compact.length) continue;
+
+    tradeFlows.push({
+      reporter: COUNTRIES[entry.reporter] || entry.reporter,
+      commodity: STRATEGIC_COMMODITIES[entry.cmdCode] || entry.cmdCode,
+      cmdCode: entry.cmdCode,
+      period: entry.period,
+      topPartners: compact,
+      totalRecords: entry.records.length,
+    });
+
+    signals.push(...detectAnomalies(compact));
   }
 
   return {
     source: 'UN Comtrade',
     timestamp: new Date().toISOString(),
+    period: prevYear,
     tradeFlows,
+    // "No anomalies" is a finding only when the queries actually ran.
     signals: signals.length > 0
       ? signals
-      : ['No significant trade anomalies detected in sampled commodities'],
-    status: tradeFlows.length > 0 ? 'ok' : 'no_data',
-    note: 'Comtrade data often lags 1-2 months. Recent periods may be incomplete.',
+      : (failures.length ? [] : ['No significant trade anomalies detected in sampled commodities']),
+    status: tradeFlows.length > 0 ? 'ok' : (failures.length ? 'error' : 'no_data'),
+    note: 'Comtrade annual data lags; the current calendar year is never available.',
     coveredCommodities: STRATEGIC_COMMODITIES,
     coveredCountries: COUNTRIES,
+    ...(failures.length ? {
+      error: `Comtrade failed for ${failures.length}/${pairs.length} reporter/commodity pairs: ${failures[0].error}`,
+      failures,
+    } : {}),
   };
 }
 

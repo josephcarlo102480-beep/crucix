@@ -4,10 +4,8 @@
 // To enable: register an app at https://www.reddit.com/prefs/apps/ and set
 // REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in .env
 
-import { safeFetch } from '../utils/fetch.mjs';
+import { safeFetch, delay } from '../utils/fetch.mjs';
 import '../utils/env.mjs';
-
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const SUBREDDITS = [
   'worldnews',
@@ -17,38 +15,46 @@ const SUBREDDITS = [
   'commodities',
 ];
 
-// Get OAuth token using client credentials flow (application-only)
-async function getToken() {
+// Get OAuth token using client credentials flow (application-only).
+// Returns `{ token }`, `{ error }`, or `{}` when no credentials are configured.
+// The old version had no timeout at all, so a hung Reddit login could eat the
+// whole sweep budget before the first subreddit was ever requested.
+async function getToken(signal) {
   const clientId = process.env.REDDIT_CLIENT_ID;
   const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
+  if (!clientId || !clientSecret) return {};
 
-  try {
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const res = await fetch('https://www.reddit.com/api/v1/access_token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Crucix/1.0 intelligence-engine',
-      },
-      body: 'grant_type=client_credentials',
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.access_token || null;
-  } catch {
-    return null;
+  const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const data = await safeFetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    timeout: 8000,
+    retries: 0,
+    signal,
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'Crucix/1.0 intelligence-engine',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  if (!data || data.error) return { error: data?.error || 'no response from Reddit token endpoint' };
+  if (!data.access_token) {
+    return { error: `Reddit token response had no access_token${data.rawText !== undefined ? `: ${String(data.rawText).slice(0, 100)}` : ''}` };
   }
+  return { token: data.access_token };
 }
 
 // Fetch hot posts — tries OAuth first, then falls back to public endpoint
 export async function getHot(subreddit, opts = {}) {
-  const { limit = 10, token = null } = opts;
+  const { limit = 10, token = null, signal } = opts;
 
   if (token) {
     // Use OAuth endpoint
     return safeFetch(`https://oauth.reddit.com/r/${subreddit}/hot?limit=${limit}&raw_json=1`, {
+      timeout: 10000,
+      retries: 0,
+      signal,
       headers: {
         'Authorization': `Bearer ${token}`,
         'User-Agent': 'Crucix/1.0 intelligence-engine',
@@ -58,6 +64,9 @@ export async function getHot(subreddit, opts = {}) {
 
   // Try public endpoint (may 403)
   return safeFetch(`https://www.reddit.com/r/${subreddit}/hot.json?limit=${limit}&raw_json=1`, {
+    timeout: 10000,
+    retries: 0,
+    signal,
     headers: { 'User-Agent': 'Crucix/1.0 intelligence-engine' },
   });
 }
@@ -74,8 +83,9 @@ function compactPost(child) {
   };
 }
 
-export async function briefing() {
-  const token = await getToken();
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+  const { token, error: tokenError } = await getToken(signal);
 
   if (!token && !process.env.REDDIT_CLIENT_ID) {
     return {
@@ -86,18 +96,43 @@ export async function briefing() {
     };
   }
 
+  // Credentials are configured but the login failed. Falling through to the
+  // public endpoint just trades one real error for five silent 403s.
+  if (!token) {
+    return {
+      source: 'Reddit',
+      timestamp: new Date().toISOString(),
+      error: `Reddit OAuth failed: ${tokenError || 'unknown error'}`,
+      subreddits: {},
+    };
+  }
+
   const subredditResults = {};
-  for (const sub of SUBREDDITS) {
-    const result = await getHot(sub, { limit: 10, token });
-    const children = result?.data?.children || [];
-    subredditResults[sub] = children.map(compactPost).filter(Boolean);
-    await delay(token ? 1000 : 2000);
+  const errors = [];
+
+  for (let i = 0; i < SUBREDDITS.length; i++) {
+    const sub = SUBREDDITS[i];
+    const result = await getHot(sub, { limit: 10, token, signal });
+
+    if (!result || result.error || !Array.isArray(result.data?.children)) {
+      errors.push(`r/${sub}: ${result?.error || 'response had no listing'}`);
+      subredditResults[sub] = [];
+    } else {
+      subredditResults[sub] = result.data.children.map(compactPost).filter(Boolean);
+    }
+
+    if (i < SUBREDDITS.length - 1 && !signal?.aborted) await delay(1000);
   }
 
   return {
     source: 'Reddit',
     timestamp: new Date().toISOString(),
     subreddits: subredditResults,
+    ...(errors.length ? {
+      error: errors.length === SUBREDDITS.length
+        ? `Reddit unavailable for all subreddits: ${errors[0]}`
+        : `Reddit unavailable for ${errors.length}/${SUBREDDITS.length} subreddits: ${errors.join('; ')}`,
+    } : {}),
   };
 }
 

@@ -2,22 +2,24 @@
 // No auth required for public search. Real-time social sentiment on geopolitical/market topics.
 // Public API: app.bsky.feed.searchPosts (full-text search, sorted by latest)
 
-import { safeFetch } from '../utils/fetch.mjs';
+import { safeFetch, delay } from '../utils/fetch.mjs';
 
 const BASE = 'https://public.api.bsky.app/xrpc';
 
-// Rate-limit-safe delay
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-
 // Search public posts by query string
 export async function searchPosts(query, opts = {}) {
-  const { limit = 25, sort = 'latest' } = opts;
+  const { limit = 25, sort = 'latest', signal } = opts;
   const params = new URLSearchParams({
     q: query,
     limit: String(limit),
     sort,
   });
-  return safeFetch(`${BASE}/app.bsky.feed.searchPosts?${params}`);
+  // One short attempt: the sweep budget is 30s and three queries run in series.
+  return safeFetch(`${BASE}/app.bsky.feed.searchPosts?${params}`, {
+    timeout: 8000,
+    retries: 0,
+    signal,
+  });
 }
 
 // Compact a post for briefing output
@@ -40,23 +42,31 @@ function categorize(posts, keywords) {
 }
 
 // Briefing — search key geopolitical/market terms and categorize
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
   const searchQueries = [
     { label: 'conflict', q: 'Iran war OR missile strike OR sanctions' },
     { label: 'markets', q: 'market crash OR oil prices OR gold OR recession' },
     { label: 'health', q: 'pandemic OR outbreak OR epidemic' },
   ];
 
-  const allPosts = [];
   const topicResults = {};
+  const errors = [];
 
-  for (const { label, q } of searchQueries) {
-    const result = await searchPosts(q, { limit: 25 });
-    const posts = (result?.posts || []).map(compactPost);
-    topicResults[label] = posts;
-    allPosts.push(...posts);
-    // Small delay between searches to be polite to the API
-    await delay(1500);
+  for (let i = 0; i < searchQueries.length; i++) {
+    const { label, q } = searchQueries[i];
+    const result = await searchPosts(q, { limit: 25, signal });
+
+    if (!result || result.error || !Array.isArray(result.posts)) {
+      errors.push(`${label}: ${result?.error || 'response had no posts array'}`);
+      topicResults[label] = [];
+    } else {
+      topicResults[label] = result.posts.map(compactPost);
+    }
+
+    // Be polite between searches — but not after the last one, which only
+    // burned 1.5s of the sweep budget for nothing.
+    if (i < searchQueries.length - 1 && !signal?.aborted) await delay(1500);
   }
 
   return {
@@ -67,6 +77,11 @@ export async function briefing() {
       markets: topicResults.markets || [],
       health: topicResults.health || [],
     },
+    ...(errors.length ? {
+      error: errors.length === searchQueries.length
+        ? `Bluesky search failed for all topics: ${errors[0]}`
+        : `Bluesky search failed for ${errors.length}/${searchQueries.length} topics: ${errors.join('; ')}`,
+    } : {}),
   };
 }
 

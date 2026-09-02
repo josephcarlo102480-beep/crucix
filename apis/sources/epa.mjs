@@ -59,7 +59,7 @@ const THRESHOLDS = {
 
 // Get recent RadNet laboratory results joined to their analysis and sample.
 export async function getAnalyticalResults(opts = {}) {
-  const { rows = 100 } = opts;
+  const { rows = 100, signal } = opts;
   const since = new Date(Date.now() - RECENT_LOOKBACK_DAYS * 86400_000).toISOString().slice(0, 10);
   const path = [
     'radnet.erm_analysis',
@@ -72,16 +72,16 @@ export async function getAnalyticalResults(opts = {}) {
   ].join('/');
   return safeFetch(
     `${BASE}/${path}`,
-    { timeout: RESULTS_TIMEOUT_MS, retries: 0 }
+    { timeout: RESULTS_TIMEOUT_MS, retries: 0, signal }
   );
 }
 
-async function getLocations(locationNumbers) {
+async function getLocations(locationNumbers, opts = {}) {
   const ids = [...new Set(locationNumbers.filter(Number.isFinite))].slice(0, 250);
   if (!ids.length) return [];
   return safeFetch(
     `${BASE}/radnet.erm_location/loc_num/in/${ids.join(',')}/1:${ids.length}/json`,
-    { timeout: LOCATIONS_TIMEOUT_MS, retries: 0 }
+    { timeout: LOCATIONS_TIMEOUT_MS, retries: 0, signal: opts.signal }
   );
 }
 
@@ -136,13 +136,17 @@ function checkReading(reading) {
 }
 
 // Briefing — get recent radiation readings from EPA network, flag anomalies
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
   const readings = [];
   const signals = [];
 
-  const recentData = await getAnalyticalResults({ rows: 100 });
-  if (recentData?.error) {
-    const error = recentData.error;
+  const recentData = await getAnalyticalResults({ rows: 100, signal });
+  // Envirofacts answers a broken query with a JSON object or an HTML page, not
+  // a row array. Anything that is not an array is a failure, not "no readings".
+  if (recentData?.error || !Array.isArray(recentData)) {
+    const error = recentData?.error
+      || `EPA RadNet returned an unexpected payload (${recentData === null ? 'null' : typeof recentData})`;
     if (lastSuccessfulBriefing) {
       return {
         ...lastSuccessfulBriefing,
@@ -154,8 +158,8 @@ export async function briefing() {
     throw new Error(`EPA RadNet requests failed: ${error || 'unknown error'}`);
   }
 
-  const recentRecords = Array.isArray(recentData) ? recentData : [];
-  const locationData = await getLocations(recentRecords.map(record => Number(record.loc_num)));
+  const recentRecords = recentData;
+  const locationData = await getLocations(recentRecords.map(record => Number(record.loc_num)), { signal });
   const locations = new Map(
     (Array.isArray(locationData) ? locationData : []).map(location => [Number(location.loc_num), location])
   );
@@ -205,15 +209,20 @@ export async function briefing() {
     totalReadings: readings.length,
     readings: readings.slice(0, 50), // cap for briefing size
     stateSummary,
+    // With zero readings there is nothing to be reassured about; saying "no
+    // elevated results" would be a claim the data cannot support.
     signals: signals.length > 0
       ? signals
-      : ['No elevated EPA RadNet laboratory results detected in the latest available samples'],
+      : (readings.length ? ['No elevated EPA RadNet laboratory results detected in the latest available samples'] : []),
     monitoredAnalytes: KEY_ANALYTES,
     thresholds: THRESHOLDS,
     locationWarning: locationData?.error ? `Location metadata unavailable: ${locationData.error}` : undefined,
     note: 'EPA laboratory results are quality-controlled and may lag collection by days or weeks. Near-real-time gamma data are a separate RadNet dataset.',
   };
-  lastSuccessfulBriefing = result;
+  // An empty result must never become the stale fallback — it would turn one
+  // bad response into a permanently blank "successful" cache.
+  if (readings.length) lastSuccessfulBriefing = result;
+  else result.error = 'EPA RadNet returned zero laboratory results for the lookback window';
   return result;
 }
 

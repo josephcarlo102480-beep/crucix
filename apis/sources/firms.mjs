@@ -3,6 +3,7 @@
 // Detects military strikes, explosions, wildfires, industrial fires.
 
 import '../utils/env.mjs';
+import { safeFetch } from '../utils/fetch.mjs';
 
 const FIRMS_BASE = 'https://firms.modaps.eosdis.nasa.gov/api/area/csv';
 
@@ -20,33 +21,36 @@ function parseCSV(rawText) {
   });
 }
 
+// FIRMS answers an invalid/expired MAP_KEY with HTTP 200 and a plain-text
+// message ("Invalid MAP_KEY", quota text, an HTML error page...). Only a body
+// whose header row actually declares a `latitude` column is fire data; anything
+// else is an upstream failure wearing a 200.
+function isFireCsv(text) {
+  const header = String(text || '').split('\n', 1)[0];
+  return header.split(',').some(col => col.trim().toLowerCase() === 'latitude');
+}
+
 // Fetch fires in a bounding box
 async function fetchFires(opts = {}) {
   const {
     west = -180, south = -90, east = 180, north = 90,
     days = 1,
     source = 'VIIRS_SNPP_NRT',
+    signal,
   } = opts;
 
   const key = process.env.FIRMS_MAP_KEY;
   if (!key) return { error: 'No FIRMS_MAP_KEY' };
 
   const url = `${FIRMS_BASE}/${key}/${source}/${west},${south},${east},${north}/${days}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'Crucix/1.0' },
-    });
-    clearTimeout(timer);
-    if (!res.ok) return { error: `HTTP ${res.status}` };
-    const text = await res.text();
-    return parseCSV(text);
-  } catch (e) {
-    clearTimeout(timer);
-    return { error: e.message };
+  const res = await safeFetch(url, { timeout: 25000, retries: 0, responseType: 'text', signal });
+  if (res?.error) return { error: res.error };
+
+  const text = res?.text ?? '';
+  if (!isFireCsv(text)) {
+    return { error: `FIRMS returned a non-CSV body (bad MAP_KEY or quota?): ${text.trim().slice(0, 120)}` };
   }
+  return parseCSV(text);
 }
 
 // Key conflict/hotspot zones
@@ -99,7 +103,8 @@ function analyzeFires(fires, regionLabel) {
 }
 
 // Briefing
-export async function briefing() {
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
   const key = process.env.FIRMS_MAP_KEY;
   if (!key) {
     return {
@@ -114,7 +119,7 @@ export async function briefing() {
   const entries = Object.entries(HOTSPOTS);
   const rawResults = await Promise.all(
     entries.map(async ([key, box]) => {
-      const fires = await fetchFires({ ...box, days: 2 });
+      const fires = await fetchFires({ ...box, days: 2, signal });
       return { key, label: box.label, fires };
     })
   );
@@ -135,12 +140,21 @@ export async function briefing() {
     }
   }
 
+  // A region whose fetch failed carries `error` and contributes no "0 detections"
+  // reassurance; surface it so the orchestrator marks the source degraded.
+  const failures = hotspots.filter(h => h.error);
+
   return {
     source: 'NASA FIRMS',
     timestamp: new Date().toISOString(),
-    status: 'active',
+    status: failures.length === hotspots.length ? 'error' : 'active',
     hotspots,
     signals,
+    ...(failures.length ? {
+      error: failures.length === hotspots.length
+        ? `NASA FIRMS unavailable across all ${hotspots.length} regions: ${failures[0].error}`
+        : `NASA FIRMS unavailable for ${failures.length}/${hotspots.length} regions: ${failures[0].error}`,
+    } : {}),
   };
 }
 

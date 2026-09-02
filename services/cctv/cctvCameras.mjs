@@ -17,6 +17,10 @@
  *     feed_url?, stream_url?, stream_type?, external_url? }
  */
 
+import { createHash } from 'node:crypto';
+import { fetchWithTimeout } from '../../lib/util/net.mjs';
+import { createSwrCache } from '../../lib/util/swr.mjs';
+
 // ═══ Tunable: cap on the assembled global camera set ═══
 // The raw set is ~5,200 cameras (mostly long tails of ASFINAG/TfL/511/NYC),
 // which is far more than a phone client needs. We round-robin across sources
@@ -49,7 +53,7 @@ function randomUA() {
   return USER_AGENTS[randomInt(USER_AGENTS.length - 1)];
 }
 
-export function stealthHeaders(extraHeaders) {
+function stealthHeaders(extraHeaders) {
   return {
     'User-Agent': randomUA(),
     'Accept-Language': 'en-US,en;q=0.9',
@@ -65,23 +69,16 @@ export function stealthFetch(url, init = {}) {
           ? Object.fromEntries(init.headers)
           : init.headers)
     : undefined;
-  return fetch(url, { ...init, headers: stealthHeaders(extra) });
+  return fetchWithTimeout(url, {
+    timeoutMs: init.timeoutMs ?? 12_000,
+    ...init,
+    headers: stealthHeaders(extra),
+  });
 }
 
-// ═══ types helpers (ported from src/app/api/cctv/types.ts) ═══
-export function normalizeFeedUrl(url) {
-  if (url.startsWith('pics/')) {
-    return `http://free-webcambg.com/${url.split('?')[0]}`;
-  }
-  return url.split('?')[0];
-}
-
-export function inferStreamType(url) {
-  if (/\.m3u8(\?|$)/i.test(url)) return 'hls';
-  if (/youtube\.com\/embed|youtube-nocookie\.com\/embed|rtsp\.me\/embed|ipcamlive\.com\/player|click2stream\.com|windy\.com\/webcams\/\d+\/embed/i.test(url)) {
-    return 'iframe';
-  }
-  return 'jpg';
+function stableCameraId(prefix, value) {
+  const hash = createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
+  return `${prefix}-${hash}`;
 }
 
 // ═══ CAMERA SOURCE DEFINITIONS (ported from src/app/api/cctv/route.ts) ═══
@@ -111,22 +108,23 @@ async function fetchTfLCameras() {
 
 // ── US-WEST: Caltrans California Districts ──
 async function fetchCaltransCameras() {
-  const allCams = [];
-  for (const dist of ['d03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd10', 'd11', 'd12']) {
-    try {
+  const districts = ['d03', 'd04', 'd05', 'd06', 'd07', 'd08', 'd10', 'd11', 'd12'];
+  const settled = await Promise.allSettled(districts.map(async (dist) => {
       const res = await stealthFetch(`https://cwwp2.dot.ca.gov/data/${dist}/cctv/cctvStatus${dist.toUpperCase()}.json`, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) continue;
+      if (!res.ok) return [];
       const data = await res.json();
+      const cameras = [];
       for (const cam of (data?.data || [])) {
         const lat = parseFloat(cam.location?.latitude);
         const lng = parseFloat(cam.location?.longitude);
         const url = cam.cctv?.imageData?.static?.currentImageURL;
         if (!lat || !lng || !url) continue;
-        allCams.push({ id: `cal-${allCams.length}`, lat, lng, name: cam.location?.locationName || 'Caltrans', city: 'California', country: 'US', feed_url: url, source: 'Caltrans' });
+        const key = cam.index ?? cam.cctv?.index ?? url;
+        cameras.push({ id: stableCameraId('cal', key), lat, lng, name: cam.location?.locationName || 'Caltrans', city: 'California', country: 'US', feed_url: url, source: 'Caltrans' });
       }
-    } catch { /* silent */ }
-  }
-  return allCams;
+      return cameras;
+  }));
+  return settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
 }
 
 // ── CANADA: Ottawa, Toronto, Montreal ──
@@ -143,7 +141,7 @@ async function fetchCanadaCameras() {
         const view = (cam.Views || []).find((v) => v.Status === 'Enabled' && v.Url) || cam.Views?.[0];
         if (!cam.Latitude || !cam.Longitude || !view?.Url) continue;
         cams.push({
-          id: `on-${cam.Id ?? cams.length}`, lat: cam.Latitude, lng: cam.Longitude,
+          id: cam.Id != null ? `on-${cam.Id}` : stableCameraId('on', view.Url), lat: cam.Latitude, lng: cam.Longitude,
           name: cam.Location || cam.Roadway || 'Ontario Camera', city: 'Ontario', country: 'Canada',
           feed_url: view.Url, source: '511 Ontario',
         });
@@ -178,7 +176,7 @@ async function fetchCanadaCameras() {
       for (const cam of (data || [])) {
         if (!cam.Latitude || !cam.Longitude || !cam.Views?.[0]?.Url) continue;
         cams.push({
-          id: `ab-${cam.Id || cams.length}`, lat: cam.Latitude, lng: cam.Longitude,
+          id: cam.Id != null ? `ab-${cam.Id}` : stableCameraId('ab', cam.Views[0].Url), lat: cam.Latitude, lng: cam.Longitude,
           name: cam.Location || 'Alberta Camera', city: 'Alberta', country: 'Canada',
           feed_url: cam.Views[0].Url, source: 'Alberta 511',
         });
@@ -587,70 +585,17 @@ const REGION_FETCHERS = {
   'japan': fetchJapanCameras,
 };
 
-// Determine which regions to fetch based on viewport bounds (verbatim).
-export function getRegionsForBounds(lat, lng /*, radius */) {
-  const regions = [];
-  if (lat > 49 && lat < 61 && lng > -8 && lng < 2) regions.push('uk');
-  if (lat > 24 && lat < 49 && lng > -85 && lng < -66) regions.push('us-east');
-  if (lat > 24 && lat < 49 && lng > -125 && lng < -100) regions.push('us-west');
-  if (lat > 24 && lat < 49 && lng > -105 && lng < -80) regions.push('us-central');
-  if (lat > 42 && lat < 70 && lng > -141 && lng < -52) regions.push('canada');
-  const inBulgaria = lat > 41 && lat < 44.5 && lng > 22 && lng < 29.5;
-  const inGreece = lat > 34.5 && lat < 41.8 && lng > 19 && lng < 30;
-  const inSerbia = lat > 42 && lat < 46.5 && lng > 18.8 && lng < 23.3;
-  const inMacedonia = lat > 40.8 && lat < 42.8 && lng > 20.4 && lng < 23.2;
-  const inRomania = lat > 43.5 && lat < 48.5 && lng > 20 && lng < 29.8;
-  const inTurkey = lat > 35.5 && lat < 42.5 && lng > 25.5 && lng < 45;
-  const inItaly = lat > 36 && lat < 47.5 && lng > 6.5 && lng < 18.5;
-  const inCzechia = lat > 48.5 && lat < 51.1 && lng > 12 && lng < 18.9;
-  const inSlovakia = lat > 47.7 && lat < 49.6 && lng > 16.8 && lng < 22.6;
-  const inGermany = lat > 47 && lat < 55.1 && lng > 5.8 && lng < 15.1;
-  const inFrance = lat > 42.3 && lat < 51.1 && lng > -5 && lng < 8.3;
-  const inSpain = lat > 27 && lat < 43.8 && lng > -18.2 && lng < 4.4;
-  const inPoland = lat > 49.0 && lat < 54.8 && lng > 14.1 && lng < 24.1;
-  const inBalkans = inBulgaria || inGreece || inSerbia || inMacedonia || inRomania || inTurkey;
-  const inWesternEurope = inItaly || inCzechia || inSlovakia || inGermany || inFrance || inSpain || inPoland;
-
-  if (lat > 35 && lat < 72 && lng > -11 && lng < 40 && !inBalkans && !inWesternEurope) {
-    regions.push('europe');
-  }
-  if (inBulgaria) regions.push('bulgaria');
-  if (inGreece) regions.push('greece');
-  if (inSerbia) regions.push('serbia');
-  if (inMacedonia) regions.push('macedonia');
-  if (inRomania) regions.push('romania');
-  if (inTurkey) regions.push('turkey');
-  if (inItaly) regions.push('italy');
-  if (inCzechia) regions.push('czechia');
-  if (inSlovakia) regions.push('slovakia');
-  if (inGermany) regions.push('germany');
-  if (inFrance) regions.push('france');
-  if (inSpain) regions.push('spain');
-  if (inPoland) regions.push('poland');
-
-  const inMiddleEast = lat > 29 && lat < 34.5 && lng > 34 && lng < 36.5;
-  if (inMiddleEast) regions.push('middle-east');
-
-  if (lat > 24 && lat < 46 && lng > 122 && lng < 154) regions.push('japan');
-  if ((lat > -10 && lat < 60 && lng > 60 && lng < 150)) regions.push('asia');
-  if (lat > -45 && lat < -10 && lng > 110 && lng < 155) regions.push('asia');
-
-  return regions.length > 0 ? regions : ['uk', 'us-east'];
-}
-
 /**
  * Assemble cameras for the given regions. Mirrors OSIRIS's GET handler
  * region resolution. Returns { cameras, sources, regions }.
  */
 export async function fetchCamerasForRegions(opts = {}) {
-  const { region, lat = 0, lng = 0, radius = 10 } = opts;
+  const { region } = opts;
   let regionsToFetch;
   if (region === 'all') {
     regionsToFetch = Object.keys(REGION_FETCHERS);
   } else if (region) {
     regionsToFetch = String(region).split(',').filter((r) => r in REGION_FETCHERS);
-  } else if (lat !== 0 || lng !== 0) {
-    regionsToFetch = getRegionsForBounds(lat, lng, radius);
   } else {
     regionsToFetch = Object.keys(REGION_FETCHERS);
   }
@@ -732,12 +677,18 @@ async function ytFetchHtml(url) {
 
 async function ytVideoIsLive(videoId) {
   const html = await ytFetchHtml(`https://www.youtube.com/watch?v=${videoId}`);
+  if (!html.includes('ytInitialPlayerResponse') && !html.includes('"playabilityStatus"')) {
+    throw new Error('YouTube response did not contain player metadata');
+  }
   return html.includes('"isLiveNow":true');
 }
 
 // Resolve a channel's current live videoId, or null if it isn't streaming.
 async function ytChannelLiveVideoId(channelId) {
   const html = await ytFetchHtml(`https://www.youtube.com/channel/${channelId}/live`);
+  if (!html.includes('ytInitialPlayerResponse') && !html.includes('"playabilityStatus"')) {
+    throw new Error('YouTube response did not contain player metadata');
+  }
   if (!html.includes('"isLiveNow":true')) return null;
   const m = html.match(/"videoId":"([\w-]{11})"/);
   return m ? m[1] : null;
@@ -791,44 +742,56 @@ async function verifyYouTubeLiveCams(cameras) {
 
 // ═══ 12h assembled-list cache for the global set ═══
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const ASSEMBLY_RETRY_MS = 10 * 60 * 1000;
 let allCache = null;       // { fetchedAt, cameras, sources }
-let allInflight = null;
+let nextAttemptAt = 0;
+let needsRetry = false;
+
+async function assembleAllCameras() {
+  try {
+    const assembled = await fetchCamerasForRegions({ region: 'all' });
+    const census = Object.entries(assembled.sources)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k}:${v}`).join(' ');
+    console.log(`[cctv] assembled ${assembled.cameras.length} raw cameras — ${census || 'NO SOURCES RESPONDED'}`);
+
+    const thin = assembled.cameras.length < 50;
+    if (thin && allCache) throw new Error(`thin camera assembly (${assembled.cameras.length})`);
+
+    const verified = await verifyYouTubeLiveCams(assembled.cameras);
+    const { cameras, sources } = capCameras(verified, MAX_CAMERAS);
+    const loaded = { fetchedAt: Date.now(), cameras, sources };
+    allCache = loaded;
+    nextAttemptAt = thin ? Date.now() + ASSEMBLY_RETRY_MS : 0;
+    needsRetry = thin;
+    return loaded;
+  } catch (err) {
+    nextAttemptAt = Date.now() + ASSEMBLY_RETRY_MS;
+    needsRetry = true;
+    throw err;
+  }
+}
+
+const allSwr = createSwrCache({
+  ttlMs: CACHE_TTL_MS,
+  failureBackoffMs: ASSEMBLY_RETRY_MS,
+  load: assembleAllCameras,
+  onError: (err) => console.warn(`[cctv] camera assembly refresh failed: ${err.message}`),
+});
 
 /**
  * Return the full assembled camera set (all regions). Cached 12h with
  * single-flight; stale cache is served if a refresh fails.
  */
 export async function getAllCameras() {
-  if (allCache && Date.now() - allCache.fetchedAt < CACHE_TTL_MS) return allCache;
-  if (allInflight) return allInflight;
-
-  allInflight = (async () => {
-    try {
-      const assembled = await fetchCamerasForRegions({ region: 'all' });
-      // One-line per-source census so dead upstreams are visible in the log
-      // (every fetcher swallows its own errors silently).
-      const census = Object.entries(assembled.sources)
-        .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${k}:${v}`).join(' ');
-      console.log(`[cctv] assembled ${assembled.cameras.length} raw cameras — ${census || 'NO SOURCES RESPONDED'}`);
-      // If we got almost nothing (all upstreams down), keep any prior snapshot.
-      if (assembled.cameras.length < 50 && allCache) return allCache;
-      // Drop YouTube embeds that aren't actually live right now.
-      const verified = await verifyYouTubeLiveCams(assembled.cameras);
-      // Cap to MAX_CAMERAS, preserving a global spread across sources.
-      const { cameras, sources } = capCameras(verified, MAX_CAMERAS);
-      const loaded = { fetchedAt: Date.now(), cameras, sources };
-      allCache = loaded;
-      return loaded;
-    } catch (e) {
-      if (allCache) return allCache;
-      throw e;
-    } finally {
-      allInflight = null;
-    }
-  })();
-
-  return allInflight;
+  const now = Date.now();
+  if (allCache && now < nextAttemptAt) return allCache;
+  if (allCache && needsRetry) {
+    needsRetry = false;
+    allSwr.refresh().catch(() => {});
+    return allCache;
+  }
+  return allSwr.get();
 }
 
 /** Resolve a single camera by id from the cached set (for the snapshot proxy). */

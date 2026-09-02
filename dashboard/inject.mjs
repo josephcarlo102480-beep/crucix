@@ -93,6 +93,95 @@ function geoTagText(text) {
   return null;
 }
 
+// === ACLED region centroids ===
+// ACLED buckets every event into one of its own macro-regions. The dashboard's
+// Conflict Events layer needs a plottable point per region, so mirror the
+// coordinate tables jarvis.html already uses for its other geo layers.
+const ACLED_REGION_CENTROIDS = {
+  'western africa': [11, 0],
+  'middle africa': [-2, 18],
+  'eastern africa': [2, 38],
+  'southern africa': [-25, 25],
+  'northern africa': [27, 15],
+  'north africa': [27, 15],
+  'africa': [0, 20],
+  'middle east': [29, 45],
+  'caucasus and central asia': [42, 62],
+  'central asia': [42, 62],
+  'south asia': [22, 78],
+  'southeast asia': [12, 105],
+  'south-east asia': [12, 105],
+  'east asia': [35, 115],
+  'northeast asia': [40, 125],
+  'europe': [50, 15],
+  'eastern europe': [50, 32],
+  'western europe': [48, 4],
+  'northern europe': [60, 18],
+  'southern europe': [42, 14],
+  'caribbean': [18, -72],
+  'central america': [15, -89],
+  'central america and the caribbean': [16, -83],
+  'south america': [-14, -60],
+  'north america': [40, -100],
+  'oceania': [-25, 140],
+  'antarctica': [-75, 0],
+};
+
+function acledRegionCentroid(name) {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return null;
+  const hit = ACLED_REGION_CENTROIDS[key];
+  if (hit) return { lat: hit[0], lon: hit[1] };
+  const geo = geoTagText(String(name));
+  return geo ? { lat: geo.lat, lon: geo.lon } : null;
+}
+
+// Build the plottable `acled.regions` array the Conflict Events layer reads.
+// `byRegion` is `{ [regionName]: { count, fatalities } }` from apis/sources/acled.mjs.
+function buildAcledRegions(byRegion = {}, byType = {}) {
+  const topType = Object.entries(byType)
+    .sort((a, b) => (b[1]?.count || 0) - (a[1]?.count || 0))[0]?.[0];
+  return Object.entries(byRegion)
+    .map(([region, stats]) => {
+      const centroid = acledRegionCentroid(region);
+      if (!centroid) return null;
+      return {
+        region,
+        country: undefined,
+        lat: centroid.lat,
+        lon: centroid.lon,
+        events: stats?.count || 0,
+        fatalities: stats?.fatalities || 0,
+        topType: stats?.topType || topType || undefined,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.events - a.events);
+}
+
+// Stable string hash (djb2 xor) — used where a value must be reproducible
+// across sweeps instead of re-randomised on every synthesize().
+function hashString(value) {
+  let hash = 5381;
+  const str = String(value ?? '');
+  for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  return hash >>> 0;
+}
+
+// Deterministic offset in [-0.5, 0.5) derived from `value`.
+function stableJitter(value, salt) {
+  return (hashString(`${salt}:${value}`) % 100000) / 100000 - 0.5;
+}
+
+// String.fromCodePoint throws RangeError on out-of-range values and silently
+// produces lone surrogates for the D800-DFFF block; both come straight from
+// untrusted feed markup, so drop them instead.
+function safeCodePoint(codePoint) {
+  if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10FFFF) return '';
+  if (codePoint >= 0xd800 && codePoint <= 0xdfff) return '';
+  return String.fromCodePoint(codePoint);
+}
+
 function sanitizeExternalUrl(raw) {
   if (!raw) return undefined;
   try {
@@ -113,8 +202,8 @@ function decodeFeedText(raw = '') {
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&apos;|&#0*39;|&#x0*27;/gi, "'")
-    .replace(/&#(\d+);/g, (_, value) => String.fromCodePoint(Number(value)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, value) => String.fromCodePoint(parseInt(value, 16)))
+    .replace(/&#(\d+);/g, (_, value) => safeCodePoint(Number(value)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, value) => safeCodePoint(parseInt(value, 16)))
     .replace(/&nbsp;/gi, ' ')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s+/g, '\n')
@@ -269,8 +358,10 @@ export async function fetchAllNews() {
         publisher: item.publisher || item.source,
         date: item.date,
         url: item.url,
-        lat: geo.lat + (Math.random() - 0.5) * 2,
-        lon: geo.lon + (Math.random() - 0.5) * 2,
+        // Deterministic scatter so the same headline lands on the same point
+        // across sweeps (markers stop jittering between renders).
+        lat: geo.lat + stableJitter(item.title, 'lat') * 2,
+        lon: geo.lon + stableJitter(item.title, 'lon') * 2,
         region: geo.region
       });
     }
@@ -452,7 +543,9 @@ export async function synthesize(data) {
     receivers: (z.receivers || []).slice(0, 5).map(r => ({ name: r.name || '', lat: r.lat || 0, lon: r.lon || 0 }))
   }));
   const who = (data.sources.WHO?.diseaseOutbreakNews || []).slice(0, 10).map(w => ({
-    title: w.title?.substring(0, 120), date: w.date, summary: w.summary?.substring(0, 150)
+    title: w.title?.substring(0, 120), date: w.date, summary: w.summary?.substring(0, 150),
+    // Keep the bulletin link so the OSINT panel can render "Open source".
+    url: sanitizeExternalUrl(w.url)
   }));
   const fred = (data.sources.FRED?.indicators || []).map(f => ({
     id: f.id, label: f.label, value: f.value, date: f.date,
@@ -526,12 +619,28 @@ export async function synthesize(data) {
     const pos = tleSubpoint(sat);
     if (pos) spaceStations.push(pos);
   }
+  // Orbit geometry: pass apogee/perigee/altitudeKm through when the Space source
+  // supplies them, and derive the mean altitude when only apogee+perigee exist.
+  // Never fabricate a number — the dashboard renders '--' for a missing value.
+  const issRaw = spaceData.iss || null;
+  const issApogee = Number.isFinite(+issRaw?.apogee) ? +issRaw.apogee : undefined;
+  const issPerigee = Number.isFinite(+issRaw?.perigee) ? +issRaw.perigee : undefined;
+  const issAltitudeKm = Number.isFinite(+issRaw?.altitudeKm)
+    ? +issRaw.altitudeKm
+    : (issApogee !== undefined && issPerigee !== undefined ? (issApogee + issPerigee) / 2 : undefined);
+  const iss = issRaw ? {
+    ...issRaw,
+    ...(issApogee !== undefined ? { apogee: issApogee } : {}),
+    ...(issPerigee !== undefined ? { perigee: issPerigee } : {}),
+    ...(issAltitudeKm !== undefined ? { altitudeKm: issAltitudeKm } : {}),
+  } : null;
+
   const space = {
     totalNewObjects: spaceData.totalNewObjects || 0,
     militarySats: spaceData.militarySatellites || 0,
     militaryByCountry: spaceData.militaryByCountry || {},
     constellations: spaceData.constellations || {},
-    iss: spaceData.iss || null,
+    iss,
     issPosition: issPos,
     stationPositions: spaceStations.slice(0, 6), // ISS + up to 5 stations
     recentLaunches: (spaceData.recentLaunches || []).slice(0, 10).map(l => ({
@@ -544,11 +653,13 @@ export async function synthesize(data) {
 
   // ACLED conflict events
   const acledData = data.sources.ACLED || {};
-  const acled = acledData.error ? { totalEvents: 0, totalFatalities: 0, byRegion: {}, byType: {}, deadliestEvents: [] } : {
+  const acled = acledData.error ? { totalEvents: 0, totalFatalities: 0, byRegion: {}, byType: {}, regions: [], deadliestEvents: [] } : {
     totalEvents: acledData.totalEvents || 0,
     totalFatalities: acledData.totalFatalities || 0,
     byRegion: acledData.byRegion || {},
     byType: acledData.byType || {},
+    // Plottable per-region rollup for the Conflict Events sensor layer.
+    regions: buildAcledRegions(acledData.byRegion || {}, acledData.byType || {}),
     deadliestEvents: (acledData.deadliestEvents || []).slice(0, 15).map(e => ({
       date: e.date, type: e.type, country: e.country, location: e.location,
       fatalities: e.fatalities || 0, lat: e.lat || null, lon: e.lon || null
@@ -740,12 +851,17 @@ async function cliInject() {
   console.log('Size:', json.length, 'bytes | Air:', V2.air.length, '| Thermal:', V2.thermal.length,
     '| News:', V2.news.length, '| Ideas:', V2.ideas.length, '| Sources:', V2.health.length);
 
-  const htmlPath = htmlOverride || join(ROOT, 'dashboard/public/jarvis.html');
-  let html = readFileSync(htmlPath, 'utf8');
+  // Read the git-tracked template, but NEVER write back to it — the served page
+  // fetches /api/data at runtime, so the only reason to inline a data blob is the
+  // standalone file:// snapshot. That goes to an untracked sibling file.
+  const templatePath = join(ROOT, 'dashboard/public/jarvis.html');
+  const outPath = htmlOverride || join(ROOT, 'dashboard/public/jarvis.injected.html');
+  let html = readFileSync(templatePath, 'utf8');
   // Use a replacer function so JSON is inserted literally even if it contains `$`.
   html = html.replace(/^(let|const) D = .*;\s*$/m, () => 'let D = ' + json + ';');
-  writeFileSync(htmlPath, html);
-  console.log('Data injected into jarvis.html!');
+  writeFileSync(outPath, html);
+  console.log(`Data injected into ${outPath} (template ${templatePath} left untouched)`);
+  const htmlPath = outPath;
 
   if (!shouldOpen) return;
 

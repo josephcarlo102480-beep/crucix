@@ -13,8 +13,9 @@
  * Write volume is one tiny upsert per poll (~80/hour) — negligible SD wear.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'path';
+import { atomicWriteJsonSync } from '../../lib/util/fs.mjs';
 
 const RETENTION_HOURS = 7 * 24;      // keep a week of hourly rows
 const JSON_FLUSH_MS = 5 * 60 * 1000; // throttle JSON-fallback writes (SD wear)
@@ -25,6 +26,10 @@ let jsonPath = null;
 let jsonDirty = false;
 let jsonFlushTimer = null;
 let lastPruneHour = null;
+let insertStmt = null;
+let pruneStmt = null;
+let baselineStmt = null;
+let hoursStmt = null;
 
 /** UTC hour bucket key, e.g. "2026-07-18T14". */
 export function hourKey(date = new Date()) {
@@ -45,6 +50,7 @@ export async function initBaseline(dbPath) {
     const { DatabaseSync } = await import('node:sqlite');
     db = new DatabaseSync(dbPath);
     db.exec(`
+      PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS hourly_counts (
         hour     TEXT NOT NULL,
         category TEXT NOT NULL,
@@ -53,8 +59,28 @@ export async function initBaseline(dbPath) {
         PRIMARY KEY (hour, category)
       )
     `);
+    insertStmt = db.prepare(`
+      INSERT INTO hourly_counts (hour, category, sum, samples) VALUES (?, ?, ?, 1)
+      ON CONFLICT(hour, category) DO UPDATE SET
+        sum = sum + excluded.sum, samples = samples + 1
+    `);
+    pruneStmt = db.prepare('DELETE FROM hourly_counts WHERE hour < ?');
+    baselineStmt = db.prepare(`
+      SELECT category, SUM(sum) AS s, SUM(samples) AS n
+      FROM hourly_counts WHERE hour >= ? AND hour < ? GROUP BY category
+    `);
+    hoursStmt = db.prepare(
+      'SELECT COUNT(DISTINCT hour) AS h FROM hourly_counts WHERE hour >= ? AND hour < ?'
+    );
     return 'sqlite';
-  } catch {
+  } catch (err) {
+    try { db?.close(); } catch { /* best effort after a failed open/init */ }
+    db = null;
+    insertStmt = pruneStmt = baselineStmt = hoursStmt = null;
+    if (err?.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') {
+      console.error('[AirWatch] SQLite baseline initialization failed:', err);
+      throw err;
+    }
     // node:sqlite unavailable (Node 22.0–22.4) — JSON fallback
     jsonPath = dbPath.replace(/\.sqlite$/, '') + '-baseline.json';
     try {
@@ -69,7 +95,7 @@ export async function initBaseline(dbPath) {
 function flushJson() {
   if (!jsonStore || !jsonDirty) return;
   try {
-    writeFileSync(jsonPath, JSON.stringify(jsonStore));
+    atomicWriteJsonSync(jsonPath, jsonStore);
     jsonDirty = false;
   } catch { /* non-fatal — baseline is best-effort */ }
 }
@@ -77,7 +103,7 @@ function flushJson() {
 function pruneOld() {
   const cutoff = hoursAgoKey(RETENTION_HOURS);
   if (db) {
-    db.prepare('DELETE FROM hourly_counts WHERE hour < ?').run(cutoff);
+    pruneStmt.run(cutoff);
   } else if (jsonStore) {
     for (const h of Object.keys(jsonStore)) if (h < cutoff) delete jsonStore[h];
     jsonDirty = true;
@@ -93,13 +119,8 @@ export function recordSample(counts) {
   const hour = hourKey();
 
   if (db) {
-    const stmt = db.prepare(`
-      INSERT INTO hourly_counts (hour, category, sum, samples) VALUES (?, ?, ?, 1)
-      ON CONFLICT(hour, category) DO UPDATE SET
-        sum = sum + excluded.sum, samples = samples + 1
-    `);
     for (const [category, count] of Object.entries(counts)) {
-      stmt.run(hour, category, count);
+      insertStmt.run(hour, category, count);
     }
   } else {
     const bucket = (jsonStore[hour] ||= {});
@@ -138,16 +159,11 @@ export function getBaseline() {
   let hours = 0;
 
   if (db) {
-    const rows = db.prepare(`
-      SELECT category, SUM(sum) AS s, SUM(samples) AS n
-      FROM hourly_counts WHERE hour >= ? AND hour < ? GROUP BY category
-    `).all(cutoff, currentHour);
+    const rows = baselineStmt.all(cutoff, currentHour);
     for (const row of rows) {
       perCategory[row.category] = row.n > 0 ? row.s / row.n : 0;
     }
-    const hourRow = db.prepare(
-      'SELECT COUNT(DISTINCT hour) AS h FROM hourly_counts WHERE hour >= ? AND hour < ?'
-    ).get(cutoff, currentHour);
+    const hourRow = hoursStmt.get(cutoff, currentHour);
     hours = hourRow?.h || 0;
   } else if (jsonStore) {
     const agg = {};
@@ -175,4 +191,5 @@ export function closeBaseline() {
   try { db?.close(); } catch { /* already closed */ }
   db = null;
   jsonStore = null;
+  insertStmt = pruneStmt = baselineStmt = hoursStmt = null;
 }

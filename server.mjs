@@ -4,7 +4,8 @@
 
 import express from 'express';
 import { timingSafeEqual } from 'crypto';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, mkdirSync, existsSync } from 'fs';
+import { atomicWriteJsonSync } from './lib/util/fs.mjs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
@@ -129,6 +130,8 @@ function initializeIntegrations() {
 // === Express Server ===
 const app = express();
 app.disable('x-powered-by');
+// Only a proxy on this machine may set X-Forwarded-For; req.ip then reflects the real client.
+app.set('trust proxy', 'loopback');
 app.use((req, res, next) => {
   res.set({
     'Content-Security-Policy': [
@@ -205,14 +208,24 @@ app.get('/api/health', (req, res) => {
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     llmEnabled: !!llmProvider?.isConfigured,
     llmProvider: llmProvider?.name || null,
-    askAiRequiresToken: !isLoopbackHost(config.host),
+    askAiRequiresToken: !isLocalRequest(req),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
   });
 });
 
 function isLoopbackHost(host) {
-  return ['127.0.0.1', '::1', 'localhost'].includes(String(host || '').toLowerCase());
+  const h = String(host || '').toLowerCase().replace(/^::ffff:/, '');
+  return h === '::1' || h === 'localhost' || /^127\.\d+\.\d+\.\d+$/.test(h);
+}
+
+// True only when the server is bound to loopback AND this particular request
+// came straight from loopback without passing through a proxy or tunnel.
+// A reverse proxy in front of a 127.0.0.1 bind must not inherit the bypass.
+function isLocalRequest(req) {
+  if (!isLoopbackHost(config.host)) return false;
+  const forwarded = Boolean(req.get('x-forwarded-for') || req.get('forwarded') || req.get('x-real-ip'));
+  return !forwarded && isLoopbackHost(req.socket?.remoteAddress);
 }
 
 function tokensEqual(actual, expected) {
@@ -229,18 +242,20 @@ function getRequestToken(req) {
   return String(req.get('x-crucix-api-token') || '').trim();
 }
 
-function isAskRequestAuthorized(host, expectedToken, actualToken) {
-  return isLoopbackHost(host) || tokensEqual(actualToken, expectedToken);
+function isAskRequestAuthorized(host, expectedToken, actualToken, client = {}) {
+  const { remoteAddress = '127.0.0.1', forwarded = false } = client;
+  const local = isLoopbackHost(host) && !forwarded && isLoopbackHost(remoteAddress);
+  return local || tokensEqual(actualToken, expectedToken);
 }
 
 function authorizeAskRequest(req, res, next) {
-  if (isLoopbackHost(config.host)) return next();
+  if (isLocalRequest(req)) return next();
   if (!config.api.token) {
     return res.status(503).json({
       error: 'Ask AI is disabled on non-loopback bindings until CRUCIX_API_TOKEN is configured.',
     });
   }
-  if (!isAskRequestAuthorized(config.host, config.api.token, getRequestToken(req))) {
+  if (!tokensEqual(getRequestToken(req), config.api.token)) {
     return res.status(401).json({ error: 'A valid Crucix API token is required.' });
   }
   next();
@@ -249,7 +264,7 @@ function authorizeAskRequest(req, res, next) {
 function rateLimitAskRequest(req, res, next) {
   const now = Date.now();
   const windowMs = config.api.askRateLimitWindowMinutes * 60 * 1000;
-  const key = req.socket.remoteAddress || 'unknown';
+  const key = req.ip || req.socket?.remoteAddress || 'unknown';
   const bucket = (askRateBuckets.get(key) || []).filter(timestamp => now - timestamp < windowMs);
   if (bucket.length >= config.api.askRateLimitMax) {
     const retryAfterSeconds = Math.max(1, Math.ceil((windowMs - (now - bucket[0])) / 1000));
@@ -306,7 +321,8 @@ app.post('/api/ask', authorizeAskRequest, rateLimitAskRequest, async (req, res) 
 app.get('/api/satellite-passes', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const zip = typeof req.query.zip === 'string' ? req.query.zip : '';
+    const zip = typeof req.query.zip === 'string' ? req.query.zip.trim() : '';
+    if (zip && !/^\d{5}$/.test(zip)) return res.status(400).json({ error: 'zip must be a 5-digit US ZIP code' });
     const hours = Number.parseInt(req.query.hours || '12', 10);
     const result = await getSatellitePassContext(zip, {
       hoursAhead: Number.isFinite(hours) ? Math.min(Math.max(hours, 1), 24) : 12,
@@ -332,11 +348,20 @@ app.get('/events', (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
   });
   res.write('data: {"type":"connected"}\n\n');
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
+});
+
+// Final error handler: never leak a stack trace to the client. Body-parser
+// errors (bad JSON, oversized body) carry a status; anything else is a 500.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = Number.isInteger(err?.status || err?.statusCode) ? (err.status || err.statusCode) : 500;
+  if (status >= 500) console.error('[Crucix] Unhandled route error:', err?.stack || err?.message || err);
+  if (res.headersSent) return;
+  res.status(status).json({ error: status >= 500 ? 'Internal server error' : (err?.message || 'Bad request') });
 });
 
 function broadcast(data) {
@@ -375,7 +400,7 @@ async function runSweepCycle() {
     const rawData = await fullBriefing();
 
     // 2. Save to runs/latest.json
-    writeFileSync(join(RUNS_DIR, 'latest.json'), JSON.stringify(rawData, null, 2));
+    atomicWriteJsonSync(join(RUNS_DIR, 'latest.json'), rawData, { pretty: true });
     lastSweepTime = new Date().toISOString();
 
     // 3. Synthesize into dashboard format
@@ -549,10 +574,16 @@ async function start() {
   });
 }
 
-async function shutdown(signal) {
+async function shutdown(signal, exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[Crucix] Received ${signal}. Shutting down...`);
+  // Deadline: if a client or the Discord gateway refuses to close, exit anyway
+  // (systemd would otherwise SIGKILL us after its 90 s default).
+  setTimeout(() => {
+    console.error('[Crucix] Shutdown deadline reached, exiting');
+    process.exit(exitCode || 1);
+  }, 10_000).unref();
 
   if (sweepTimer) clearInterval(sweepTimer);
   clearInterval(sseHeartbeatTimer);
@@ -569,7 +600,7 @@ async function shutdown(signal) {
     }),
   ]);
 
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 function installProcessHandlers() {
@@ -578,7 +609,10 @@ function installProcessHandlers() {
     console.error('[Crucix] Unhandled rejection:', err?.stack || err?.message || err);
   });
   process.on('uncaughtException', (err) => {
+    // The process state is unknown after this; exit non-zero so systemd's
+    // Restart=on-failure brings up a clean instance.
     console.error('[Crucix] Uncaught exception:', err?.stack || err?.message || err);
+    shutdown('uncaughtException', 1);
   });
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));

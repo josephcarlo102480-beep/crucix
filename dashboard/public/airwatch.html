@@ -16,14 +16,15 @@
 <title>Crucix — AirWatch</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="/css/crucix-theme.css" />
+<script src="/js/crucix-common.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
+/* Shared palette lives in /css/crucix-theme.css; AirWatch tints its chrome
+   cyan rather than mint and adds the per-category track colours. */
 :root{
-  --bg:#020408;--panel:rgba(6,14,22,0.92);--glass:rgba(10,20,32,0.7);
   --border:rgba(68,204,255,0.14);--border-bright:rgba(68,204,255,0.35);
-  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--cyan:#44ccff;
-  --warn:#ffb84c;--danger:#ff5f63;--helo:#c792ea;--asw:#ff6fd8;
-  --mono:'IBM Plex Mono',monospace;
+  --cyan:#44ccff;--helo:#c792ea;--asw:#ff6fd8;
 }
 *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:rgba(68,204,255,0.25) transparent}
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -60,7 +61,9 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 .sec-label b{color:var(--asw);font-weight:600}
 #reconList{border-bottom:1px solid var(--border)}
 .recon-row{padding:7px 16px;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;line-height:1.5}
-.recon-row:hover{background:rgba(255,111,216,0.07)}
+.recon-row:hover,.recon-row:focus-visible{background:rgba(255,111,216,0.07);outline:none}
+.recon-row:focus-visible{box-shadow:inset 0 0 0 1px var(--asw)}
+tbody tr:focus-visible{outline:none;background:rgba(68,204,255,0.1);box-shadow:inset 0 0 0 1px var(--cyan)}
 .recon-top{display:flex;align-items:baseline;gap:6px}
 .recon-cs{color:var(--text);font-weight:600;font-size:11px}
 .recon-type{font-size:9px;padding:0 4px;border:1px solid;border-radius:2px}
@@ -68,8 +71,13 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 .recon-mission{font-size:9px;color:var(--dim);margin-top:1px}
 .recon-empty{padding:10px 16px;font-size:9px;color:var(--dim);line-height:1.6}
 table{width:100%;border-collapse:collapse;font-size:10px}
-thead th{position:sticky;top:0;background:#04101a;color:var(--dim);text-align:left;padding:6px 8px;font-weight:400;letter-spacing:0.08em;cursor:pointer;border-bottom:1px solid var(--border);white-space:nowrap;z-index:5}
-thead th:hover{color:var(--cyan)}
+thead th{position:sticky;top:0;background:#04101a;color:var(--dim);text-align:left;padding:0;font-weight:400;letter-spacing:0.08em;border-bottom:1px solid var(--border);white-space:nowrap;z-index:5}
+/* A real <button> inside the <th>: same look, but focusable and operable with
+   Enter/Space for free instead of a click handler on a bare cell. */
+.th-sort{display:block;width:100%;padding:6px 8px;background:none;border:0;color:inherit;
+  font:inherit;letter-spacing:inherit;text-align:left;white-space:nowrap;cursor:pointer}
+.th-sort:hover{color:var(--cyan)}
+.th-sort:focus-visible{color:var(--cyan);outline:1px solid var(--cyan);outline-offset:-2px}
 thead th .arr{color:var(--cyan)}
 tbody td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 tbody tr{cursor:pointer}
@@ -116,8 +124,8 @@ tbody tr.recon td:first-child{box-shadow:inset 2px 0 0 var(--asw)}
     <div class="controls">
       <select id="theatreSel" aria-label="Theatre"></select>
       <div class="scope-row">
-        <button class="scope-btn active" id="scopeTheatre">Theatre</button>
-        <button class="scope-btn" id="scopeGlobal">Global</button>
+        <button type="button" class="scope-btn active" id="scopeTheatre" aria-pressed="true">Theatre</button>
+        <button type="button" class="scope-btn" id="scopeGlobal" aria-pressed="false">Global</button>
       </div>
       <div id="catFilters"></div>
       <div class="baseline-note" id="baselineNote"></div>
@@ -174,7 +182,8 @@ const trails = new Map();         // hex → [{lat, lon, ts}]
 const orbitFlags = new Map();     // hex → bool (recomputed per poll)
 const markers = new Map();        // hex → { marker, line }
 
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Shared helper (see /js/crucix-common.js, loaded above).
+const esc = window.CrucixCommon.escapeHtml;
 const fmtTs = ts => ts ? esc(String(ts).replace('T',' ').slice(0,19)) + ' UTC' : '—';
 
 // ─── Map ───
@@ -375,7 +384,8 @@ function renderRecon() {
   }
   const rows = list.map(ac => {
     const color = CAT_HEX[ac.cat] || CAT_HEX.OTHER;
-    return `<div class="recon-row" data-hex="${esc(ac.hex)}">
+    return `<div class="recon-row" data-hex="${esc(ac.hex)}" role="button" tabindex="0"
+      aria-label="Show ${esc(ac.callsign || ac.hex)} on the map">
       <div class="recon-top">
         <span class="recon-cs">${orbitFlags.get(ac.hex) ? '<span class="orbit-tag" title="orbit/racetrack — on station">◉ </span>' : ''}${esc(ac.callsign || ac.hex)}</span>
         <span class="recon-type" style="color:${color};border-color:${color}">${esc(ac.type || '?')}</span>
@@ -400,9 +410,12 @@ function renderTable() {
     const va = get(a), vb = get(b);
     return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
   });
-  const arr = k => sortKey === k ? `<span class="arr">${sortDir > 0 ? '▲' : '▼'}</span>` : '';
+  const arr = k => sortKey === k ? `<span class="arr" aria-hidden="true">${sortDir > 0 ? '▲' : '▼'}</span>` : '';
+  const sortHead = (k, label) => `<th scope="col" aria-sort="${sortKey === k ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'}">`
+    + `<button type="button" class="th-sort" data-k="${k}">${label}${arr(k)}</button></th>`;
   const rows = sorted.map(ac => `
-    <tr data-hex="${esc(ac.hex)}" class="${ac.recon ? 'recon' : ''}">
+    <tr data-hex="${esc(ac.hex)}" class="${ac.recon ? 'recon' : ''}" tabindex="0" role="button"
+        aria-label="Show ${esc(ac.callsign || ac.hex)} on the map">
       <td class="cs" style="max-width:92px">${orbitFlags.get(ac.hex) ? '<span class="orbit-tag" title="orbit/racetrack — on station">◉ </span>' : ''}${esc(ac.callsign || ac.hex)}</td>
       <td style="max-width:52px">${esc(ac.type || '—')}</td>
       <td class="catcell" style="color:${CAT_HEX[ac.cat]}">${esc(ac.cat)}</td>
@@ -411,9 +424,8 @@ function renderTable() {
     </tr>`).join('');
   return `<div class="sec-label">ALL TRACKED · ${list.length}</div><table>
     <thead><tr>
-      <th data-k="cs">CALLSIGN${arr('cs')}</th><th data-k="type">TYPE${arr('type')}</th>
-      <th data-k="cat">CAT${arr('cat')}</th><th data-k="alt">ALT FT${arr('alt')}</th>
-      <th data-k="gs">KT${arr('gs')}</th>
+      ${sortHead('cs', 'CALLSIGN')}${sortHead('type', 'TYPE')}${sortHead('cat', 'CAT')}
+      ${sortHead('alt', 'ALT FT')}${sortHead('gs', 'KT')}
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -427,8 +439,8 @@ function focusAircraft(hex) {
 function renderList() {
   const wrap = document.getElementById('listwrap');
   wrap.innerHTML = renderRecon() + renderTable();
-  wrap.querySelectorAll('thead th').forEach(th => th.addEventListener('click', () => {
-    const k = th.dataset.k;
+  wrap.querySelectorAll('.th-sort').forEach(btn => btn.addEventListener('click', () => {
+    const k = btn.dataset.k;
     if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'cs' || k === 'type' || k === 'cat' ? 1 : -1; }
     renderList();
   }));
@@ -436,6 +448,16 @@ function renderList() {
     row.addEventListener('click', () => focusAircraft(row.dataset.hex));
   });
 }
+
+// Enter/Space on a focused row does what a click does. Delegated on the
+// scroll container so it survives the innerHTML rebuild in renderList().
+document.getElementById('listwrap').addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const row = ev.target.closest('.recon-row, tbody tr');
+  if (!row || !row.dataset.hex) return;
+  ev.preventDefault();
+  focusAircraft(row.dataset.hex);
+});
 
 function renderStatus() {
   const el = document.getElementById('status');
@@ -450,9 +472,9 @@ function renderStatus() {
   const lines = [
     `source <span class="src">${esc(lastPayload.source)}</span>` +
       (lastPayload.sourceStatus?.active !== lastPayload.sourceStatus?.sources?.[0]?.id ? ' <span class="warnline">(fallback active)</span>' : '') +
-      ` · ${lastPayload.count} tracked (${esc(scopeLabel)}) · ${lastPayload.globalCount} worldwide`,
-    `updated ${fmtTs(lastPayload.fetchedAt)} (${feedAgeS}s ago)` +
-      (lastPayload.withoutPosition ? ` · ${lastPayload.withoutPosition} mil heard without position` : ''),
+      ` · ${esc(lastPayload.count)} tracked (${esc(scopeLabel)}) · ${esc(lastPayload.globalCount)} worldwide`,
+    `updated ${fmtTs(lastPayload.fetchedAt)} (${esc(feedAgeS)}s ago)` +
+      (lastPayload.withoutPosition ? ` · ${esc(lastPayload.withoutPosition)} mil heard without position` : ''),
   ];
   if (feedAgeS > STALE_AFTER_S) lines.push('<span class="warnline">⚠ STALE DATA — feed is over 3 min old (upstream sources may be down or rate-limiting)</span>');
   if (lastFetchOk === false) lines.push('<span class="warnline">⚠ last refresh from backend failed — showing previous data</span>');
@@ -491,7 +513,24 @@ function flyToTheatre() {
 }
 
 // ─── Data loading ───
+// One retry timer for the whole page. The 45 s poll keeps firing while the
+// backend warms up, and each 503 used to queue its own 10 s retry — after a
+// couple of minutes of 503s the page was hammering the API from a dozen
+// independent chains. Now: at most one pending retry, and a poll that lands
+// while a request is still in flight is dropped rather than stacked.
+let retryTimer = null;
+let loadPending = false;
+
+function scheduleRetry() {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => { retryTimer = null; load(); }, RETRY_MS);
+}
+
 async function load() {
+  if (loadPending) return;
+  loadPending = true;
+  clearTimeout(retryTimer);
+  retryTimer = null;
   try {
     const [acRes, stRes] = await Promise.all([
       fetch(`${API}/aircraft?scope=${scope}&theatre=${encodeURIComponent(theatre)}`),
@@ -502,7 +541,7 @@ async function load() {
       const warming = await acRes.json().catch(() => null);
       if (warming?.theatres?.length) { theatres = warming.theatres; renderTheatres(); }
       renderStatus();
-      setTimeout(load, RETRY_MS);
+      scheduleRetry();
       return;
     }
     const payload = await acRes.json();
@@ -528,6 +567,9 @@ async function load() {
     lastFetchOk = false;
     console.warn('[AirWatch] refresh failed:', err);
     renderStatus();
+    scheduleRetry();
+  } finally {
+    loadPending = false;
   }
 }
 
@@ -542,8 +584,12 @@ document.getElementById('theatreSel').addEventListener('change', ev => {
 function setScope(next) {
   if (scope === next) return;
   scope = next;
-  document.getElementById('scopeTheatre').classList.toggle('active', scope === 'theatre');
-  document.getElementById('scopeGlobal').classList.toggle('active', scope === 'global');
+  const theatreBtn = document.getElementById('scopeTheatre');
+  const globalBtn = document.getElementById('scopeGlobal');
+  theatreBtn.classList.toggle('active', scope === 'theatre');
+  globalBtn.classList.toggle('active', scope === 'global');
+  theatreBtn.setAttribute('aria-pressed', String(scope === 'theatre'));
+  globalBtn.setAttribute('aria-pressed', String(scope === 'global'));
   flyToTheatre();
   renderSubtitle();
   load();

@@ -480,8 +480,11 @@ function scheduleNext() {
 }
 
 async function runCycle() {
-  await pollOnce();
-  scheduleNext();
+  try {
+    await pollOnce();
+  } finally {
+    scheduleNext();
+  }
 }
 
 /** Start polling (idempotent). Resolves after the FIRST fetch attempt. */

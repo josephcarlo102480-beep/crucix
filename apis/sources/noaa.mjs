@@ -12,6 +12,7 @@ export async function getActiveAlerts(opts = {}) {
     urgency = null,   // Immediate, Expected, Future
     event = null,     // e.g. "Tornado Warning", "Hurricane Warning"
     limit = 50,
+    signal,
   } = opts;
 
   const params = new URLSearchParams({ limit: String(limit), status: 'actual' });
@@ -21,18 +22,33 @@ export async function getActiveAlerts(opts = {}) {
 
   return safeFetch(`${NWS_BASE}/alerts/active?${params}`, {
     headers: { 'Accept': 'application/geo+json' },
+    signal,
   });
 }
 
 // Get severe alerts only
-export async function getSevereAlerts() {
-  return getActiveAlerts({ severity: 'Extreme,Severe' });
+export async function getSevereAlerts(opts = {}) {
+  return getActiveAlerts({ ...opts, severity: 'Extreme,Severe' });
 }
 
 // Briefing — severe weather events that could impact markets/supply chains
-export async function briefing() {
-  const alerts = await getSevereAlerts();
-  const features = alerts?.features || [];
+export async function briefing(opts = {}) {
+  const { signal } = opts || {};
+  const alerts = await getSevereAlerts({ signal });
+
+  // A failed request must never look like "zero severe alerts nationwide".
+  if (!alerts || alerts.error || !Array.isArray(alerts.features)) {
+    return {
+      source: 'NOAA/NWS',
+      timestamp: new Date().toISOString(),
+      error: alerts?.error || 'NOAA/NWS returned an unexpected payload',
+      totalSevereAlerts: null,
+      summary: null,
+      topAlerts: [],
+    };
+  }
+
+  const features = alerts.features;
 
   // Categorize by impact type
   const hurricanes = features.filter(f => /hurricane|typhoon|tropical/i.test(f.properties?.event));

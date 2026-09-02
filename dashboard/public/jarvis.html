@@ -534,18 +534,50 @@ function t(keyPath, fallback) {
   return typeof value === 'string' ? value : (fallback || keyPath);
 }
 
+// === STORAGE ===
+// Private-mode Safari, disabled site data, and sandboxed iframes all make a bare
+// localStorage access throw. These run at top level, so an uncaught throw would
+// abort the whole inline script before a single panel renders.
+const safeStorage = {
+  get(key, fallback = null){
+    try{
+      const value = window.localStorage.getItem(key);
+      return value === null ? fallback : value;
+    }catch{ return fallback; }
+  },
+  set(key, value){
+    try{ window.localStorage.setItem(key, String(value)); return true; }catch{ return false; }
+  },
+  remove(key){
+    try{ window.localStorage.removeItem(key); return true; }catch{ return false; }
+  }
+};
+
 // === GLOBALS ===
 let globe = null;
 let globeFX = null;
 let globeInitialized = false;
-let lowPerfMode = localStorage.getItem('crucix_low_perf') === 'true';
-let primaryView = localStorage.getItem('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
-let pinnedLowerPanel = localStorage.getItem('crucix_pinned_panel') || 'ideas';
+let lowPerfMode = safeStorage.get('crucix_low_perf') === 'true';
+let primaryView = safeStorage.get('crucix_primary_view') || (isMobileLayout() ? 'overview' : 'map');
+let pinnedLowerPanel = safeStorage.get('crucix_pinned_panel') || 'ideas';
 let expandedTickerKey = null;
-let tickerMode = localStorage.getItem('crucix_ticker_mode') === 'pinned' ? 'pinned' : 'live';
+let tickerMode = safeStorage.get('crucix_ticker_mode') === 'pinned' ? 'pinned' : 'live';
 let pinnedTickerItems = loadPinnedTickerItems();
 let askMessages = [];
 let askInFlight = false;
+// Label for the Ask AI badge — filled in from /api/health, then refined by the
+// `model` each /api/ask response reports. Never hard-code a model name here.
+let askModelLabel = null;
+let askLlmEnabled = null;
+// True between an SSE `sweep_start` and the next `update`/`sweep_error`; the
+// topbar re-renders on every update so the flag has to outlive the markup.
+let sweepInFlight = false;
+// Full marker sets from the last plotMarkers() run. The zoom handler and the
+// Sensor Grid filter both narrow *these*, never globe.pointsData(), which is
+// already a filtered view by the time either of them reads it.
+let allMapPoints = [];
+let allMapLabels = [];
+let sensorActiveFilter = null;
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
@@ -760,6 +792,36 @@ function escapeHtml(value){
 }
 
 function escapeAttr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
+
+// Numeric formatting guards. A missing FRED/BLS/EIA series used to reach the DOM
+// as "$NaNT", "$undefined" or "+undefined%"; every optional number goes through
+// these so the fallback is a clean em-dash instead.
+function fmtNum(value, digits=1, fallback='--'){
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : fallback;
+}
+function fmtInt(value, fallback='--'){
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n).toLocaleString() : fallback;
+}
+function fmtSigned(value, digits=2, fallback='--'){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return fallback;
+  return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}`;
+}
+// Mean orbital altitude in km: prefer an explicit altitudeKm, else the
+// apogee/perigee midpoint. Returns null when the space source gave neither.
+function issAltitudeKm(iss){
+  if(!iss) return null;
+  const direct = Number(iss.altitudeKm);
+  if(Number.isFinite(direct)) return direct;
+  const apogee = Number(iss.apogee);
+  const perigee = Number(iss.perigee);
+  if(Number.isFinite(apogee) && Number.isFinite(perigee)) return (apogee + perigee) / 2;
+  if(Number.isFinite(apogee)) return apogee;
+  if(Number.isFinite(perigee)) return perigee;
+  return null;
+}
 function safeCssToken(value){ return String(value ?? '').toLowerCase().replace(/[^a-z0-9_-]/g,''); }
 function setTextWithBreaks(element, value){
   const parts = String(value ?? '').split(/<br\s*\/?>/gi);
@@ -810,20 +872,20 @@ function applyPrimaryView(){
 
 function setPrimaryView(view){
   primaryView = view;
-  localStorage.setItem('crucix_primary_view', view);
+  safeStorage.set('crucix_primary_view', view);
   applyPrimaryView();
   if(view === 'map') refreshMapViewport(true);
 }
 
 function setPinnedPanel(panel){
   pinnedLowerPanel = panel;
-  localStorage.setItem('crucix_pinned_panel', panel);
+  safeStorage.set('crucix_pinned_panel', panel);
   renderLower();
 }
 
 function loadPinnedTickerItems(){
   try{
-    const parsed = JSON.parse(localStorage.getItem('crucix_pinned_ticker_items') || '[]');
+    const parsed = JSON.parse(safeStorage.get('crucix_pinned_ticker_items', '[]'));
     return Array.isArray(parsed)
       ? parsed.filter(entry => entry && typeof entry.key === 'string' && entry.item && typeof entry.item === 'object').slice(0,40)
       : [];
@@ -833,12 +895,12 @@ function loadPinnedTickerItems(){
 }
 
 function savePinnedTickerItems(){
-  localStorage.setItem('crucix_pinned_ticker_items', JSON.stringify(pinnedTickerItems.slice(0,40)));
+  safeStorage.set('crucix_pinned_ticker_items', JSON.stringify(pinnedTickerItems.slice(0,40)));
 }
 
 function setTickerMode(mode){
   tickerMode = mode === 'pinned' ? 'pinned' : 'live';
-  localStorage.setItem('crucix_ticker_mode', tickerMode);
+  safeStorage.set('crucix_ticker_mode', tickerMode);
   expandedTickerKey = null;
   renderLower();
 }
@@ -865,7 +927,7 @@ function setMapLoading(show, text='Initializing 3D Globe'){
 
 function togglePerfMode(){
   lowPerfMode = !lowPerfMode;
-  localStorage.setItem('crucix_low_perf', String(lowPerfMode));
+  safeStorage.set('crucix_low_perf', String(lowPerfMode));
   document.body.classList.toggle('low-perf', lowPerfMode);
   const perfStatus = document.getElementById('perfStatus');
   if(perfStatus) perfStatus.textContent = lowPerfMode ? 'LITE' : 'FULL';
@@ -1077,7 +1139,7 @@ function renderLeftRail(){
      items:(D.news||[]).slice(0,12).filter(n=>Number.isFinite(+n.lat)&&Number.isFinite(+n.lon)).map(n=>({name:n.title?.substring(0,40)||n.source||'News',lat:+n.lat,lon:+n.lon,status:n.source||'NEWS',meta:`${n.region||'Unknown'} · ${getAge(n.date)}`,detail:`${(+n.lat).toFixed(2)}°, ${(+n.lon).toFixed(2)}°`}))},
     {name:t('layers.spaceActivity','Satellites'),count:D.space?.militarySats||0,dot:'space',sub:`${D.space?.totalNewObjects||0} ${t('space.newLast30d','new (30d)')}`,
      items:[
-       ...(D.space?.iss?[{name:'ISS',lat:0,lon:0,status:'TRACKING',meta:`Alt: ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km`,detail:'International Space Station'}]:[]),
+       ...(D.space?.iss?[{name:'ISS',lat:0,lon:0,status:'TRACKING',meta:`Alt: ${fmtNum(issAltitudeKm(D.space.iss),0)} km`,detail:'International Space Station'}]:[]),
        ...Object.entries(D.space?.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=>({name:`${c} Mil Sats`,lat:0,lon:0,status:`${n} sats`,meta:'Military constellation',detail:'No fixed position'}))
      ]}
   ];
@@ -1113,12 +1175,12 @@ function renderLeftRail(){
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.vix','VIX')} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${vix?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.hySpread','HY Spread')}</span><span class="eval">${hy?.value||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${usd?.value?.toFixed(1)||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${claims?.value?.toLocaleString()||'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${mort?.value||'--'}%</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">$${(m2?.value/1000)?.toFixed(1)||'--'}T</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.vix','VIX')} (Fear)</span><span class="eval" style="color:${vix?.value>20?'var(--warn)':'var(--accent)'}">${fmtNum(vix?.value,2)}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.hySpread','HY Spread')}</span><span class="eval">${fmtNum(hy?.value,2)}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.usdIndex','USD Index')}</span><span class="eval">${fmtNum(usd?.value,1)}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${fmtInt(claims?.value)}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${Number.isFinite(Number(mort?.value))?fmtNum(mort.value,2)+'%':'--'}</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">${Number.isFinite(Number(m2?.value))?'$'+fmtNum(Number(m2.value)/1000,1)+'T':'--'}</span></div>
       <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${((parseFloat(D.treasury.totalDebt)||0)/1e12).toFixed(2)}T</span></div>
     </div>
     <div class="g-panel">
@@ -1128,7 +1190,7 @@ function renderLeftRail(){
         <div class="econ-row"><span class="elabel">Military Sats</span><span class="eval">${D.space.militarySats||0}</span></div>
         <div class="econ-row"><span class="elabel">Starlink</span><span class="eval">${D.space.constellations?.starlink||0}</span></div>
         <div class="econ-row"><span class="elabel">OneWeb</span><span class="eval">${D.space.constellations?.oneweb||0}</span></div>
-        ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${((D.space.iss.apogee+D.space.iss.perigee)/2).toFixed(0)} km</span></div>` : ''}
+        ${D.space.iss ? `<div class="econ-row"><span class="elabel">ISS</span><span class="eval" style="color:var(--accent)">ALT ${fmtNum(issAltitudeKm(D.space.iss),0)} km</span></div>` : ''}
         ${Object.entries(D.space.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([c,n])=>`<div class="econ-row"><span class="elabel" style="padding-left:8px">${c}</span><span class="eval" style="font-size:10px">${n} mil sats</span></div>`).join('')}
         ${(D.space.signals||[]).length ? `<div style="margin-top:6px;padding:6px 8px;border:1px solid rgba(68,204,255,0.2);background:rgba(68,204,255,0.04);font-family:var(--mono);font-size:9px;color:var(--accent2);line-height:1.5">${D.space.signals.slice(0,2).join('<br>')}</div>` : ''}
       ` : '<div style="font-family:var(--mono);font-size:10px;color:var(--dim)">NO SPACE DATA</div>'}
@@ -1721,7 +1783,7 @@ function toggleTickerPin(key){
   }
   savePinnedTickerItems();
   if(tickerMode === 'pinned' && !pinnedTickerItems.length) tickerMode = 'live';
-  localStorage.setItem('crucix_ticker_mode', tickerMode);
+  safeStorage.set('crucix_ticker_mode', tickerMode);
   expandedTickerKey = null;
   renderLower();
 }
@@ -1931,18 +1993,21 @@ function renderLower(){
   // VIX from Yahoo Finance live data (fallback to FRED)
   const vixLive = mkt.vix;
   const vixFred = D.fred.find(f=>f.id==='VIXCLS');
-  const vixVal = vixLive?.value || vixFred?.value;
-  const vixChg = vixLive?.changePct != null ? `${vixLive.changePct>=0?'+':''}${vixLive.changePct}%` : '';
+  const vixVal = vixLive?.value ?? vixFred?.value;
+  const vixNum = Number(vixVal);
+  const vixChg = Number.isFinite(Number(vixLive?.changePct)) ? `${fmtSigned(vixLive.changePct,2)}%` : '';
+  const money = (value, digits=2) => Number.isFinite(Number(value)) ? `$${fmtNum(value,digits)}` : '--';
+  const pct = (value, digits=2) => Number.isFinite(Number(value)) ? `${fmtNum(value,digits)}%` : '--';
 
   const metrics=[
-    {l:'WTI Crude',v:`$${D.energy.wti}`,s:'$/bbl',p:70},
-    {l:'Brent',v:`$${D.energy.brent}`,s:'$/bbl',p:75},
-    {l:'Nat Gas',v:`$${D.energy.natgas||'--'}`,s:'$/MMBtu',p:30},
-    {l:'VIX',v:vixVal?vixVal.toFixed(1):'--',s:vixChg||'volatility index',p:vixVal?Math.min(vixVal*2.5,100):30},
-    {l:'Fed Funds',v:ff?`${ff.value}%`:'--',s:ff?.date||'',p:36},
-    {l:'GSCPI',v:gscpi?gscpi.value.toFixed(2):'--',s:gscpi?.interpretation||'',p:49},
-    {l:'CPI MoM',v:cpi?`+${cpi.momChangePct?.toFixed(2)}%`:'--',s:cpi?.date||'',p:37},
-    {l:'Unemployment',v:ue?`${ue.value}%`:'--',s:ue?`${ue.momChange>0?'+':''}${ue.momChange} vs prior`:'',p:44},
+    {l:'WTI Crude',v:money(D.energy.wti,2),s:'$/bbl',p:70},
+    {l:'Brent',v:money(D.energy.brent,2),s:'$/bbl',p:75},
+    {l:'Nat Gas',v:money(D.energy.natgas,2),s:'$/MMBtu',p:30},
+    {l:'VIX',v:fmtNum(vixVal,1),s:vixChg||'volatility index',p:Number.isFinite(vixNum)?Math.min(vixNum*2.5,100):30},
+    {l:'Fed Funds',v:pct(ff?.value,2),s:ff?.date||'',p:36},
+    {l:'GSCPI',v:fmtNum(gscpi?.value,2),s:gscpi?.interpretation||'',p:49},
+    {l:'CPI MoM',v:Number.isFinite(Number(cpi?.momChangePct))?`${fmtSigned(cpi.momChangePct,2)}%`:'--',s:cpi?.date||'',p:37},
+    {l:'Unemployment',v:pct(ue?.value,1),s:Number.isFinite(Number(ue?.momChange))?`${fmtSigned(ue.momChange,1)} vs prior`:'',p:44},
   ];
 
   // Attach sparklines from FRED recent data

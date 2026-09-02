@@ -1,0 +1,24 @@
+/**
+ * crucix-theme.css — the palette shared by every Crucix page.
+ *
+ * Only the tokens that are genuinely common live here. A page that wants a
+ * different shade (satellites.html runs a slightly deeper background, airwatch
+ * tints its chrome cyan) overrides that single token in its own inline
+ * `:root` block, which is loaded after this file and therefore wins.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #020408;
+  --panel: rgba(6, 14, 22, 0.92);
+  --glass: rgba(10, 20, 32, 0.7);
+  --border: rgba(100, 240, 200, 0.12);
+  --border-bright: rgba(100, 240, 200, 0.3);
+  --text: #e8f4f0;
+  --dim: #6a8a82;
+  --accent: #64f0c8;
+  --accent2: #44ccff;
+  --warn: #ffb84c;
+  --danger: #ff5f63;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}

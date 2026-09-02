@@ -16,6 +16,7 @@
 
 import { Router } from 'express';
 import { getAllCameras, getCameraById, stealthFetch } from './cctvCameras.mjs';
+import { isPrivateHost } from '../../lib/util/net.mjs';
 
 const router = Router();
 
@@ -73,7 +74,77 @@ function sniffImageType(buf) {
 // (and several clients may watch the same camera), but most traffic cams only
 // update their frame every minute or more — no point re-fetching upstream.
 const SNAP_TTL_MS = 5000;
+const SNAP_MAX_BYTES = 5 * 1024 * 1024;
+const SNAP_CACHE_MAX = 100;
 const snapCache = new Map(); // id -> { at, buf, type }
+
+function checkedSnapshotUrl(raw) {
+  let parsed;
+  try { parsed = new URL(raw); } catch { throw new Error('Invalid snapshot URL'); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported snapshot URL protocol');
+  if (isPrivateHost(parsed.hostname)) throw new Error('Private snapshot hosts are not allowed');
+  return parsed;
+}
+
+async function fetchSnapshot(url, headers) {
+  let current = checkedSnapshotUrl(url);
+  for (let redirects = 0; redirects <= 3; redirects += 1) {
+    const controller = new AbortController();
+    const upstream = await stealthFetch(current, {
+      timeoutMs: 12_000,
+      signal: controller.signal,
+      redirect: 'manual',
+      headers,
+    });
+    if (upstream.status < 300 || upstream.status >= 400) return { upstream, controller };
+    const location = upstream.headers.get('location');
+    if (!location) throw new Error(`Upstream redirect ${upstream.status} had no location`);
+    if (redirects === 3) throw new Error('Too many snapshot redirects');
+    current = checkedSnapshotUrl(new URL(location, current).href);
+  }
+  throw new Error('Too many snapshot redirects');
+}
+
+async function readBodyCapped(response, controller) {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > SNAP_MAX_BYTES) {
+    controller.abort();
+    throw new Error(`Snapshot exceeds ${SNAP_MAX_BYTES} byte limit`);
+  }
+  if (!response.body) return Buffer.alloc(0);
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > SNAP_MAX_BYTES) {
+        controller.abort();
+        await reader.cancel().catch(() => {});
+        throw new Error(`Snapshot exceeds ${SNAP_MAX_BYTES} byte limit`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks, total);
+}
+
+function cacheSnapshot(id, value) {
+  const cutoff = Date.now() - SNAP_TTL_MS;
+  for (const [key, cached] of snapCache) {
+    if (cached.at < cutoff) snapCache.delete(key);
+  }
+  snapCache.delete(id);
+  snapCache.set(id, value);
+  while (snapCache.size > SNAP_CACHE_MAX) {
+    snapCache.delete(snapCache.keys().next().value);
+  }
+}
 
 // GET /api/cctv/snapshot?id=<id> — fetch a camera's current image via the Pi
 // (avoids browser CORS/hotlink/Referer/mixed-content issues entirely).
@@ -83,6 +154,8 @@ router.get('/snapshot', async (req, res) => {
 
   const cached = snapCache.get(id);
   if (cached && Date.now() - cached.at < SNAP_TTL_MS) {
+    snapCache.delete(id);
+    snapCache.set(id, cached);
     res.set('Content-Type', cached.type);
     res.set('Cache-Control', 'no-store');
     return res.send(cached.buf);
@@ -99,7 +172,13 @@ router.get('/snapshot', async (req, res) => {
   const url = cam.feed_url || '';
   // Only proxy snapshot-style image feeds — not HLS/iframe streams.
   if (!/^https?:\/\//i.test(url) || cam.stream_type === 'hls' || cam.stream_type === 'iframe') {
-    return res.status(415).json({ error: 'Camera has no proxyable image feed', external_url: cam.external_url || url || null });
+    return res.status(422).json({ error: 'Camera has no proxyable image feed', external_url: cam.external_url || url || null });
+  }
+
+  try {
+    checkedSnapshotUrl(url);
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
   }
 
   // Some upstreams require a same-origin Referer to serve the frame.
@@ -107,28 +186,28 @@ router.get('/snapshot', async (req, res) => {
   try { referer = new URL(cam.external_url || url).origin + '/'; } catch { /* ignore */ }
 
   try {
-    const upstream = await stealthFetch(url, {
-      signal: AbortSignal.timeout(12000),
-      redirect: 'follow',
-      headers: referer ? { Referer: referer } : undefined,
-    });
+    const { upstream, controller } = await fetchSnapshot(
+      url,
+      referer ? { Referer: referer } : undefined,
+    );
     if (!upstream.ok) {
       return res.status(502).json({ error: `Upstream HTTP ${upstream.status}` });
     }
-    // Buffer (snapshots are small) so we can sniff and reject error bodies.
-    const buf = Buffer.from(await upstream.arrayBuffer());
     const ctHeader = (upstream.headers.get('content-type') || '').toLowerCase();
+    if (ctHeader.startsWith('multipart/') || ctHeader.startsWith('image/svg+xml')) {
+      controller.abort();
+      return res.status(502).json({ error: `Unsupported upstream image type (${ctHeader})` });
+    }
+    const buf = await readBodyCapped(upstream, controller);
     const sniffed = sniffImageType(buf);
-    const isImage = sniffed || /^image\//.test(ctHeader);
-    if (!isImage || buf.length < 100) {
-      return res.status(415).json({
+    if (!sniffed) {
+      return res.status(502).json({
         error: `Upstream is not an image (${ctHeader || 'no type'}, ${buf.length}b)`,
         external_url: cam.external_url || null,
       });
     }
-    const type = sniffed || ctHeader || 'image/jpeg';
-    if (snapCache.size > 300) snapCache.clear(); // crude bound; set is ~400 cams
-    snapCache.set(id, { at: Date.now(), buf, type });
+    const type = sniffed;
+    cacheSnapshot(id, { at: Date.now(), buf, type });
     res.set('Content-Type', type);
     res.set('Cache-Control', 'no-store');
     res.send(buf);
