@@ -34,8 +34,11 @@ window.Globe = Globe;
   color-scheme: dark;
   --bg:#020408;--panel:rgba(6,14,22,0.82);--glass:rgba(10,20,32,0.55);
   --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
-  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
-  --warn:#ffb84c;--danger:#ff5f63;--mono:'IBM Plex Mono',monospace;--sans:'Space Grotesk',sans-serif;
+  --text:#e8f4f0;--dim:#6a8a82;
+  --map-kinetic:#ff5f63;--map-hazard:#ffb84c;--map-maritime:#b388ff;
+  --map-sdr:#44ccff;--map-space:#ffffff;--map-news:#7fa7d6;--map-air:#64f0c8;
+  --accent:var(--map-air);--accent2:var(--map-sdr);
+  --warn:var(--map-hazard);--danger:var(--map-kinetic);--mono:'IBM Plex Mono',monospace;--sans:'Space Grotesk',sans-serif;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:hidden}
 .bg-grid{position:fixed;inset:0;pointer-events:none;opacity:0;
@@ -70,9 +73,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .regime-chip .blink{width:6px;height:6px;border-radius:50%;background:var(--danger);box-shadow:0 0 8px var(--danger);animation:pulse-blink 1.5s ease-in-out infinite}
 @keyframes pulse-blink{0%,100%{opacity:1}50%{opacity:0.3}}
 .top-center{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.region-btn{border:1px solid var(--border);background:rgba(255,255,255,0.02);color:var(--dim);font-family:var(--mono);font-size:11px;padding:6px 12px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;transition:all 0.2s}
-.region-btn:hover{border-color:var(--accent);color:var(--text)}
-.region-btn.active{color:#03140d;background:var(--accent);border-color:var(--accent)}
 .top-right{display:flex;align-items:center;gap:10px}
 .meta-pill{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.06em;padding:5px 10px;border:1px solid var(--border)}
 .sweep-pill{display:inline-flex;align-items:center;gap:6px;color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.07);text-transform:uppercase}
@@ -87,7 +87,7 @@ body.low-perf .sweep-pill .blink{animation:none}
 .fullscreen-btn.warn{border-color:rgba(255,184,76,0.38);color:var(--warn);background:rgba(255,184,76,0.08)}
 .perf-pill{cursor:pointer;background:rgba(255,255,255,0.05);transition:all 0.2s}
 .perf-pill:hover{border-color:var(--accent2);color:var(--text);background:rgba(68,204,255,0.08)}
-.focusable:focus-visible,.region-btn:focus-visible,.guide-btn:focus-visible,.fullscreen-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible,.right-interactive:focus-visible,.right-map-btn:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
+.focusable:focus-visible,.guide-btn:focus-visible,.fullscreen-btn:focus-visible,.meta-pill:focus-visible,.map-ctrl-btn:focus-visible,.map-region-select:focus-visible,.layers-chip:focus-visible,.map-layer-row input:focus-visible,.hero-toggle:focus-visible,.proj-toggle:focus-visible,.layer-item:focus-visible,.sub-item:focus-visible,.pin-btn:focus-visible,.stage-tab:focus-visible,.ticker-tab:focus-visible,.tk-card:focus-visible,.tk-action:focus-visible,.tk-pin:focus-visible,.right-interactive:focus-visible,.right-map-btn:focus-visible{outline:1px solid var(--accent2);outline-offset:2px}
 
 /* HERO */
 .hero-strip{display:grid;grid-template-columns:minmax(0,1.6fr) repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
@@ -113,6 +113,19 @@ body.low-perf .sweep-pill .blink{animation:none}
 .hero-stat.good .hero-stat-value{color:var(--accent)}
 .hero-stat.warn .hero-stat-value{color:var(--warn)}
 .hero-stat.danger .hero-stat-value{color:var(--danger)}
+.hero-kicker-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hero-toggle{height:24px;padding:0 8px;border:1px solid var(--border);background:rgba(0,0,0,0.28);color:var(--dim);font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.hero-toggle:hover{color:var(--accent);border-color:var(--border-bright)}
+.hero-collapsed-row{display:none}
+.hero-strip.collapsed{display:block;height:42px;min-height:42px;overflow:hidden}
+.hero-strip.collapsed .hero-card{display:none}
+.hero-strip.collapsed .hero-collapsed-row{height:42px;display:flex;align-items:center;gap:14px;padding:6px 10px;border:1px solid var(--border);background:var(--panel);backdrop-filter:blur(18px);overflow-x:auto;overflow-y:hidden;white-space:nowrap}
+.hero-collapsed-title{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--text)}
+.hero-inline-stats{display:flex;align-items:center;gap:14px;min-width:max-content;margin-left:auto}
+.hero-inline-stat{font-family:var(--mono);font-size:9px;letter-spacing:0.06em;text-transform:uppercase;color:var(--dim)}
+.hero-inline-stat strong{color:var(--text);font-size:11px;margin-left:4px}
+.hero-strip.collapsed .stage-switch{flex-wrap:nowrap}
+.hero-strip.collapsed .stage-tab{height:28px;padding:4px 8px}
 
 /* VIEW MODES */
 .map-stage{display:flex;flex-direction:column;gap:10px}
@@ -151,15 +164,13 @@ body.view-map #lowerGrid{margin-top:10px}
 .sec-head.clickable{cursor:pointer}.sec-head.clickable:hover h3{color:var(--accent)}
 .layer-left{display:flex;align-items:center;gap:8px}
 .ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.ldot.air{background:var(--accent);box-shadow:0 0 6px rgba(100,240,200,0.4)}
-.ldot.thermal{background:var(--danger);box-shadow:0 0 6px rgba(255,95,99,0.4)}
-.ldot.sdr{background:var(--accent2);box-shadow:0 0 6px rgba(68,204,255,0.4)}
-.ldot.nuke{background:#ffe082;box-shadow:0 0 6px rgba(255,224,130,0.4)}
-.ldot.incident{background:var(--warn);box-shadow:0 0 6px rgba(255,184,76,0.4)}
-.ldot.maritime{background:#b388ff;box-shadow:0 0 6px rgba(179,136,255,0.4)}
-.ldot.health{background:#69f0ae;box-shadow:0 0 6px rgba(105,240,174,0.4)}
-.ldot.news{background:#81d4fa;box-shadow:0 0 6px rgba(129,212,250,0.4)}
-.ldot.space{background:#e0b0ff;box-shadow:0 0 6px rgba(224,176,255,0.4)}
+.ldot.air{background:var(--map-air);box-shadow:0 0 6px color-mix(in srgb,var(--map-air) 45%,transparent)}
+.ldot.thermal,.ldot.conflict{background:var(--map-kinetic);box-shadow:0 0 6px color-mix(in srgb,var(--map-kinetic) 45%,transparent)}
+.ldot.sdr{background:var(--map-sdr);box-shadow:0 0 6px color-mix(in srgb,var(--map-sdr) 45%,transparent)}
+.ldot.nuke,.ldot.incident,.ldot.health,.ldot.weather,.ldot.radiation{background:var(--map-hazard);box-shadow:0 0 6px color-mix(in srgb,var(--map-hazard) 45%,transparent)}
+.ldot.maritime{background:var(--map-maritime);box-shadow:0 0 6px color-mix(in srgb,var(--map-maritime) 45%,transparent)}
+.ldot.news,.ldot.gdelt{background:var(--map-news);box-shadow:0 0 6px color-mix(in srgb,var(--map-news) 45%,transparent)}
+.ldot.space{background:var(--map-space);box-shadow:0 0 8px color-mix(in srgb,var(--map-space) 50%,transparent)}
 .layer-name{font-size:12px;font-weight:500}
 .layer-sub{font-size:10px;color:var(--dim)}
 .layer-count{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);margin-left:auto;padding-left:10px;white-space:nowrap}
@@ -173,8 +184,7 @@ body.view-map #lowerGrid{margin-top:10px}
 .econ-row .eval{font-family:var(--mono);font-weight:600}
 
 /* CENTER: MAP */
-.map-region-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--border);background:var(--panel);backdrop-filter:blur(20px)}
-.map-container{flex:1;min-height:560px;border:1px solid var(--border);background:radial-gradient(ellipse at center,rgba(4,12,20,1),rgba(2,4,8,1));position:relative;overflow:hidden}
+.map-container{width:100%;aspect-ratio:9 / 5;min-height:320px;border:1px solid var(--border);background:radial-gradient(ellipse at center,rgba(4,12,20,1),rgba(2,4,8,1));position:relative;overflow:hidden}
 #globeViz{width:100%;height:100%;cursor:grab}
 #globeViz:active{cursor:grabbing}
 #globeViz canvas{outline:none}
@@ -184,14 +194,25 @@ body.view-map #lowerGrid{margin-top:10px}
 #flatMapSvg .border{fill:none;stroke:rgba(200,220,230,0.08);stroke-width:0.3}
 @keyframes pulse-conflict{0%,100%{opacity:0.5;stroke-width:1.5}50%{opacity:0.9;stroke-width:2.5}}
 .conflict-ring{animation:pulse-conflict 2.5s ease-in-out infinite}
-.map-legend{position:absolute;bottom:10px;left:12px;display:flex;gap:14px;font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:0.06em;text-transform:uppercase;z-index:5;flex-wrap:wrap}
-.leg-item{display:flex;align-items:center;gap:5px}
-.leg-dot{width:8px;height:8px;border-radius:50%}
+.map-legend{position:absolute;bottom:10px;left:12px;z-index:8;font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase}
+.layers-chip{height:28px;padding:0 10px;border:1px solid var(--border-bright);background:rgba(0,0,0,0.72);color:var(--text);font-family:var(--mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;backdrop-filter:blur(8px)}
+.layers-chip:hover,.layers-chip[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:rgba(5,18,18,0.9)}
+.map-layers-panel{position:absolute;left:0;bottom:34px;width:230px;max-height:min(410px,65vh);overflow:auto;padding:6px;border:1px solid var(--border-bright);background:rgba(4,10,16,0.96);box-shadow:0 10px 28px rgba(0,0,0,0.55);backdrop-filter:blur(14px)}
+.map-layers-panel[hidden]{display:none}
+.map-layer-row{display:grid;grid-template-columns:16px 10px minmax(0,1fr) auto;align-items:center;gap:7px;min-height:30px;padding:5px 6px;color:var(--dim);cursor:pointer;border:1px solid transparent}
+.map-layer-row:hover{border-color:rgba(100,240,200,0.14);background:rgba(255,255,255,0.025);color:var(--text)}
+.map-layer-row input{width:13px;height:13px;accent-color:var(--accent);cursor:pointer}
+.map-layer-swatch{width:8px;height:8px;border-radius:50%;box-shadow:0 0 5px currentColor}
+.map-layer-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.map-layer-count{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
 .map-hint{position:absolute;top:8px;right:12px;font-family:var(--mono);font-size:9px;color:var(--dim);z-index:5;opacity:0.6;letter-spacing:0.05em}
+.map-hint.error{display:block!important;color:var(--danger);opacity:0.9}
 .map-hint-id{position:absolute;top:8px;right:12px}
-.map-controls{position:absolute;top:8px;left:12px;z-index:6;display:flex;flex-direction:column;gap:4px}
+.map-controls{position:absolute;top:8px;left:12px;z-index:7;display:flex;align-items:center;gap:4px}
 .map-ctrl-btn{width:28px;height:28px;border:1px solid var(--border);background:rgba(0,0,0,0.6);color:var(--dim);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);transition:all 0.2s;font-family:var(--mono)}
 .map-ctrl-btn:hover{color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.06)}
+.map-region-select{height:28px;max-width:152px;border:1px solid var(--border);background:rgba(0,0,0,0.78);color:var(--dim);font-family:var(--mono);font-size:9px;letter-spacing:0.06em;text-transform:uppercase;padding:0 24px 0 8px;cursor:pointer;backdrop-filter:blur(8px)}
+.map-region-select:hover{color:var(--accent);border-color:var(--border-bright)}
 /* Map popup */
 .map-popup{position:absolute;z-index:20;width:280px;padding:12px;background:rgba(6,10,14,0.95);border:1px solid rgba(100,240,200,0.25);backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.5);pointer-events:auto;display:none}
 .map-popup.show{display:block}
@@ -222,8 +243,8 @@ body.view-map #lowerGrid{margin-top:10px}
 .map-loading-ring{width:28px;height:28px;border:2px solid rgba(68,204,255,0.16);border-top-color:var(--accent2);border-radius:50%;animation:spin 1s linear infinite}
 .map-loading-text{font-family:var(--mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent2)}
 /* News label on map */
-.news-icon{fill:rgba(129,212,250,0.8);filter:drop-shadow(0 0 3px rgba(129,212,250,0.4));transition:fill .2s}
-.news-icon:hover{fill:rgba(129,212,250,1)}
+.news-icon{fill:color-mix(in srgb,var(--map-news) 80%,transparent);filter:drop-shadow(0 0 3px color-mix(in srgb,var(--map-news) 40%,transparent));transition:fill .2s}
+.news-icon:hover{fill:var(--map-news)}
 
 /* LOWER GRID — flex layout for responsive panel sizing */
 .lower{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:flex-start}
@@ -423,17 +444,15 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
   .hero-strip{grid-template-columns:1fr;gap:8px}
   .top-left,.top-center,.top-right{width:100%}
   .top-center{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-  .map-region-bar{display:none}
   .top-right{gap:6px ; flex-wrap: wrap; justify-content: center;}
-  .region-btn,.meta-pill,.alert-badge,.guide-btn{font-size:10px}
+  .meta-pill,.alert-badge,.guide-btn{font-size:10px}
   .grid{display:flex;flex-direction:column}
   #centerCol{order:1}
   #rightRail{order:2}
   #leftRail{order:3}
-  .map-container{min-height:420px}
+  .map-container{min-height:320px}
   .map-hint{font-size:8px;right:8px}
-  .map-legend{left:8px;right:8px;bottom:8px;gap:4px}
-  .leg-item{font-size:8px}
+  .map-legend{left:8px;bottom:8px}
   .lower .lp-ticker,.lower .lp-osint,.lower .lp-macro,.lower .lp-ideas,.lower .lp-ask{flex:1 1 100%;max-width:none}
   .metrics-row{grid-template-columns:repeat(2,1fr)}
   .src-grid{grid-template-columns:repeat(2,1fr)}
@@ -452,7 +471,7 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
 .spark-dot{r:2}
 
 /* FLAT/GLOBE TOGGLE */
-.proj-toggle{position:absolute;top:8px;left:48px;z-index:6;padding:5px 10px;border:1px solid var(--border);background:rgba(0,0,0,0.6);font-family:var(--mono);font-size:9px;cursor:pointer;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;transition:all 0.2s;backdrop-filter:blur(8px)}
+.proj-toggle{position:absolute;top:42px;left:12px;z-index:6;height:28px;padding:0 10px;border:1px solid var(--border);background:rgba(0,0,0,0.6);font-family:var(--mono);font-size:9px;cursor:pointer;color:var(--dim);letter-spacing:0.08em;text-transform:uppercase;transition:all 0.2s;backdrop-filter:blur(8px)}
 .proj-toggle:hover{border-color:var(--accent);color:var(--accent)}
 .proj-toggle.active{color:var(--bg);background:var(--accent);border-color:var(--accent)}
 /* GLOBE.GL overrides */
@@ -484,7 +503,6 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
     <div class="col" id="leftRail"></div>
     <div class="col" id="centerCol">
       <div class="map-stage" id="mapStage">
-        <div class="map-region-bar" id="mapRegionBar"></div>
         <div class="map-container" id="mapContainer">
           <div id="globeViz"></div>
           <svg id="flatMapSvg" style="display:none;width:100%;height:100%;position:absolute;top:0;left:0;cursor:grab"></svg>
@@ -494,6 +512,14 @@ body.low-perf .ticker-wrap::-webkit-scrollbar-thumb{background:rgba(100,240,200,
           <div class="map-controls">
             <button class="map-ctrl-btn" onclick="mapZoom(1.5)" title="Zoom in" aria-label="Zoom in">+</button>
             <button class="map-ctrl-btn" onclick="mapZoom(0.67)" title="Zoom out" aria-label="Zoom out">&minus;</button>
+            <select class="map-region-select" id="regionSelect" onchange="setRegion(this.value)" aria-label="Map region">
+              <option value="world">World</option>
+              <option value="americas">Americas</option>
+              <option value="europe">Europe</option>
+              <option value="middleEast">Middle East</option>
+              <option value="asiaPacific">Asia Pacific</option>
+              <option value="africa">Africa</option>
+            </select>
           </div>
           <button class="proj-toggle" id="projToggle" onclick="toggleMapMode()" aria-label="Toggle flat and globe map mode">GLOBE MODE</button>
           <div class="map-popup" id="mapPopup"><button class="pp-close" onclick="closePopup()">&times;</button><div class="pp-head"></div><div class="pp-text"></div><div class="pp-meta"></div></div>
@@ -555,8 +581,56 @@ const safeStorage = {
   },
   remove(key){
     try{ window.localStorage.removeItem(key); return true; }catch{ return false; }
+  },
+  sessionGet(key, fallback = null){
+    try{
+      const value = window.sessionStorage.getItem(key);
+      return value === null ? fallback : value;
+    }catch{ return fallback; }
+  },
+  sessionSet(key, value){
+    try{ window.sessionStorage.setItem(key, String(value)); return true; }catch{ return false; }
+  },
+  sessionRemove(key){
+    try{ window.sessionStorage.removeItem(key); return true; }catch{ return false; }
   }
 };
+
+// The map, Sensor Grid dots, and layer swatches all derive from these seven
+// families. The matching CSS custom properties above are the stylesheet side
+// of the same palette contract.
+const MAP_PALETTE = Object.freeze({
+  kinetic:'#ff5f63',
+  hazard:'#ffb84c',
+  maritime:'#b388ff',
+  sdr:'#44ccff',
+  space:'#ffffff',
+  news:'#7fa7d6',
+  air:'#64f0c8'
+});
+const MAP_TYPE_COLORS = Object.freeze({
+  air:MAP_PALETTE.air,
+  thermal:MAP_PALETTE.kinetic,
+  conflict:MAP_PALETTE.kinetic,
+  nuke:MAP_PALETTE.hazard,
+  weather:MAP_PALETTE.hazard,
+  radiation:MAP_PALETTE.hazard,
+  health:MAP_PALETTE.hazard,
+  maritime:MAP_PALETTE.maritime,
+  sdr:MAP_PALETTE.sdr,
+  space:MAP_PALETTE.space,
+  news:MAP_PALETTE.news,
+  gdelt:MAP_PALETTE.news
+});
+
+function loadHiddenMapLayers(){
+  try{
+    const parsed = JSON.parse(safeStorage.get('crucix_hidden_layers', '[]'));
+    return new Set(Array.isArray(parsed) ? parsed.filter(type => typeof type === 'string') : []);
+  }catch{
+    return new Set();
+  }
+}
 
 // === GLOBALS ===
 let globe = null;
@@ -582,10 +656,17 @@ let sweepInFlight = false;
 // already a filtered view by the time either of them reads it.
 let allMapPoints = [];
 let allMapLabels = [];
+let allMapRings = [];
 let sensorActiveFilter = null;
+let hiddenMapLayers = loadHiddenMapLayers();
+let heroCollapsed = safeStorage.get('crucix_hero_collapsed') === 'true';
+let mapHintSeen = safeStorage.sessionGet('crucix_map_hint_seen') === 'true';
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
 let flatSvg, flatProjection, flatPath, flatG, flatZoom, flatW, flatH;
+const AIR_COORDS=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
+const NUKE_COORDS=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
+const WHO_COORDS=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
 const signalGuideItems = [
   {
     term:'No Callsign',
@@ -735,14 +816,14 @@ function normalizeDashboardData(input){
   merged.meta.sourcesOk = Number.isFinite(+merged.meta.sourcesOk) ? +merged.meta.sourcesOk : 0;
   merged.meta.sourcesQueried = Number.isFinite(+merged.meta.sourcesQueried) ? +merged.meta.sourcesQueried : 0;
   merged.meta.totalDurationMs = Number.isFinite(+merged.meta.totalDurationMs) ? +merged.meta.totalDurationMs : 0;
-  merged.air = asArray(data.air);
-  merged.thermal = asArray(data.thermal);
+  merged.air = asArray(data.air).map(row=>row && typeof row === 'object' ? {...row,top:asArray(row.top)} : {top:[]});
+  merged.thermal = asArray(data.thermal).map(row=>row && typeof row === 'object' ? {...row,fires:asArray(row.fires)} : {fires:[]});
   merged.tSignals = asArray(data.tSignals);
   merged.chokepoints = asArray(data.chokepoints);
   merged.nuke = asArray(data.nuke);
   merged.nukeSignals = asArray(data.nukeSignals);
   merged.sdr = {...base.sdr,...(data.sdr && typeof data.sdr === 'object' ? data.sdr : {})};
-  merged.sdr.zones = asArray(merged.sdr.zones);
+  merged.sdr.zones = asArray(merged.sdr.zones).map(zone=>zone && typeof zone === 'object' ? {...zone,receivers:asArray(zone.receivers)} : {receivers:[]});
   merged.who = asArray(data.who);
   merged.fred = asArray(data.fred);
   merged.energy = {...base.energy,...(data.energy && typeof data.energy === 'object' ? data.energy : {})};
@@ -760,6 +841,7 @@ function normalizeDashboardData(input){
   merged.acled.deadliestEvents = asArray(merged.acled.deadliestEvents);
   merged.gdelt = {...base.gdelt,...(data.gdelt && typeof data.gdelt === 'object' ? data.gdelt : {})};
   merged.gdelt.geoPoints = asArray(merged.gdelt.geoPoints);
+  merged.space = data.space && typeof data.space === 'object' ? {...data.space,stationPositions:asArray(data.space.stationPositions)} : null;
   merged.health = asArray(data.health);
   merged.news = asArray(data.news);
   merged.markets = {...base.markets,...(data.markets && typeof data.markets === 'object' ? data.markets : {})};
@@ -867,10 +949,8 @@ function applyPrimaryView(){
   document.body.classList.toggle('view-overview', view === 'overview');
   document.body.classList.toggle('view-map', view === 'map');
   const mapContainer = document.getElementById('mapContainer');
-  const mapRegionBar = document.getElementById('mapRegionBar');
   const overviewNote = document.getElementById('overviewNote');
   if(mapContainer) mapContainer.style.display = view === 'overview' ? 'none' : '';
-  if(mapRegionBar && !isMobileLayout()) mapRegionBar.style.display = view === 'overview' ? 'none' : 'flex';
   if(overviewNote) overviewNote.style.display = view === 'overview' ? 'block' : 'none';
   document.querySelectorAll('.stage-tab').forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
 }
@@ -930,6 +1010,22 @@ function setMapLoading(show, text='Initializing 3D Globe'){
   overlay.classList.toggle('show', show);
 }
 
+function setMapHint(text, force=false){
+  const hint = document.getElementById('mapHint');
+  if(!hint) return;
+  const isError = String(text).includes('3D LOAD FAILED');
+  hint.textContent = text;
+  hint.classList.toggle('error', isError);
+  hint.hidden = !isError && mapHintSeen && !force;
+}
+
+function dismissMapHint(){
+  mapHintSeen = true;
+  safeStorage.sessionSet('crucix_map_hint_seen', 'true');
+  const hint = document.getElementById('mapHint');
+  if(hint && !hint.classList.contains('error')) hint.hidden = true;
+}
+
 function togglePerfMode(){
   lowPerfMode = !lowPerfMode;
   safeStorage.set('crucix_low_perf', String(lowPerfMode));
@@ -953,21 +1049,15 @@ function togglePerfMode(){
 
 // === TOPBAR ===
 function getRegionControlsMarkup(){
-  return ['world','americas','europe','middleEast','asiaPacific','africa'].map(r=>
-    `<button class="region-btn ${r===currentRegion?'active':''}" data-region="${r}" onclick="setRegion('${r}')">${r==='middleEast'?'MIDDLE EAST':r==='asiaPacific'?'ASIA PACIFIC':r.toUpperCase()}</button>`
-  ).join('');
+  return [
+    ['world','World'],['americas','Americas'],['europe','Europe'],
+    ['middleEast','Middle East'],['asiaPacific','Asia Pacific'],['africa','Africa']
+  ].map(([value,label])=>`<option value="${value}"${value===currentRegion?' selected':''}>${label}</option>`).join('');
 }
 
 function renderRegionControls(){
-  const mapRegionBar = document.getElementById('mapRegionBar');
-  if(!mapRegionBar) return;
-  if(isMobileLayout()){
-    mapRegionBar.innerHTML = '';
-    mapRegionBar.style.display = 'none';
-    return;
-  }
-  mapRegionBar.innerHTML = getRegionControlsMarkup();
-  mapRegionBar.style.display = 'flex';
+  const select = document.getElementById('regionSelect');
+  if(select) select.value = currentRegion;
 }
 
 function getFullscreenElement(){
@@ -1024,7 +1114,6 @@ async function toggleFullscreen(){
 }
 
 function renderTopbar(){
-  const mobile = isMobileLayout();
   const ts = new Date(D.meta.timestamp);
   const validTs = Number.isFinite(ts.getTime()) ? ts : new Date();
   const d = validTs.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
@@ -1038,7 +1127,6 @@ function renderTopbar(){
         <a href="/airwatch.html">AirWatch</a>
       </nav>
     </div>
-    ${mobile ? `<div class="top-center">${getRegionControlsMarkup()}</div>` : ''}
     <div class="top-right">
       <span class="meta-pill">${t('dashboard.lastSweep','LAST SWEEP')} <span class="v">${currentSweepAge()}</span></span>
       <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
@@ -1061,6 +1149,17 @@ function setSweepIndicator(active){
   if(pill) pill.hidden = !sweepInFlight;
 }
 
+function applyHeroCollapsedState(){
+  const hero = document.getElementById('heroStrip');
+  if(hero) hero.classList.toggle('collapsed', heroCollapsed);
+}
+
+function toggleHeroCollapsed(){
+  heroCollapsed = !heroCollapsed;
+  safeStorage.set('crucix_hero_collapsed', String(heroCollapsed));
+  renderHero();
+}
+
 function renderHero(){
   const hero = document.getElementById('heroStrip');
   const ds = D.delta?.summary || {};
@@ -1075,11 +1174,26 @@ function renderHero(){
   const failures = (D.meta.sourcesQueried || 0) - (D.meta.sourcesOk || 0);
   const failedNames = (D.health || []).filter(s => s.err).slice(0, 4).map(s => s.n).join(' · ') || 'No failed sources';
   const sweepSeconds = Number.isFinite(+D.meta.totalDurationMs) ? (+D.meta.totalDurationMs / 1000).toFixed(1) : '0.0';
+  const briefTitle = baselineReset ? 'BASELINE RESET' : `${ds.direction ? String(ds.direction).toUpperCase() : 'BASELINE'} REGIME`;
 
   hero.innerHTML = `
+    <div class="hero-collapsed-row">
+      <button class="hero-toggle focusable" type="button" onclick="toggleHeroCollapsed()" aria-expanded="false" aria-controls="heroStrip">&#9656; Brief</button>
+      <span class="hero-collapsed-title">${escapeHtml(briefTitle)}</span>
+      <div class="hero-inline-stats">
+        <span class="hero-inline-stat">Source Trust <strong>${D.meta.sourcesOk}/${D.meta.sourcesQueried}</strong></span>
+        <span class="hero-inline-stat">Critical Delta <strong>${critical}</strong></span>
+        <span class="hero-inline-stat">Coverage Gaps <strong>${failures}</strong></span>
+        <span class="hero-inline-stat">Idea Engine <strong>${D.ideas?.length || 0}</strong></span>
+      </div>
+      <div class="stage-switch">
+        <button class="stage-tab focusable" data-view="overview" onclick="setPrimaryView('overview')">Overview</button>
+        <button class="stage-tab focusable" data-view="map" onclick="setPrimaryView('map')">Map</button>
+      </div>
+    </div>
     <div class="hero-card primary">
-      <div class="hero-kicker">Sweep Brief</div>
-      <div class="hero-title">${baselineReset ? 'BASELINE RESET' : `${escapeHtml(ds.direction ? String(ds.direction).toUpperCase() : 'BASELINE')} REGIME`}</div>
+      <div class="hero-kicker-row"><div class="hero-kicker">Sweep Brief</div><button class="hero-toggle focusable" type="button" onclick="toggleHeroCollapsed()" aria-expanded="true" aria-controls="heroStrip">&#9662; Brief</button></div>
+      <div class="hero-title">${escapeHtml(briefTitle)}</div>
       <div class="hero-sub">${statusLine} ${critical > 0 ? `Critical changes detected: ${critical}.` : 'No critical changes flagged.'}</div>
       <div class="hero-changes">
         ${(candidateChanges.length ? candidateChanges : [{ badge:'INFO', text:baselineReset ? 'Stale comparison suppressed.' : 'No material changes since the previous sweep.' }]).map(item => `
@@ -1117,6 +1231,8 @@ function renderHero(){
       <div class="hero-stat-sub">${D.ideasSource === 'llm' ? 'LLM-backed ideas active.' : D.ideasSource === 'disabled' ? 'LLM disabled, rules only.' : 'LLM degraded — rule-based fallback.'}</div>
     </div>`;
 
+  applyHeroCollapsedState();
+
   const note = document.getElementById('overviewNote');
   if(note){
     note.innerHTML = `<div class="sec-head"><div class="sec-title"><h3>Overview Mode</h3><div class="sec-meta">Map hidden so the latest delta, feed, and ideas stay in the first reading path.</div></div></div>`;
@@ -1137,11 +1253,11 @@ function renderLeftRail(){
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
   const layers=[
     {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`,
-     items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:a.region.replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total} acft · No CS: ${a.noCallsign} · Hi-alt: ${a.highAlt}`,detail:`Top: ${a.top.slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
+     items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:String(a.region||`Air theatre ${i+1}`).replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total||0} acft · No CS: ${a.noCallsign||0} · Hi-alt: ${a.highAlt||0}`,detail:`Top: ${asArray(a.top).slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
     {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`,
      items:D.thermal.map(tr=>{const fires=asArray(tr.fires);const peak=fires.length?Math.max(...fires.map(f=>Number(f.frp)||0)):0;return {name:tr.region||'Thermal region',lat:fires[0]?.lat||0,lon:fires[0]?.lon||0,status:`${fires.length} fires`,meta:`${(Number(tr.det)||0).toLocaleString()} det · ${(Number(tr.night)||0).toLocaleString()} night`,detail:`Peak FRP: ${peak.toFixed(1)} MW`}}).filter(tr=>tr.lat!==0)},
     {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`,
-     items:D.sdr.zones.flatMap(z=>z.receivers.map(r=>({name:r.name||z.region,lat:r.lat,lon:r.lon,status:'ONLINE',meta:`Zone: ${z.region} · ${z.count} in zone`,detail:`Freq coverage active`})))},
+     items:D.sdr.zones.flatMap(z=>asArray(z.receivers).map(r=>({name:r.name||z.region,lat:r.lat,lon:r.lon,status:'ONLINE',meta:`Zone: ${z.region} · ${z.count} in zone`,detail:`Freq coverage active`})))},
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),
      items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'MONITORED',meta:cp.note||'Chokepoint',detail:`${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
@@ -1175,7 +1291,7 @@ function renderLeftRail(){
       const lon = Number.isFinite(+it.lon) ? +it.lon : 0;
       return `<div class="sub-item focusable" tabindex="0" role="button" data-cat="${category}" data-idx="${idx}" data-lat="${lat}" data-lon="${lon}"><div class="sub-item-name" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</div><div class="sub-item-meta">${escapeHtml(it.status)}</div></div>`;
     }).join('');
-    return `<div class="layer-item focusable" tabindex="0" role="button" aria-expanded="false" data-category="${category}"><div class="layer-left"><div class="ldot ${dot}"></div><div><div class="layer-name">${escapeHtml(l.name)}</div><div class="layer-sub">${escapeHtml(l.sub)}</div></div></div><div class="layer-count">${escapeHtml(l.count)}</div><span class="layer-chevron">&#9656;</span></div><div class="layer-sub-items" data-category="${category}">${items}</div>`;
+    return `<div class="layer-item focusable${sensorActiveFilter===category?' active-filter':''}" tabindex="0" role="button" aria-expanded="false" data-category="${category}"><div class="layer-left"><div class="ldot ${dot}"></div><div><div class="layer-name">${escapeHtml(l.name)}</div><div class="layer-sub">${escapeHtml(l.sub)}</div></div></div><div class="layer-count">${escapeHtml(l.count)}</div><span class="layer-chevron">&#9656;</span></div><div class="layer-sub-items" data-category="${category}">${items}</div>`;
   }).join('');
 
   document.getElementById('leftRail').innerHTML=`
@@ -1233,13 +1349,144 @@ function bindMapLifecycleEvents(){
     if(!document.hidden) setTimeout(() => syncResponsiveLayout(true), 150);
   });
   window.addEventListener('pageshow', () => setTimeout(() => syncResponsiveLayout(true), 150));
+  const mapContainer = document.getElementById('mapContainer');
+  mapContainer?.addEventListener('pointerdown', dismissMapHint, {once:true});
+  mapContainer?.addEventListener('wheel', dismissMapHint, {once:true,passive:true});
+  document.addEventListener('click', event=>{
+    if(!closestTarget(event,'#mapLegend')) setMapLayersPanelExpanded(false);
+  });
+  document.addEventListener('keydown', event=>{
+    if(event.key === 'Escape') setMapLayersPanelExpanded(false,true);
+  });
+}
+
+function finiteMapNumber(value){
+  if(value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function finiteMapCoords(item, lonKey='lon'){
+  const lat = finiteMapNumber(item?.lat);
+  const lon = finiteMapNumber(item?.[lonKey] ?? item?.lng);
+  return lat === null || lon === null ? null : {lat,lon};
+}
+
+// Shared, mutation-free summaries for the flat and globe renderers.
+function buildMapAggregates(data){
+  const thermal = asArray(data?.thermal).flatMap((region,index)=>{
+    const fires = asArray(region?.fires).map(fire=>{
+      const coords = finiteMapCoords(fire);
+      const frp = finiteMapNumber(fire?.frp);
+      return coords ? {...coords,frp} : null;
+    }).filter(Boolean);
+    if(!fires.length) return [];
+    const frpValues = fires.map(fire=>fire.frp).filter(value=>value !== null);
+    return [{
+      region:cleanText(region?.region || `Thermal region ${index+1}`),
+      lat:fires.reduce((sum,fire)=>sum+fire.lat,0)/fires.length,
+      lon:fires.reduce((sum,fire)=>sum+fire.lon,0)/fires.length,
+      count:Math.max(0,finiteMapNumber(region?.det) ?? 0),
+      night:Math.max(0,finiteMapNumber(region?.night) ?? 0),
+      peakFrp:frpValues.length ? Math.max(...frpValues) : 0
+    }];
+  });
+
+  const newsByRegion = new Map();
+  asArray(data?.news).forEach(item=>{
+    const coords = finiteMapCoords(item);
+    if(!coords) return;
+    const region = cleanText(item?.region || 'Unknown region');
+    if(!newsByRegion.has(region)) newsByRegion.set(region,{region,coords:[],titles:[],sources:[]});
+    const aggregate = newsByRegion.get(region);
+    aggregate.coords.push(coords);
+    const title = cleanText(item?.title || '');
+    if(title && aggregate.titles.length < 3) aggregate.titles.push(title);
+    const source = cleanText(item?.source || '');
+    if(source && !aggregate.sources.includes(source) && aggregate.sources.length < 3) aggregate.sources.push(source);
+  });
+  const news = [...newsByRegion.values()].map(aggregate=>({
+    region:aggregate.region,
+    lat:aggregate.coords.reduce((sum,coords)=>sum+coords.lat,0)/aggregate.coords.length,
+    lon:aggregate.coords.reduce((sum,coords)=>sum+coords.lon,0)/aggregate.coords.length,
+    count:aggregate.coords.length,
+    titles:aggregate.titles,
+    sources:aggregate.sources
+  }));
+  return {thermal,news};
+}
+
+function getMapLayerStats(data=D){
+  const thermalRows = asArray(data?.thermal);
+  const thermalCount = thermalRows.reduce((sum,row)=>{
+    const detections = finiteMapNumber(row?.det);
+    const fires = asArray(row?.fires).filter(item=>finiteMapCoords(item)).length;
+    return sum + Math.max(0,detections ?? 0,fires);
+  },0);
+  const receiverCount = asArray(data?.sdr?.zones).reduce((sum,zone)=>sum+asArray(zone?.receivers).filter(item=>finiteMapCoords(item)).length,0);
+  const stats = [
+    {type:'air',name:t('map.airTraffic','Air Traffic'),color:MAP_TYPE_COLORS.air,count:asArray(data?.air).reduce((sum,row,index)=>AIR_COORDS[index] ? sum+Math.max(0,finiteMapNumber(row?.total) ?? 0) : sum,0)},
+    {type:'thermal',name:t('map.thermalFire','Thermal / Fire'),color:MAP_TYPE_COLORS.thermal,count:thermalCount},
+    {type:'conflict',name:t('map.conflict','Conflict'),color:MAP_TYPE_COLORS.conflict,count:asArray(data?.acled?.deadliestEvents).filter(item=>finiteMapCoords(item)).length},
+    {type:'sdr',name:t('map.sdrReceiver','SDR Receiver'),color:MAP_TYPE_COLORS.sdr,count:receiverCount},
+    {type:'nuke',name:t('map.nuclearSite','Nuclear Site'),color:MAP_TYPE_COLORS.nuke,count:Math.min(asArray(data?.nuke).length,NUKE_COORDS.length)},
+    {type:'maritime',name:t('map.chokepoint','Chokepoint'),color:MAP_TYPE_COLORS.maritime,count:asArray(data?.chokepoints).filter(item=>finiteMapCoords(item)).length},
+    {type:'health',name:t('map.healthAlert','Health Alert'),color:MAP_TYPE_COLORS.health,count:Math.min(asArray(data?.who).length,WHO_COORDS.length)},
+    {type:'news',name:t('map.worldNews','World News'),color:MAP_TYPE_COLORS.news,count:asArray(data?.news).filter(item=>finiteMapCoords(item)).length},
+    {type:'weather',name:t('map.weatherAlert','Weather Alert'),color:MAP_TYPE_COLORS.weather,count:asArray(data?.noaa?.alerts).filter(item=>finiteMapCoords(item)).length},
+    {type:'radiation',name:t('map.epaRadNet','EPA RadNet'),color:MAP_TYPE_COLORS.radiation,count:asArray(data?.epa?.stations).filter(item=>finiteMapCoords(item)).length},
+    {type:'space',name:t('map.spaceStation','Space Station'),color:MAP_TYPE_COLORS.space,count:asArray(data?.space?.stationPositions).filter(item=>finiteMapCoords(item)).length},
+    {type:'gdelt',name:t('map.gdeltEvent','GDELT Event'),color:MAP_TYPE_COLORS.gdelt,count:asArray(data?.gdelt?.geoPoints).filter(item=>finiteMapCoords(item)).length}
+  ];
+  return stats.filter(layer=>Number.isFinite(layer.count) && layer.count > 0);
+}
+
+function visibleMapLayerCount(){
+  return getMapLayerStats().filter(layer=>!hiddenMapLayers.has(layer.type)).length;
 }
 
 function renderMapLegend(){
-  document.getElementById('mapLegend').innerHTML=
-    [{c:'#64f0c8',l:t('map.airTraffic','Air Traffic')},{c:'#ff5f63',l:t('map.thermalFire','Thermal/Fire')},{c:'rgba(255,120,80,0.8)',l:t('map.conflict','Conflict')},{c:'#44ccff',l:t('map.sdrReceiver','SDR Receiver')},
-     {c:'#ffe082',l:t('map.nuclearSite','Nuclear Site')},{c:'#b388ff',l:t('map.chokepoint','Chokepoint')},{c:'#69f0ae',l:t('map.healthAlert','Health Alert')},{c:'#81d4fa',l:t('map.worldNews','World News')},{c:'#ff9800',l:t('map.weatherAlert','Weather Alert')},{c:'#cddc39',l:t('map.epaRadNet','EPA RadNet')},{c:'#ffffff',l:t('map.spaceStation','Space Station')},{c:'#6495ed',l:t('map.gdeltEvent','GDELT Event')}]
-    .map(x=>`<div class="leg-item"><div class="leg-dot" style="background:${x.c}"></div>${x.l}</div>`).join('');
+  const legend = document.getElementById('mapLegend');
+  if(!legend) return;
+  const layers = getMapLayerStats();
+  legend.innerHTML = `
+    <button type="button" class="layers-chip" id="layersChip" aria-expanded="false" aria-controls="mapLayersPanel" onclick="toggleMapLayersPanel(event)">LAYERS · ${visibleMapLayerCount()}</button>
+    <div class="map-layers-panel" id="mapLayersPanel" role="group" aria-label="Map layer visibility" hidden>
+      ${layers.map(layer=>`
+        <label class="map-layer-row" data-layer-type="${layer.type}">
+          <input type="checkbox" ${hiddenMapLayers.has(layer.type)?'':'checked'} onchange="setMapLayerVisibility('${layer.type}',this.checked)" aria-label="Show ${escapeAttr(layer.name)}">
+          <span class="map-layer-swatch" style="background:${layer.color};color:${layer.color}"></span>
+          <span class="map-layer-name">${escapeHtml(layer.name)}</span>
+          <span class="map-layer-count">${Math.round(layer.count).toLocaleString()}</span>
+        </label>`).join('')}
+    </div>`;
+}
+
+function setMapLayersPanelExpanded(expanded, restoreFocus=false){
+  const chip = document.getElementById('layersChip');
+  const panel = document.getElementById('mapLayersPanel');
+  if(!chip || !panel) return;
+  const wasExpanded = chip.getAttribute('aria-expanded') === 'true';
+  chip.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  panel.hidden = !expanded;
+  if(restoreFocus && wasExpanded && !expanded) chip.focus();
+}
+
+function toggleMapLayersPanel(event){
+  event?.stopPropagation();
+  const chip = document.getElementById('layersChip');
+  setMapLayersPanelExpanded(chip?.getAttribute('aria-expanded') !== 'true');
+}
+
+function setMapLayerVisibility(type, visible){
+  if(visible) hiddenMapLayers.delete(type);
+  else hiddenMapLayers.add(type);
+  safeStorage.set('crucix_hidden_layers', JSON.stringify([...hiddenMapLayers].sort()));
+  const chip = document.getElementById('layersChip');
+  if(chip) chip.textContent = `LAYERS · ${visibleMapLayerCount()}`;
+  applyGlobeMarkerVisibility();
+  const k = flatSvg?.node ? d3.zoomTransform(flatSvg.node()).k : 1;
+  applyFlatMarkerVisibility(k);
 }
 
 function initMap(){
@@ -1250,7 +1497,7 @@ function initMap(){
     document.getElementById('globeViz').style.display = 'none';
     document.getElementById('flatMapSvg').style.display = 'block';
     document.getElementById('projToggle').textContent = 'GLOBE MODE';
-    document.getElementById('mapHint').textContent = 'SCROLL TO ZOOM · DRAG TO PAN';
+    setMapHint('SCROLL TO ZOOM · DRAG TO PAN');
     if(!flatSvg) initFlatMap();
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
     setMapLoading(false);
@@ -1266,7 +1513,7 @@ function initMap(){
       document.getElementById('globeViz').style.display = 'none';
       document.getElementById('flatMapSvg').style.display = 'block';
       document.getElementById('projToggle').textContent = 'GLOBE MODE';
-      document.getElementById('mapHint').textContent = '3D LOAD FAILED · FLAT MODE';
+      setMapHint('3D LOAD FAILED · FLAT MODE',true);
       if(!flatSvg) initFlatMap();
       else { flatG.selectAll('*').remove(); drawFlatMap(); }
       setMapLoading(false);
@@ -1280,12 +1527,14 @@ function initGlobe(){
     document.getElementById('globeViz').style.display = 'block';
     document.getElementById('flatMapSvg').style.display = 'none';
     document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    setMapHint('DRAG TO ROTATE · SCROLL TO ZOOM');
+    globe.pointOfView(regionPOV[currentRegion] || regionPOV.world,0);
+    applyGlobeMarkerVisibility();
     return;
   }
   const container = document.getElementById('mapContainer');
   const w = container.clientWidth;
-  const h = container.clientHeight || 560;
+  const h = container.clientHeight || Math.max(320,Math.round(w*5/9));
 
   globe = Globe()
     .width(w)
@@ -1304,7 +1553,7 @@ function initGlobe(){
     .onPointClick((pt, ev) => { showPopup(ev, pt.popHead, pt.popText, pt.popMeta, pt.lat, pt.lng, pt.alt); })
     .onPointHover(pt => { document.getElementById('globeViz').style.cursor = pt ? 'pointer' : 'grab'; })
     // Rings layer (pulsing conflict events)
-    .ringColor(d => t => d._highlight ? `rgba(100,240,200,${1-t})` : `rgba(255,120,80,${1-t})`)
+    .ringColor(d => t => (d._highlight || d._rightHighlight) ? mapRgba(MAP_PALETTE.air,1-t) : mapRgba(MAP_PALETTE.kinetic,1-t))
     .ringMaxRadius(d => d.maxR || 3)
     .ringPropagationSpeed(d => d.speed || 2)
     .ringRepeatPeriod(d => d.period || 800)
@@ -1332,7 +1581,7 @@ function initGlobe(){
   });
 
   // Set initial POV
-  globe.pointOfView(regionPOV.world, 0);
+  globe.pointOfView(regionPOV[currentRegion] || regionPOV.world, 0);
 
   // Auto-rotate slowly
   globe.controls().autoRotate = !lowPerfMode;
@@ -1363,7 +1612,7 @@ function initGlobe(){
     document.getElementById('globeViz').style.display = 'block';
     document.getElementById('flatMapSvg').style.display = 'none';
     document.getElementById('projToggle').textContent = 'FLAT MODE';
-    document.getElementById('mapHint').textContent = 'DRAG TO ROTATE · SCROLL TO ZOOM';
+    setMapHint('DRAG TO ROTATE · SCROLL TO ZOOM');
   }
 
   globeFX = window.CrucixGlobeFX ? CrucixGlobeFX.attach(globe, {
@@ -1385,158 +1634,160 @@ function initGlobe(){
   globeInitialized = true;
 }
 
+function mapRgba(hex,alpha=1){
+  const value = String(hex).replace('#','');
+  const number = Number.parseInt(value,16);
+  return `rgba(${(number>>16)&255},${(number>>8)&255},${number&255},${alpha})`;
+}
+
+function aggregateMarkerSize(count,base,step,cap){
+  return base + Math.min(Math.log2(Math.max(0,Number(count)||0)+1)*step,cap);
+}
+
+function globeAggregateMarkerSize(count){
+  // Individual thermal points top out at 0.42; aggregates stay within
+  // 0.46..0.52, below 1.5x the 0.35-radius chokepoint footprint.
+  return aggregateMarkerSize(count,0.44,0.02,0.08);
+}
+
+function flatAggregateMarkerRadius(count){
+  // Individual fires top out at r=7; aggregates stay within r=7.75..8.4.
+  return aggregateMarkerSize(count,7.5,0.25,0.9);
+}
+
+function newsAggregatePriority(count){
+  return Number(count) >= 3 ? 1 : 2;
+}
+
 function plotMarkers(){
   const points = [];
   const labels = [];
+  const aggregates = buildMapAggregates(D);
 
-  // === Air hotspots (green) ===
-  const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
-    const c=airCoords[i]; if(!c) return;
+  // === Air theatres ===
+  asArray(D?.air).forEach((air,index)=>{
+    const coords = AIR_COORDS[index];
+    const total = finiteMapNumber(air?.total);
+    if(!coords || total === null || total <= 0) return;
+    const name = cleanText(air?.region || `Air theatre ${index+1}`).replace(' Region','');
+    const top = asArray(air?.top).slice(0,3).map(item=>`${item?.[0] || 'Unknown'} (${item?.[1] || 0})`).join(', ');
     points.push({
-      lat:c.lat, lng:c.lon, size:0.25+a.total/200, alt:0.015,
-      color:'rgba(100,240,200,0.8)', type:'air', priority:1,
-      label: a.region.replace(' Region','')+' '+a.total,
-      popHead: a.region, popMeta: 'Air Activity',
-      popText: `${a.total} aircraft tracked<br>No callsign: ${a.noCallsign}<br>High altitude: ${a.highAlt}<br>Top: ${a.top.slice(0,3).map(t=>t[0]+' ('+t[1]+')').join(', ')}`
+      lat:coords.lat,lng:coords.lon,size:aggregateMarkerSize(total,0.22,0.055,0.55),alt:0.015,
+      color:MAP_TYPE_COLORS.air,type:'air',priority:1,
+      popHead:air?.region || name,popMeta:'Air Activity',
+      popText:`${total.toLocaleString()} aircraft tracked<br>No callsign: ${finiteMapNumber(air?.noCallsign) ?? 0}<br>High altitude: ${finiteMapNumber(air?.highAlt) ?? 0}${top ? `<br>Top: ${top}` : ''}`
     });
-    labels.push({lat:c.lat, lng:c.lon+2, text:a.region.replace(' Region','')+' '+a.total, size:0.35, color:'rgba(106,138,130,0.8)'});
+    labels.push({lat:coords.lat,lng:coords.lon+2,text:name,size:0.35,color:mapRgba(MAP_TYPE_COLORS.air,0.78),type:'air'});
   });
 
-  // === Thermal/fire (red) ===
-  D.thermal.forEach(t=>{
-    t.fires.forEach(f=>{
-      points.push({
-        lat:f.lat, lng:f.lon, size:0.12+Math.min(f.frp/200,0.3), alt:0.008,
-        color:'rgba(255,95,99,0.7)', type:'thermal', priority:3,
-        popHead:'Thermal Detection', popMeta:'FIRMS Satellite',
-        popText:`Region: ${t.region}<br>FRP: ${f.frp.toFixed(1)} MW<br>Total: ${t.det.toLocaleString()}<br>Night: ${t.night.toLocaleString()}`
-      });
-    });
-  });
-
-  // === Maritime chokepoints (purple) ===
-  D.chokepoints.forEach(cp=>{
+  // === Thermal aggregates + individual fires ===
+  aggregates.thermal.forEach(item=>points.push({
+    lat:item.lat,lng:item.lon,size:globeAggregateMarkerSize(item.count),alt:0.012,
+    color:MAP_TYPE_COLORS.thermal,type:'thermal',priority:1,agg:true,
+    popHead:`${item.region} Thermal`,popMeta:'FIRMS Aggregate',
+    popText:`${item.count.toLocaleString()} detections<br>${item.night.toLocaleString()} night detections<br>Peak FRP: ${item.peakFrp.toFixed(1)} MW`
+  }));
+  asArray(D?.thermal).forEach(region=>asArray(region?.fires).forEach(fire=>{
+    const coords = finiteMapCoords(fire);
+    if(!coords) return;
+    const frp = Math.max(0,finiteMapNumber(fire?.frp) ?? 0);
     points.push({
-      lat:cp.lat, lng:cp.lon, size:0.35, alt:0.02,
-      color:'rgba(179,136,255,0.8)', type:'maritime', priority:1,
-      popHead:cp.label, popMeta:'Maritime Intelligence', popText:cp.note
+      lat:coords.lat,lng:coords.lon,size:0.12+Math.min(frp/200,0.3),alt:0.008,
+      color:mapRgba(MAP_TYPE_COLORS.thermal,0.78),type:'thermal',priority:3,agg:false,
+      popHead:'Thermal Detection',popMeta:'FIRMS Satellite',
+      popText:`Region: ${region?.region || 'Unknown'}<br>FRP: ${frp.toFixed(1)} MW<br>Total: ${(finiteMapNumber(region?.det) ?? 0).toLocaleString()}<br>Night: ${(finiteMapNumber(region?.night) ?? 0).toLocaleString()}`
     });
-    labels.push({lat:cp.lat, lng:cp.lon+1.5, text:cp.label, size:0.3, color:'rgba(179,136,255,0.6)'});
+  }));
+
+  // === Maritime chokepoints ===
+  asArray(D?.chokepoints).forEach(chokepoint=>{
+    const coords = finiteMapCoords(chokepoint);
+    if(!coords) return;
+    const label = cleanText(chokepoint?.label || 'Chokepoint');
+    points.push({lat:coords.lat,lng:coords.lon,size:0.35,alt:0.02,color:MAP_TYPE_COLORS.maritime,type:'maritime',priority:1,popHead:label,popMeta:'Maritime Intelligence',popText:chokepoint?.note || ''});
+    labels.push({lat:coords.lat,lng:coords.lon+1.5,text:label,size:0.3,color:mapRgba(MAP_TYPE_COLORS.maritime,0.68),type:'maritime'});
   });
 
-  // === Nuclear sites (yellow) ===
-  const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{
-    const c=nukeCoords[i]; if(!c) return;
+  // === Nuclear sites ===
+  asArray(D?.nuke).forEach((site,index)=>{
+    const coords = NUKE_COORDS[index];
+    if(!coords) return;
     points.push({
-      lat:c.lat, lng:c.lon, size:0.3, alt:0.012,
-      color: n.anom ? 'rgba(255,95,99,0.9)' : 'rgba(255,224,130,0.8)', type:'nuke', priority:2,
-      popHead:n.site, popMeta:'Radiation Monitoring',
-      popText:`Status: ${n.anom?'ANOMALY':'Normal'}<br>Avg CPM: ${n.cpm?.toFixed(1)||'No data'}<br>Readings: ${n.n}`
+      lat:coords.lat,lng:coords.lon,size:0.3,alt:0.012,color:MAP_TYPE_COLORS.nuke,type:'nuke',priority:2,
+      popHead:site?.site || 'Nuclear site',popMeta:'Radiation Monitoring',
+      popText:`Status: ${site?.anom?'ANOMALY':'Normal'}<br>Avg CPM: ${fmtNum(site?.cpm,1,'No data')}<br>Readings: ${finiteMapNumber(site?.n) ?? 0}`
     });
   });
 
-  // === SDR receivers (cyan) ===
-  D.sdr.zones.forEach(z=>{
-    z.receivers.forEach(r=>{
-      points.push({
-        lat:r.lat, lng:r.lon, size:0.15, alt:0.005,
-        color:'rgba(68,204,255,0.6)', type:'sdr', priority:3,
-        popHead:'SDR Receiver', popMeta:'KiwiSDR Network',
-        popText:`${r.name}<br>Zone: ${z.region}<br>${z.count} in zone`
-      });
-    });
+  // === SDR receivers ===
+  asArray(D?.sdr?.zones).forEach(zone=>asArray(zone?.receivers).forEach(receiver=>{
+    const coords = finiteMapCoords(receiver);
+    if(!coords) return;
+    points.push({lat:coords.lat,lng:coords.lon,size:0.15,alt:0.005,color:MAP_TYPE_COLORS.sdr,type:'sdr',priority:3,popHead:'SDR Receiver',popMeta:'KiwiSDR Network',popText:`${receiver?.name || 'Receiver'}<br>Zone: ${zone?.region || 'Unknown'}<br>${finiteMapNumber(zone?.count) ?? 0} in zone`});
+  }));
+
+  // === WHO health alerts ===
+  asArray(D?.who).slice(0,WHO_COORDS.length).forEach((alert,index)=>{
+    const coords = WHO_COORDS[index];
+    points.push({lat:coords.lat,lng:coords.lon,size:0.25,alt:0.01,color:MAP_TYPE_COLORS.health,type:'health',priority:2,popHead:alert?.title || 'WHO alert',popMeta:'WHO Outbreak',popText:alert?.summary || ''});
   });
 
-  // === WHO health alerts (green) ===
-  const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{
-    const c=whoGeo[i]; if(!c) return;
-    points.push({
-      lat:c.lat, lng:c.lon, size:0.25, alt:0.01,
-      color:'rgba(105,240,174,0.7)', type:'health', priority:2,
-      popHead:w.title, popMeta:'WHO Outbreak', popText:w.summary||''
-    });
+  // === News aggregates + individual reports ===
+  aggregates.news.forEach(item=>points.push({
+    lat:item.lat,lng:item.lon,size:globeAggregateMarkerSize(item.count),alt:0.011,
+    color:MAP_TYPE_COLORS.news,type:'news',priority:newsAggregatePriority(item.count),agg:true,
+    popHead:`${item.region} News`,popMeta:`${item.count.toLocaleString()} reports${item.sources.length ? ` · ${item.sources.join(' · ')}` : ''}`,
+    popText:item.titles.length ? item.titles.join('<br>') : 'No report titles available'
+  }));
+  asArray(D?.news).forEach(item=>{
+    const coords = finiteMapCoords(item);
+    if(!coords) return;
+    points.push({lat:coords.lat,lng:coords.lon,size:0.2,alt:0.008,color:MAP_TYPE_COLORS.news,type:'news',priority:3,agg:false,popHead:`${item?.source || 'World'} NEWS`,popMeta:`${item?.region || 'Unknown'} · ${getAge(item?.date)}`,popText:cleanText(item?.title)});
   });
 
-  // === News markers (light blue) ===
-  (D.news||[]).forEach(n=>{
-    points.push({
-      lat:n.lat, lng:n.lon, size:0.2, alt:0.008,
-      color:'rgba(129,212,250,0.7)', type:'news', priority:3,
-      popHead:n.source+' NEWS', popMeta:n.region+' · '+getAge(n.date),
-      popText:cleanText(n.title)
-    });
+  // === NOAA weather ===
+  asArray(D?.noaa?.alerts).forEach(alert=>{
+    const coords = finiteMapCoords(alert);
+    if(!coords) return;
+    points.push({lat:coords.lat,lng:coords.lon,size:0.22,alt:0.01,color:MAP_TYPE_COLORS.weather,type:'weather',priority:2,popHead:alert?.event || 'Weather Alert',popMeta:`NOAA/NWS · ${alert?.severity || 'Unknown'}`,popText:alert?.headline || ''});
   });
 
-  // === NOAA severe weather alerts (orange) ===
-  (D.noaa?.alerts||[]).forEach(a=>{
-    points.push({
-      lat:a.lat, lng:a.lon, size:0.22, alt:0.01,
-      color:'rgba(255,152,0,0.8)', type:'weather', priority:2,
-      popHead:a.event, popMeta:'NOAA/NWS · '+a.severity,
-      popText:a.headline||''
-    });
+  // === EPA RadNet ===
+  asArray(D?.epa?.stations).forEach(station=>{
+    const coords = finiteMapCoords(station);
+    if(!coords) return;
+    points.push({lat:coords.lat,lng:coords.lon,size:0.18,alt:0.006,color:MAP_TYPE_COLORS.radiation,type:'radiation',priority:3,popHead:`RadNet: ${station?.location || 'Station'}`,popMeta:'EPA Radiation Monitor',popText:`${station?.analyte || '--'}: ${station?.result || '--'} ${station?.unit || ''}<br>State: ${station?.state || '--'}`});
   });
 
-  // === EPA RadNet stations (lime green) ===
-  (D.epa?.stations||[]).forEach(s=>{
-    points.push({
-      lat:s.lat, lng:s.lon, size:0.18, alt:0.006,
-      color:'rgba(205,220,57,0.7)', type:'radiation', priority:3,
-      popHead:'RadNet: '+s.location, popMeta:'EPA Radiation Monitor',
-      popText:`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}<br>State: ${s.state}`
-    });
+  // === Space stations ===
+  asArray(D?.space?.stationPositions).forEach(station=>{
+    const coords = finiteMapCoords(station);
+    if(!coords) return;
+    const name = cleanText(station?.name || 'Space Station');
+    points.push({lat:coords.lat,lng:coords.lon,size:0.4,alt:0.04,color:MAP_TYPE_COLORS.space,type:'space',priority:1,popHead:name,popMeta:'Space Station (approx.)',popText:`Orbital position estimate<br>Lat: ${coords.lat}° Lon: ${coords.lon}°`});
+    labels.push({lat:coords.lat,lng:coords.lon+3,text:name.split('(')[0].trim(),size:0.35,color:mapRgba(MAP_TYPE_COLORS.space,0.78),type:'space'});
   });
 
-  // === ISS + Space Stations (bright white, pulsing) ===
-  (D.space?.stationPositions||[]).forEach(s=>{
-    points.push({
-      lat:s.lat, lng:s.lon, size:0.4, alt:0.04,
-      color:'rgba(255,255,255,0.95)', type:'space', priority:1,
-      popHead:s.name, popMeta:'Space Station (approx.)',
-      popText:`Orbital position estimate<br>Lat: ${s.lat}° Lon: ${s.lon}°`
-    });
-    labels.push({lat:s.lat, lng:s.lon+3, text:s.name.split('(')[0].trim(), size:0.35, color:'rgba(255,255,255,0.7)'});
+  // === GDELT geo events ===
+  asArray(D?.gdelt?.geoPoints).forEach(event=>{
+    const coords = finiteMapCoords(event);
+    if(!coords) return;
+    const count = Math.max(0,finiteMapNumber(event?.count) ?? 0);
+    points.push({lat:coords.lat,lng:coords.lon,size:0.15+Math.min(count/50,0.2),alt:0.007,color:MAP_TYPE_COLORS.gdelt,type:'gdelt',priority:3,popHead:'GDELT Event',popMeta:`${count.toLocaleString()} reports`,popText:event?.name || 'Global event detection'});
   });
 
-  // === GDELT geo events (steel blue) ===
-  (D.gdelt?.geoPoints||[]).forEach(g=>{
-    points.push({
-      lat:g.lat, lng:g.lon, size:0.15+Math.min(g.count/50,0.2), alt:0.007,
-      color:'rgba(100,149,237,0.6)', type:'gdelt', priority:3,
-      popHead:'GDELT Event', popMeta:g.count+' reports',
-      popText:g.name||'Global event detection'
-    });
+  const conflictRings = asArray(D?.acled?.deadliestEvents).flatMap(event=>{
+    const coords = finiteMapCoords(event);
+    if(!coords) return [];
+    const fatalities = Math.max(0,finiteMapNumber(event?.fatalities) ?? 0);
+    const logFatal = Math.log2(Math.max(fatalities,1));
+    return [{lat:coords.lat,lng:coords.lon,maxR:Math.max(2,Math.min(6,1+logFatal)),speed:1.5+Math.random(),period:600+Math.random()*600,type:'conflict',priority:1,popHead:event?.type || 'CONFLICT',popMeta:'ACLED Conflict Data',popText:`${fatalities} fatalities<br>${event?.location || 'Unknown'}, ${event?.country || 'Unknown'}<br>Date: ${event?.date || '--'}`}];
   });
 
-  // Publish the *complete* marker set before anything narrows it. Both the zoom
-  // handler and the Sensor Grid filter derive their views from these arrays, so
-  // a re-plot (reinit/SSE/resize) refreshes both without either one snapshotting
-  // the other's already-filtered output.
   allMapPoints = points;
   allMapLabels = labels;
+  allMapRings = conflictRings;
   if(!globe) return;
-
-  // Set points on globe
-  globe.labelsData(labels);
-
-  // === ACLED CONFLICT EVENTS (pulsing rings) ===
-  const conflictRings = (D.acled?.deadliestEvents || []).filter(e => e.lat && e.lon).map(e => {
-    const logFatal = Math.log2(Math.max(e.fatalities, 1));
-    return {
-      lat: e.lat, lng: e.lon,
-      maxR: Math.max(2, Math.min(6, 1 + logFatal)),
-      speed: 1.5 + Math.random(),
-      period: 600 + Math.random()*600,
-      popHead: e.type || 'CONFLICT', popMeta: 'ACLED Conflict Data',
-      popText: `${e.fatalities} fatalities<br>${e.location}, ${e.country}<br>Date: ${e.date}`
-    };
-  });
-  globe.ringsData(conflictRings);
-
-  // Apply the current zoom + Sensor Grid filter to the freshly plotted set.
   applyGlobeMarkerVisibility();
   if(typeof globe.onZoom==='function') globe.onZoom(applyGlobeMarkerVisibility);
 }
@@ -1553,16 +1804,33 @@ const sensorCatToTypes = {
   health: ['health'],
   news: ['news'],
   space: ['space'],
+  weather: ['weather'],
+  radiation: ['radiation'],
+  gdelt: ['gdelt'],
 };
 
 function sensorFilterTypes(cat){
   return cat ? (sensorCatToTypes[cat] || [cat]) : null;
 }
 
-// Markers surviving the active Sensor Grid filter (all of them when none is set).
+function mapLayerVisible(type){
+  return !hiddenMapLayers.has(type);
+}
+
+// Markers surviving the layer toggles and active Sensor Grid filter.
 function filteredMapPoints(){
   const types = sensorFilterTypes(sensorActiveFilter);
-  return types ? allMapPoints.filter(p => types.includes(p.type)) : allMapPoints;
+  return allMapPoints.filter(point=>mapLayerVisible(point.type) && (!types || types.includes(point.type)));
+}
+
+function filteredMapLabels(){
+  const types = sensorFilterTypes(sensorActiveFilter);
+  return allMapLabels.filter(label=>mapLayerVisible(label.type) && (!types || types.includes(label.type)));
+}
+
+function filteredMapRings(){
+  const types = sensorFilterTypes(sensorActiveFilter);
+  return allMapRings.filter(ring=>mapLayerVisible(ring.type) && (!types || types.includes(ring.type)));
 }
 
 // Zoom-aware marker sizing + priority culling, layered on top of the Sensor Grid
@@ -1575,11 +1843,17 @@ function applyGlobeMarkerVisibility(){
   // Hide labels when zoomed far out to reduce clutter
   const showLabels = alt < 1.8;
   globe.labelSize(d => showLabels ? (d.size || 0.4) : 0);
-  globe.labelsData(allMapLabels);
+  globe.labelsData(filteredMapLabels());
   // Priority-based point visibility: hide low-priority markers when zoomed out
   const maxPriority = alt > 2.0 ? 1 : alt > 1.2 ? 2 : 3;
-  const base = filteredMapPoints();
-  globe.pointsData(maxPriority >= 3 ? base : base.filter(p => (p.priority||3) <= maxPriority));
+  const explicitlyRequested = sensorFilterTypes(sensorActiveFilter);
+  const base = filteredMapPoints().filter(point=>{
+    if(point.type !== 'thermal' && point.type !== 'news') return true;
+    return alt > 1.2 ? point.agg === true : point.agg !== true;
+  });
+  globe.pointsData(base.filter(point=>explicitlyRequested?.includes(point.type) || (point.priority||3) <= maxPriority));
+  const highlights = asArray(globe.ringsData()).filter(ring=>ring._highlight || ring._rightHighlight);
+  globe.ringsData([...filteredMapRings(),...highlights]);
 }
 
 function showPopup(event,head,text,meta,lat,lng,alt){
@@ -1622,16 +1896,16 @@ function closePopup(){
 
 // === FLAT/GLOBE TOGGLE ===
 const flatRegionBounds = {
-  world:[[-180,-60],[180,80]], americas:[[-130,10],[-60,55]], europe:[[-12,34],[45,72]],
+  world:[[-180,-58],[180,78]], americas:[[-130,10],[-60,55]], europe:[[-12,34],[45,72]],
   middleEast:[[24,10],[65,45]], asiaPacific:[[60,-12],[180,55]], africa:[[-20,-36],[55,38]]
 };
+const FLAT_WORLD_CROP={type:'Polygon',coordinates:[[[-180,-58],[-180,78],[180,78],[180,-58],[-180,-58]]]};
 
 function toggleMapMode(){
   isFlat = !isFlat;
   const btn = document.getElementById('projToggle');
-  const hint = document.getElementById('mapHint');
   btn.textContent = isFlat ? 'GLOBE MODE' : 'FLAT MODE';
-  hint.textContent = isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+  setMapHint(isFlat ? 'SCROLL TO ZOOM · DRAG TO PAN' : 'DRAG TO ROTATE · SCROLL TO ZOOM');
   const globeEl = document.getElementById('globeViz');
   const flatEl = document.getElementById('flatMapSvg');
   if(isFlat){
@@ -1641,6 +1915,7 @@ function toggleMapMode(){
     setMapLoading(false);
     if(!flatSvg) initFlatMap();
     else { flatG.selectAll('*').remove(); drawFlatMap(); }
+    setTimeout(()=>setRegion(currentRegion),0);
   } else {
     flatEl.style.display = 'none';
     setMapLoading(true, 'Initializing 3D Globe');
@@ -1655,7 +1930,7 @@ function toggleMapMode(){
         globeEl.style.display = 'none';
         flatEl.style.display = 'block';
         btn.textContent = 'GLOBE MODE';
-        hint.textContent = '3D LOAD FAILED · FLAT MODE';
+        setMapHint('3D LOAD FAILED · FLAT MODE',true);
         if(!flatSvg) initFlatMap();
         else { flatG.selectAll('*').remove(); drawFlatMap(); }
         setMapLoading(false);
@@ -1666,20 +1941,27 @@ function toggleMapMode(){
 
 function initFlatMap(){
   const container = document.getElementById('mapContainer');
-  flatW = container.clientWidth; flatH = container.clientHeight || 560;
+  flatW = container.clientWidth; flatH = container.clientHeight || Math.max(320,Math.round(flatW*5/9));
   flatSvg = d3.select('#flatMapSvg').attr('viewBox',`0 0 ${flatW} ${flatH}`).attr('preserveAspectRatio','xMidYMid meet');
-  flatProjection = d3.geoNaturalEarth1().fitSize([flatW-20,flatH-20],{type:'Sphere'}).translate([flatW/2,flatH/2]);
+  flatProjection = createFlatProjection(flatW,flatH);
   flatPath = d3.geoPath(flatProjection);
   flatG = flatSvg.append('g');
   flatZoom = d3.zoom().scaleExtent([1,12]).on('zoom',(event)=>{
     flatG.attr('transform',event.transform);
     const k=event.transform.k;
-    flatG.selectAll('.marker-circle').attr('r',function(){return +this.dataset.baseR/Math.sqrt(k)});
-    flatG.selectAll('.marker-label').style('font-size',Math.max(7,9/Math.sqrt(k))+'px')
-      .style('display',k>=2.5?'block':'none');
+    applyFlatMarkerVisibility(k);
   });
   flatSvg.call(flatZoom);
   drawFlatMap();
+}
+
+function createFlatProjection(width,height){
+  const projection=d3.geoMercator().fitWidth(width,FLAT_WORLD_CROP);
+  const bounds=d3.geoPath(projection).bounds(FLAT_WORLD_CROP);
+  const bandHeight=bounds[1][1]-bounds[0][1];
+  const translate=projection.translate();
+  projection.translate([translate[0],translate[1]+(height-bandHeight)/2-bounds[0][1]]);
+  return projection;
 }
 
 let flatDrawSeq=0;
@@ -1719,97 +2001,200 @@ function drawFlatMap(){
     });
 }
 
+function applyFlatMarkerVisibility(k=1){
+  if(!flatG) return;
+  const scale = Number.isFinite(Number(k)) ? Number(k) : 1;
+  const markerScale = 1/Math.sqrt(scale);
+  const labelScale = Math.sqrt(scale)/scale;
+  const explicitlyRequested = sensorFilterTypes(sensorActiveFilter);
+  flatG.selectAll('g.flat-marker').each(function(){
+    const marker = d3.select(this);
+    const x = Number(this.dataset.x);
+    const y = Number(this.dataset.y);
+    const type = this.dataset.type || '';
+    const priority = Number(this.dataset.priority) || 3;
+    const aggregate = this.dataset.agg === '1';
+    const aggregateLayer = type === 'thermal' || type === 'news';
+    const correctDetailLevel = !aggregateLayer || (scale < 2.5 ? aggregate : !aggregate);
+    const allowedByPriority = priority <= 1 || (priority <= 2 && scale >= 1.6) || (priority <= 3 && scale >= 2.5);
+    const explicitlyVisible = explicitlyRequested?.includes(type) || false;
+    const visible = mapLayerVisible(type) && correctDetailLevel && (allowedByPriority || explicitlyVisible);
+    marker.attr('transform',`translate(${x},${y}) scale(${markerScale})`)
+      .style('display',visible ? null : 'none')
+      .style('opacity',explicitlyRequested && !explicitlyRequested.includes(type) ? 0.1 : null)
+      .attr('aria-hidden',visible ? 'false' : 'true');
+  });
+  flatG.selectAll('.marker-label')
+    .attr('transform',`scale(${labelScale})`)
+    .style('display',scale >= 2.5 ? null : 'none');
+}
+
 function plotFlatMarkers(){
+  if(!flatG || !flatProjection) return;
   flatG.selectAll('g.markers').remove();
   const mg=flatG.append('g').attr('class','markers');
-  const proj=flatProjection;
-  // Every flat marker carries class="flat-marker" + data-type so the Sensor Grid
-  // filter can dim non-matching layers (its selector had nothing to match before).
-  const markerGroup=(lat,lon,type,priority)=>{
-    const[x,y]=proj([lon,lat]);
-    if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+  const aggregates=buildMapAggregates(D);
+  const markerGroup=(lat,lon,type,priority,aggregate=false)=>{
+    const coords=finiteMapCoords({lat,lon});
+    if(!coords)return null;
+    const projected=flatProjection([coords.lon,coords.lat]);
+    if(!projected || !Number.isFinite(projected[0]) || !Number.isFinite(projected[1]))return null;
     return mg.append('g')
       .attr('class','flat-marker')
       .attr('data-type',type||'')
       .attr('data-priority',priority||3)
-      .attr('transform',`translate(${x},${y})`)
+      .attr('data-agg',aggregate?'1':'0')
+      .attr('data-x',projected[0])
+      .attr('data-y',projected[1])
+      .attr('transform',`translate(${projected[0]},${projected[1]})`)
       .style('cursor','pointer');
   };
-  const addPt=(lat,lon,r,fill,stroke,onClick,priority,type)=>{
-    const g=markerGroup(lat,lon,type,priority);
-    if(!g)return null;
-    if(onClick) g.on('click',ev=>{ev.stopPropagation();onClick(ev)});
-    g.append('circle').attr('class','marker-circle').attr('r',r).attr('data-base-r',r).attr('fill',fill).attr('stroke',stroke).attr('stroke-width',0.8);
+  const bindPopup=(g,onClick)=>{
+    if(g && onClick) g.on('click',event=>{event.stopPropagation();onClick(event)});
     return g;
   };
-  // Air
-  const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
-  D.air.forEach((a,i)=>{
-    const c=airCoords[i];if(!c)return;
-    const g=addPt(c.lat,c.lon,4+a.total/40,'rgba(100,240,200,0.7)','rgba(100,240,200,0.3)',
-      ev=>showPopup(ev,a.region,`${a.total} aircraft<br>No callsign: ${a.noCallsign}<br>High alt: ${a.highAlt}`,'Air Activity'),1,'air');
-    if(g) g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','9px').attr('font-family','var(--mono)').text(a.region.replace(' Region','')+' '+a.total);
+  const addCircle=(lat,lon,r,fill,stroke,onClick,priority,type,aggregate=false)=>{
+    const g=bindPopup(markerGroup(lat,lon,type,priority,aggregate),onClick);
+    if(!g)return null;
+    g.append('circle').attr('class','marker-circle').attr('r',r).attr('fill',fill).attr('stroke',stroke).attr('stroke-width',0.8);
+    return g;
+  };
+
+  // Air theatres: empty or non-finite OpenSky counts do not create a point or label.
+  asArray(D?.air).forEach((air,index)=>{
+    const coords=AIR_COORDS[index];
+    const total=finiteMapNumber(air?.total);
+    if(!coords || total === null || total <= 0)return;
+    const name=cleanText(air?.region || `Air theatre ${index+1}`).replace(' Region','');
+    const radius=aggregateMarkerSize(total,4,0.8,6);
+    const g=addCircle(coords.lat,coords.lon,radius,mapRgba(MAP_TYPE_COLORS.air,0.72),mapRgba(MAP_TYPE_COLORS.air,0.35),event=>showPopup(event,air?.region || name,`${total.toLocaleString()} aircraft<br>No callsign: ${finiteMapNumber(air?.noCallsign) ?? 0}<br>High alt: ${finiteMapNumber(air?.highAlt) ?? 0}`,'Air Activity'),1,'air');
+    if(g)g.append('text').attr('class','marker-label').attr('x',10).attr('y',3).attr('fill','var(--dim)').attr('font-size','6.25px').attr('font-family','var(--mono)').text(name);
   });
-  // Thermal
-  D.thermal.forEach(t=>t.fires.forEach(f=>{
-    addPt(f.lat,f.lon,2+Math.min(f.frp/50,5),'rgba(255,95,99,0.6)','rgba(255,95,99,0.2)',
-      ev=>showPopup(ev,'Thermal',`${t.region}<br>FRP: ${fmtNum(f.frp,1)} MW`,'FIRMS'),3,'thermal');
+
+  // Thermal aggregates and drill-down fires.
+  aggregates.thermal.forEach(item=>{
+    const radius=flatAggregateMarkerRadius(item.count);
+    addCircle(item.lat,item.lon,radius,mapRgba(MAP_TYPE_COLORS.thermal,0.78),mapRgba(MAP_TYPE_COLORS.thermal,0.4),event=>showPopup(event,`${item.region} Thermal`,`${item.count.toLocaleString()} detections<br>${item.night.toLocaleString()} night detections<br>Peak FRP: ${item.peakFrp.toFixed(1)} MW`,'FIRMS Aggregate'),1,'thermal',true);
+  });
+  asArray(D?.thermal).forEach(region=>asArray(region?.fires).forEach(fire=>{
+    const coords=finiteMapCoords(fire);if(!coords)return;
+    const frp=Math.max(0,finiteMapNumber(fire?.frp) ?? 0);
+    addCircle(coords.lat,coords.lon,2+Math.min(frp/50,5),mapRgba(MAP_TYPE_COLORS.thermal,0.64),mapRgba(MAP_TYPE_COLORS.thermal,0.24),event=>showPopup(event,'Thermal',`${region?.region || 'Unknown'}<br>FRP: ${frp.toFixed(1)} MW`,'FIRMS'),3,'thermal');
   }));
-  // Chokepoints
-  D.chokepoints.forEach(cp=>{
-    const g=markerGroup(cp.lat,cp.lon,'maritime',1);
+
+  // Maritime diamonds.
+  asArray(D?.chokepoints).forEach(chokepoint=>{
+    const coords=finiteMapCoords(chokepoint);if(!coords)return;
+    const label=cleanText(chokepoint?.label || 'Chokepoint');
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'maritime',1),event=>showPopup(event,label,chokepoint?.note || '','Maritime'));
     if(!g)return;
-    g.on('click',ev=>{ev.stopPropagation();showPopup(ev,cp.label,cp.note,'Maritime')});
-    g.append('rect').attr('x',-4).attr('y',-4).attr('width',8).attr('height',8).attr('fill','rgba(179,136,255,0.7)').attr('stroke','rgba(179,136,255,0.3)').attr('stroke-width',0.5).attr('transform','rotate(45)');
-    g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','var(--dim)').attr('font-size','8px').attr('font-family','var(--mono)').text(cp.label);
+    // This natural size stays below 16px on screen at the Middle East preset's
+    // current k≈4.2 after the marker group's square-root zoom growth.
+    g.append('rect').attr('x',-2.4).attr('y',-2.4).attr('width',4.8).attr('height',4.8).attr('fill',mapRgba(MAP_TYPE_COLORS.maritime,0.76)).attr('stroke',mapRgba(MAP_TYPE_COLORS.maritime,0.4)).attr('stroke-width',0.6).attr('transform','rotate(45)');
+    g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','var(--dim)').attr('font-size','6.25px').attr('font-family','var(--mono)').text(label);
   });
-  // Nuclear
-  const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
-  D.nuke.forEach((n,i)=>{const c=nukeCoords[i];if(!c)return;addPt(c.lat,c.lon,4,'rgba(255,224,130,0.7)','rgba(255,224,130,0.3)',ev=>showPopup(ev,n.site,`CPM: ${fmtNum(n.cpm,1)}`,'Radiation'),2,'nuke')});
-  // SDR
-  D.sdr.zones.forEach(z=>z.receivers.forEach(r=>{addPt(r.lat,r.lon,2.5,'rgba(68,204,255,0.5)','rgba(68,204,255,0.2)',ev=>showPopup(ev,'SDR',`${r.name}<br>${z.region}`,'KiwiSDR'),3,'sdr')}));
-  // WHO
-  const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
-  D.who.slice(0,10).forEach((w,i)=>{const c=whoGeo[i];if(!c)return;addPt(c.lat,c.lon,3.5,'rgba(105,240,174,0.6)','rgba(105,240,174,0.2)',ev=>showPopup(ev,w.title,w.summary||'','WHO'),2,'health')});
-  // News
-  (D.news||[]).forEach(n=>{addPt(n.lat,n.lon,3,'rgba(129,212,250,0.6)','rgba(129,212,250,0.2)',ev=>showPopup(ev,n.source+' NEWS',cleanText(n.title),n.region),3,'news')});
-  // NOAA weather
-  (D.noaa?.alerts||[]).forEach(a=>{addPt(a.lat,a.lon,4,'rgba(255,152,0,0.7)','rgba(255,152,0,0.3)',ev=>showPopup(ev,a.event,a.headline||'','NOAA/NWS'),2,'weather')});
-  // EPA RadNet
-  (D.epa?.stations||[]).forEach(s=>{addPt(s.lat,s.lon,3,'rgba(205,220,57,0.6)','rgba(205,220,57,0.2)',ev=>showPopup(ev,'RadNet: '+s.location,`${s.analyte||'--'}: ${s.result||'--'} ${s.unit||''}`,'EPA'),3,'radiation')});
-  // Space stations
-  (D.space?.stationPositions||[]).forEach(s=>{
-    const g=addPt(s.lat,s.lon,5,'rgba(255,255,255,0.9)','rgba(255,255,255,0.4)',ev=>showPopup(ev,s.name,'Orbital position estimate','Space Station'),1,'space');
-    if(g) g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill','rgba(255,255,255,0.7)').attr('font-size','8px').attr('font-family','var(--mono)').text(s.name.split('(')[0].trim());
+
+  // Nuclear triangles.
+  asArray(D?.nuke).forEach((site,index)=>{
+    const coords=NUKE_COORDS[index];if(!coords)return;
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'nuke',2),event=>showPopup(event,site?.site || 'Nuclear site',`CPM: ${fmtNum(site?.cpm,1)}`,'Radiation'));
+    if(g)g.append('path').attr('d','M0,-5 L5,4 L-5,4 Z').attr('fill',mapRgba(MAP_TYPE_COLORS.nuke,0.76)).attr('stroke',mapRgba(MAP_TYPE_COLORS.nuke,0.42)).attr('stroke-width',0.8);
   });
-  // GDELT geo events
-  (D.gdelt?.geoPoints||[]).forEach(g=>{addPt(g.lat,g.lon,2.5,'rgba(100,149,237,0.5)','rgba(100,149,237,0.2)',ev=>showPopup(ev,'GDELT Event',g.name||'','GDELT · '+g.count+' reports'),3,'gdelt')});
-  // ACLED
-  (D.acled?.deadliestEvents||[]).filter(e=>e.lat&&e.lon).forEach(e=>{
-    const g=markerGroup(e.lat,e.lon,'conflict',1);
+
+  // SDR circles.
+  asArray(D?.sdr?.zones).forEach(zone=>asArray(zone?.receivers).forEach(receiver=>{
+    const coords=finiteMapCoords(receiver);if(!coords)return;
+    addCircle(coords.lat,coords.lon,2.5,mapRgba(MAP_TYPE_COLORS.sdr,0.56),mapRgba(MAP_TYPE_COLORS.sdr,0.26),event=>showPopup(event,'SDR',`${receiver?.name || 'Receiver'}<br>${zone?.region || 'Unknown'}`,'KiwiSDR'),3,'sdr');
+  }));
+
+  // WHO amber circles with a plus.
+  asArray(D?.who).slice(0,WHO_COORDS.length).forEach((alert,index)=>{
+    const coords=WHO_COORDS[index];
+    const g=addCircle(coords.lat,coords.lon,4,mapRgba(MAP_TYPE_COLORS.health,0.22),mapRgba(MAP_TYPE_COLORS.health,0.85),event=>showPopup(event,alert?.title || 'WHO alert',alert?.summary || '','WHO'),2,'health');
+    if(g){
+      g.append('line').attr('x1',-2.2).attr('x2',2.2).attr('stroke',MAP_TYPE_COLORS.health).attr('stroke-width',1.2);
+      g.append('line').attr('y1',-2.2).attr('y2',2.2).attr('stroke',MAP_TYPE_COLORS.health).attr('stroke-width',1.2);
+    }
+  });
+
+  // News aggregates and drill-down reports.
+  aggregates.news.forEach(item=>{
+    const radius=flatAggregateMarkerRadius(item.count);
+    addCircle(item.lat,item.lon,radius,mapRgba(MAP_TYPE_COLORS.news,0.78),mapRgba(MAP_TYPE_COLORS.news,0.42),event=>showPopup(event,`${item.region} News`,item.titles.length?item.titles.join('<br>'):'No report titles available',`${item.count.toLocaleString()} reports${item.sources.length?` · ${item.sources.join(' · ')}`:''}`),newsAggregatePriority(item.count),'news',true);
+  });
+  asArray(D?.news).forEach(item=>{
+    const coords=finiteMapCoords(item);if(!coords)return;
+    addCircle(coords.lat,coords.lon,3,mapRgba(MAP_TYPE_COLORS.news,0.62),mapRgba(MAP_TYPE_COLORS.news,0.28),event=>showPopup(event,`${item?.source || 'World'} NEWS`,cleanText(item?.title),item?.region || 'Unknown'),3,'news');
+  });
+
+  // NOAA weather circles.
+  asArray(D?.noaa?.alerts).forEach(alert=>{
+    const coords=finiteMapCoords(alert);if(!coords)return;
+    addCircle(coords.lat,coords.lon,4,mapRgba(MAP_TYPE_COLORS.weather,0.72),mapRgba(MAP_TYPE_COLORS.weather,0.34),event=>showPopup(event,alert?.event || 'Weather Alert',alert?.headline || '','NOAA/NWS'),2,'weather');
+  });
+
+  // EPA RadNet squares.
+  asArray(D?.epa?.stations).forEach(station=>{
+    const coords=finiteMapCoords(station);if(!coords)return;
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'radiation',3),event=>showPopup(event,`RadNet: ${station?.location || 'Station'}`,`${station?.analyte || '--'}: ${station?.result || '--'} ${station?.unit || ''}`,'EPA'));
+    if(g)g.append('rect').attr('x',-3).attr('y',-3).attr('width',6).attr('height',6).attr('fill',mapRgba(MAP_TYPE_COLORS.radiation,0.66)).attr('stroke',mapRgba(MAP_TYPE_COLORS.radiation,0.35)).attr('stroke-width',0.7);
+  });
+
+  // Space circles with a soft halo and shortened labels.
+  asArray(D?.space?.stationPositions).forEach(station=>{
+    const coords=finiteMapCoords(station);if(!coords)return;
+    const name=cleanText(station?.name || 'Space Station');
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'space',1),event=>showPopup(event,name,'Orbital position estimate','Space Station'));
     if(!g)return;
-    const r=Math.max(4,Math.min(14,2+Math.log2(Math.max(e.fatalities,1))*1.5));
-    g.on('click',ev=>{ev.stopPropagation();showPopup(ev,e.type||'CONFLICT',`${e.fatalities} fatalities<br>${e.location}, ${e.country}`,'ACLED')});
-    g.append('circle').attr('class','conflict-ring marker-circle').attr('r',r).attr('data-base-r',r).attr('fill','none').attr('stroke','rgba(255,120,80,0.7)').attr('stroke-width',1.5);
-    g.append('circle').attr('r',r*0.4).attr('fill','rgba(255,120,80,0.3)');
+    g.append('circle').attr('class','marker-circle').attr('r',8).attr('fill',mapRgba(MAP_TYPE_COLORS.space,0.1)).attr('stroke','none').style('filter','blur(1.5px)');
+    g.append('circle').attr('class','marker-circle').attr('r',5).attr('fill',mapRgba(MAP_TYPE_COLORS.space,0.94)).attr('stroke',mapRgba(MAP_TYPE_COLORS.space,0.45)).attr('stroke-width',0.8);
+    g.append('text').attr('class','marker-label').attr('x',8).attr('y',3).attr('fill',mapRgba(MAP_TYPE_COLORS.space,0.76)).attr('font-size','6.25px').attr('font-family','var(--mono)').text(name.split('(')[0].trim());
   });
+
+  // GDELT small hollow circles.
+  asArray(D?.gdelt?.geoPoints).forEach(event=>{
+    const coords=finiteMapCoords(event);if(!coords)return;
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'gdelt',3),click=>showPopup(click,'GDELT Event',event?.name || '',`GDELT · ${finiteMapNumber(event?.count) ?? 0} reports`));
+    if(g)g.append('circle').attr('class','marker-circle').attr('r',3).attr('fill','none').attr('stroke',mapRgba(MAP_TYPE_COLORS.gdelt,0.78)).attr('stroke-width',1);
+  });
+
+  // ACLED kinetic rings.
+  asArray(D?.acled?.deadliestEvents).forEach(event=>{
+    const coords=finiteMapCoords(event);if(!coords)return;
+    const fatalities=Math.max(0,finiteMapNumber(event?.fatalities) ?? 0);
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'conflict',1),click=>showPopup(click,event?.type || 'CONFLICT',`${fatalities} fatalities<br>${event?.location || 'Unknown'}, ${event?.country || 'Unknown'}`,'ACLED'));
+    if(!g)return;
+    const radius=Math.max(4,Math.min(14,2+Math.log2(Math.max(fatalities,1))*1.5));
+    g.append('circle').attr('class','conflict-ring marker-circle').attr('r',radius).attr('fill','none').attr('stroke',mapRgba(MAP_TYPE_COLORS.conflict,0.78)).attr('stroke-width',1.5);
+    g.append('circle').attr('r',radius*0.4).attr('fill',mapRgba(MAP_TYPE_COLORS.conflict,0.3));
+  });
+
+  const k=flatSvg?.node ? d3.zoomTransform(flatSvg.node()).k : 1;
+  applyFlatMarkerVisibility(k);
 }
 
 function setRegion(r){
+  if(!Object.prototype.hasOwnProperty.call(flatRegionBounds,r)) r='world';
   currentRegion = r;
-  document.querySelectorAll('.region-btn').forEach(b=>b.classList.toggle('active',b.dataset.region===r));
+  renderRegionControls();
   closePopup();
   if(isFlat && flatSvg && flatZoom){
-    if(r==='world'){flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity);return;}
+    if(r==='world'){
+      flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity)
+        .on('end',()=>applyFlatMarkerVisibility(d3.zoomTransform(flatSvg.node()).k));
+      return;
+    }
     const bounds=flatRegionBounds[r];
     const p0=flatProjection(bounds[0]),p1=flatProjection(bounds[1]);if(!p0||!p1)return;
     const dx=Math.abs(p1[0]-p0[0]),dy=Math.abs(p1[1]-p0[1]);
     const cx=(p0[0]+p1[0])/2,cy=(p0[1]+p1[1])/2;
     const scale=Math.min(flatW/dx,flatH/dy)*0.85;
-    flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity.translate(flatW/2-scale*cx,flatH/2-scale*cy).scale(scale));
-  } else {
+    flatSvg.transition().duration(750).call(flatZoom.transform,d3.zoomIdentity.translate(flatW/2-scale*cx,flatH/2-scale*cy).scale(scale))
+      .on('end',()=>applyFlatMarkerVisibility(d3.zoomTransform(flatSvg.node()).k));
+  } else if(globe) {
     const pov=regionPOV[r]||regionPOV.world;
     globe.pointOfView(pov,1000);
+    setTimeout(applyGlobeMarkerVisibility,1050);
   }
 }
 
@@ -1973,13 +2358,13 @@ async function submitAskAI(event){
         body: JSON.stringify({question}),
       });
     let storedToken = '';
-    try { storedToken = sessionStorage.getItem('crucix_api_token') || ''; } catch {}
+    storedToken = safeStorage.sessionGet('crucix_api_token', '') || '';
     let res = await request(storedToken);
     if(res.status === 401){
       const enteredToken = window.prompt('Crucix API token');
       if(enteredToken){
         storedToken = enteredToken.trim();
-        try { sessionStorage.setItem('crucix_api_token', storedToken); } catch {}
+        safeStorage.sessionSet('crucix_api_token', storedToken);
         res = await request(storedToken);
       }
     }
@@ -2755,7 +3140,7 @@ function refreshMapViewport(forceGlobeReflow=false){
   const container = document.getElementById('mapContainer');
   if(!container) return;
   const width = container.clientWidth;
-  const height = container.clientHeight || (isMobileLayout() ? 420 : 560);
+  const height = container.clientHeight || Math.max(320,Math.round(width*5/9));
   if(globe){
     globe.width(width).height(height);
     if(forceGlobeReflow && !isFlat){
@@ -2772,7 +3157,7 @@ function refreshMapViewport(forceGlobeReflow=false){
     flatH = height;
     flatSvg.attr('viewBox',`0 0 ${flatW} ${flatH}`).attr('preserveAspectRatio','xMidYMid meet');
     if(flatProjection && flatG){
-      flatProjection = d3.geoNaturalEarth1().fitSize([flatW-20,flatH-20],{type:'Sphere'}).translate([flatW/2,flatH/2]);
+      flatProjection = createFlatProjection(flatW,flatH);
       flatPath = d3.geoPath(flatProjection);
       flatG.selectAll('*').remove();
       drawFlatMap();
@@ -2799,8 +3184,10 @@ function syncResponsiveLayout(force=false){
 // === REINIT (for live updates without boot sequence) ===
 function reinit(){
   renderTopbar();renderHero();renderLeftRail();renderLower();renderRight();
+  renderMapLegend();
   applyPrimaryView();
   plotMarkers();
+  if(flatG) plotFlatMarkers();
 }
 
 // === SSE: Live Updates from Server ===
@@ -3089,45 +3476,26 @@ document.addEventListener('DOMContentLoaded', () => {
 // === Phase 3: Sensor Grid Click-to-Filter + Accordion + Fly-to ===
 // Uses event delegation on #leftRail so handlers survive re-renders (reinit/SSE/resize).
 (function(){
-  let activeFilter = null;
-  let allGlobePoints = null;
-  let allGlobeLabels = null;
   let selectedSubItem = null;   // currently selected sub-item element
   let highlightRingData = [];   // rings layer data for selected marker
 
-  const catToTypes = {
-    air: ['air'],
-    thermal: ['thermal'],
-    sdr: ['sdr'],
-    maritime: ['maritime'],
-    nuke: ['nuke'],
-    conflict: ['conflict'],
-    health: ['health'],
-    news: ['news'],
-    osint: ['osint'],
-    space: ['space'],
-  };
-
   function getBaseRings() {
-    // Preserve conflict rings already on the globe
-    if (typeof globe !== 'undefined' && globe) {
-      const all = globe.ringsData() || [];
-      return all.filter(r => !r._highlight);
-    }
-    return [];
+    return typeof filteredMapRings === 'function' ? filteredMapRings() : [];
   }
 
   function clearHighlightRing() {
     highlightRingData = [];
     if (typeof globe !== 'undefined' && globe) {
-      globe.ringsData(getBaseRings());
+      const rightHighlights = asArray(globe.ringsData()).filter(ring=>ring._rightHighlight);
+      globe.ringsData([...getBaseRings(),...rightHighlights]);
     }
   }
 
   function setHighlightRing(lat, lng) {
     highlightRingData = [{ lat, lng, maxR: 4, speed: 3, period: 1200, _highlight: true }];
     if (typeof globe !== 'undefined' && globe) {
-      globe.ringsData([...getBaseRings(), ...highlightRingData]);
+      const rightHighlights = asArray(globe.ringsData()).filter(ring=>ring._rightHighlight);
+      globe.ringsData([...getBaseRings(),...rightHighlights,...highlightRingData]);
     }
   }
 
@@ -3149,55 +3517,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function applyFilter(cat) {
-    // Snapshot all globe data on first use
-    if (typeof globe !== 'undefined' && globe && !allGlobePoints) {
-      allGlobePoints = globe.pointsData();
-      allGlobeLabels = globe.labelsData();
-    }
+    sensorActiveFilter = cat && cat === sensorActiveFilter ? null : (cat || null);
+    const types = sensorFilterTypes(sensorActiveFilter);
+    applyGlobeMarkerVisibility();
+    const k = flatSvg?.node ? d3.zoomTransform(flatSvg.node()).k : 1;
+    applyFlatMarkerVisibility(k);
 
-    if (cat === activeFilter) {
-      // Deselect — show everything
-      activeFilter = null;
-      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
-        globe.pointsData(allGlobePoints);
-        globe.labelsData(allGlobeLabels);
-      }
-      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
-        el.style.display = '';
-        el.style.opacity = '';
-      });
-    } else {
-      activeFilter = cat;
-      const types = catToTypes[cat] || [cat];
-
-      // Filter globe markers
-      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
-        globe.pointsData(allGlobePoints.filter(p => types.includes(p.type)));
-        globe.labelsData(allGlobeLabels);
-      }
-
-      // Dim non-matching flat map markers
-      document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
-        const elType = el.getAttribute('data-type');
-        if (elType && !types.includes(elType)) {
-          el.style.opacity = '0.1';
-        } else {
-          el.style.opacity = '';
-        }
-      });
-
-      // Pan globe to a representative marker for this category
-      if (typeof globe !== 'undefined' && globe && allGlobePoints) {
-        const match = allGlobePoints.find(p => types.includes(p.type));
-        if (match) {
-          flyTo(match.lat, match.lng, 1.2);
-        }
-      }
+    // Pan to a representative enabled marker for the selected category.
+    if (types) {
+      const match = allMapPoints.find(point => mapLayerVisible(point.type) && types.includes(point.type));
+      if (match) flyTo(match.lat, match.lng, 1.2);
     }
 
     // Update active class on layer items
     document.querySelectorAll('.layer-item').forEach(el => {
-      if (activeFilter && el.dataset.category === activeFilter) {
+      if (sensorActiveFilter && el.dataset.category === sensorActiveFilter) {
         el.classList.add('active-filter');
       } else {
         el.classList.remove('active-filter');
@@ -3223,7 +3557,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (wasExpanded) {
       // Collapsing — also clear filter
-      applyFilter(cat === activeFilter ? cat : null);
+      applyFilter(cat === sensorActiveFilter ? cat : null);
       return;
     }
 
@@ -3282,15 +3616,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // Sensor Grid header click — reset all
       const hdr = closestTarget(e, '#sensorGridHeader');
       if (hdr) {
-        activeFilter = null;
-        if (typeof globe !== 'undefined' && globe && allGlobePoints) {
-          globe.pointsData(allGlobePoints);
-          globe.labelsData(allGlobeLabels);
-        }
-        document.querySelectorAll('#flatMapSvg circle, #flatMapSvg g.flat-marker').forEach(el => {
-          el.style.display = '';
-          el.style.opacity = '';
-        });
+        sensorActiveFilter = null;
+        applyGlobeMarkerVisibility();
+        const k = flatSvg?.node ? d3.zoomTransform(flatSvg.node()).k : 1;
+        applyFlatMarkerVisibility(k);
         document.querySelectorAll('.layer-item').forEach(el => {
           el.classList.remove('active-filter');
           el.classList.remove('expanded');
@@ -3300,9 +3629,9 @@ document.addEventListener('DOMContentLoaded', () => {
           selectedSubItem = null;
         }
         clearHighlightRing();
-        // Reset globe to world view
+        // Reset the active projection and dropdown to world view.
+        setRegion('world');
         if (typeof globe !== 'undefined' && globe) {
-          globe.pointOfView(regionPOV.world, 1000);
           if (!lowPerfMode) setTimeout(() => { if(globe) globe.controls().autoRotate = true; }, 2000);
         }
       }
