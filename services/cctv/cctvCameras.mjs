@@ -217,21 +217,6 @@ async function fetchUSEastCameras() {
     },
   );
 
-  // Cincinnati, OH (from redhunt45 fork)
-  cams.push(
-    {
-      id: 'cincinnati-cincyvision-yt', lat: 39.089101, lng: -84.527943,
-      name: 'CincyVision YT', city: 'Cincinnati', country: 'US',
-      external_url: 'https://www.youtube.com/@AaronPreslin/live',
-      source: 'Cincinnati, OH',
-    },
-    {
-      id: 'cincinnati-covington-earthcam', lat: 39.090510, lng: -84.510413,
-      name: 'Cincinnati-Covington EarthCam', city: 'Covington', country: 'US',
-      external_url: 'https://www.earthcam.com/usa/kentucky/covington/?cam=covington',
-      source: 'Cincinnati, OH',
-    },
-  );
   // Florida 511 removed 2026-06 — fl511.com/api/v2/cameras 404s and the
   // v2/get/cameras variant rejects keyless requests ("Invalid Key").
 
@@ -322,13 +307,6 @@ async function fetchMiddleEastCameras() {
 
   // Lebanon Curated (Embedded)
   cams.push(
-    {
-      id: 'lb-beirut-skyline', lat: 33.8938, lng: 35.5018,
-      name: 'Beirut Skyline (CGTN)', city: 'Beirut', country: 'Lebanon',
-      stream_url: 'https://www.youtube-nocookie.com/embed/o8jWN-MBeM0?autoplay=1&mute=1',
-      stream_type: 'iframe',
-      source: 'YouTube Live',
-    },
     {
       id: 'lb-me-multicam', lat: 33.2721, lng: 35.2033,
       name: 'Middle East 24/7 Multi-Cam (Live)', city: 'Regional', country: 'Middle East',
@@ -494,41 +472,24 @@ async function fetchItalyCameras() {
     { id: 'it-milan-1', lat: 45.4642, lng: 9.1900, name: 'Milan - Duomo Area', city: 'Milan', country: 'Italy', stream_url: 'https://www.youtube-nocookie.com/embed/dsoM6TYIkOI?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
     { id: 'it-venice-1', lat: 45.4343, lng: 12.3388, name: 'Venice - Grand Canal', city: 'Venice', country: 'Italy', stream_url: 'https://www.youtube-nocookie.com/embed/mt7uE-n0YPI?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
     { id: 'it-naples-1', lat: 40.8518, lng: 14.2681, name: 'Naples - City View', city: 'Naples', country: 'Italy', stream_url: 'https://www.youtube-nocookie.com/embed/LO2Fvujwc8M?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'it-etna-live', lat: 37.7510, lng: 14.9934, name: 'Mount Etna – Volcano Cam', city: 'Catania', country: 'Italy', stream_url: 'https://www.youtube-nocookie.com/embed/RUXwwsMzkQY?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCOLltLVxnTEfMuXuleuNbzQ', source: 'YouTube Live' },
   ];
 }
 
 async function fetchCzechiaCameras() {
-  return [
-    { id: 'cz-prague-1', lat: 50.0878, lng: 14.4205, name: 'Prague - Old Town Square', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/3C8W4Rlgiog?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'cz-prague-2', lat: 50.0865, lng: 14.4114, name: 'Prague - Charles Bridge', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/tmlE1ct0cYk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'cz-prague-3', lat: 50.0900, lng: 14.4000, name: 'Prague - City View', city: 'Prague', country: 'Czechia', stream_url: 'https://www.youtube-nocookie.com/embed/yQe334ro-w0?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-  ];
+  return []; // Curated YouTube cameras removed 2026-09
 }
 
 async function fetchSlovakiaCameras() {
-  return [
-    { id: 'sk-bratislava-1', lat: 48.1486, lng: 17.1077, name: 'Bratislava - Old Town', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/Kycpb3_xCeo?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'sk-bratislava-3', lat: 48.1450, lng: 17.1000, name: 'Bratislava - Danube River', city: 'Bratislava', country: 'Slovakia', stream_url: 'https://www.youtube-nocookie.com/embed/PZMvWDB6O0o?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-  ];
+  return []; // Curated YouTube cameras removed 2026-09
 }
 
 async function fetchGermanyCameras() {
-  return [
-    { id: 'de-berlin-1', lat: 52.5200, lng: 13.4050, name: 'Berlin - Alexanderplatz', city: 'Berlin', country: 'Germany', stream_url: 'https://www.youtube-nocookie.com/embed/4Xg-wkPazp4?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'de-munich-1', lat: 48.1351, lng: 11.5820, name: 'Munich - Marienplatz', city: 'Munich', country: 'Germany', stream_url: 'https://www.youtube-nocookie.com/embed/KxWuwC7R5kY?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-  ];
+  return []; // Curated YouTube cameras removed 2026-09
 }
 
 async function fetchFranceCameras() {
-  // Rebuilt 2026-08: UMuEooW0iAQ and YAdNYoRY0Cw were dead; OzYp4NRZlwQ
-  // ("Louvre") is really the Palais d'Iéna cam facing the Eiffel Tower, and
-  // asO_10T0k2k ("Nice") is really Cannes Quai Laubeuf — relabeled/moved.
-  return [
-    { id: 'fr-paris-1', lat: 48.8421, lng: 2.3219, name: 'Paris - Skyline (Le Ciel de Paris)', city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/vPy-iwB686k?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCxb9X1HJKkmPwfttoTcLh1A', source: 'YouTube Live' },
-    { id: 'fr-paris-2', lat: 48.8622, lng: 2.2887, name: "Paris - Eiffel Tower (Palais d'Iéna)", city: 'Paris', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/OzYp4NRZlwQ?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', source: 'YouTube Live' },
-    { id: 'fr-cannes-1', lat: 43.5482, lng: 7.0040, name: 'Cannes - Boulevard du Midi', city: 'Cannes', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/z6BNMoj9Pyo?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCZqr-kHlRzGyCgh7BHksSAw', source: 'YouTube Live' },
-    { id: 'fr-cannes-2', lat: 43.5477, lng: 7.0122, name: 'Cannes - Quai Laubeuf', city: 'Cannes', country: 'France', stream_url: 'https://www.youtube-nocookie.com/embed/asO_10T0k2k?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UC-YwGCdQF-0AdCXhrDF0d2Q', source: 'YouTube Live' },
-  ];
+  return []; // Curated YouTube cameras removed 2026-09
 }
 
 async function fetchSpainCameras() {
@@ -543,10 +504,7 @@ async function fetchSpainCameras() {
 }
 
 async function fetchPolandCameras() {
-  // NZ_ZiHAx8Ic died; replaced 2026-08 with TGD-Transprojekt's 24/7 Wrzeszcz 4K cam.
-  return [
-    { id: 'pl-gdansk-1', lat: 54.3915, lng: 18.5990, name: 'Gdańsk - Wrzeszcz (4K)', city: 'Gdansk', country: 'Poland', stream_url: 'https://www.youtube-nocookie.com/embed/ta2myV8mrXk?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0', stream_type: 'iframe', yt_channel: 'UCcQJdC0Aa8rWfeOjl4fdyVw', source: 'YouTube Live' },
-  ];
+  return []; // Curated YouTube cameras removed 2026-09
 }
 
 async function fetchJapanCameras() {
@@ -555,11 +513,53 @@ async function fetchJapanCameras() {
     { id: 'jp-tokyo-tower', lat: 35.6586, lng: 139.7454, name: 'Tokyo Tower Live Cam', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/nu6NE55_X7A?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
     { id: 'jp-mt-fuji', lat: 35.3606, lng: 138.7274, name: 'Mt. Fuji Live', city: 'Shizuoka/Yamanashi', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/bdUbACCWmoY?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
     { id: 'jp-osaka-dotonbori', lat: 34.6687, lng: 135.5013, name: 'Dotonbori Live Cam', city: 'Osaka', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/i2PpmC1IeKk?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube' },
+    { id: 'jp-shinjuku-kabukicho', lat: 35.6950, lng: 139.7030, name: 'Tokyo – Shinjuku Kabukicho', city: 'Tokyo', country: 'Japan', stream_url: 'https://www.youtube-nocookie.com/embed/DjdUEyjx8GM?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCCLnJzwda_Kcdkok3et7n0A', source: 'YouTube Live' },
+  ];
+}
+
+async function fetchWorldLiveCameras() {
+  return [
+    { id: 'tr-istanbul-galata', lat: 41.0256, lng: 28.9744, name: "Istanbul – Galata & Maiden's Tower (Bosphorus)", city: 'Istanbul', country: 'Turkey', stream_url: 'https://www.youtube-nocookie.com/embed/EcuxoC50ccw?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCrRYP4a33Fvvd9j6TLtzj_Q', source: 'YouTube Live' },
+    { id: 'ie-dublin-earthcam', lat: 53.3498, lng: -6.2603, name: 'Dublin – City (EarthCam)', city: 'Dublin', country: 'Ireland', stream_url: 'https://www.youtube-nocookie.com/embed/3nyPER2kzqk?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'ie-dublin-port', lat: 53.3450, lng: -6.1950, name: 'Dublin Bay – Port Ship Cam', city: 'Dublin', country: 'Ireland', stream_url: 'https://www.youtube-nocookie.com/embed/oxx7MqjhOpw?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCeGyo_v1ppwH-e77CVqLSJg', source: 'YouTube Live' },
+    { id: 'mt-grand-harbour', lat: 35.8950, lng: 14.5150, name: 'Malta – Grand Harbour Ship Spotting', city: 'Valletta', country: 'Malta', stream_url: 'https://www.youtube-nocookie.com/embed/3cVonNYbU14?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCOaftBNU_PWVFLkR2LY3LPg', source: 'YouTube Live' },
+    { id: 'nl-rotterdam-port', lat: 51.9500, lng: 4.0500, name: 'Port of Rotterdam – Amazonehaven', city: 'Rotterdam', country: 'Netherlands', stream_url: 'https://www.youtube-nocookie.com/embed/M09NaBVPjAI?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCv0wG9OEynMBWnoH1url0ig', source: 'YouTube Live' },
+    { id: 'uk-st-ives-harbour', lat: 50.2130, lng: -5.4790, name: 'St Ives Harbour, Cornwall', city: 'St Ives', country: 'UK', stream_url: 'https://www.youtube-nocookie.com/embed/T83mKGf_c3k?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC683QcyNqiaLGAB3OidWtBw', source: 'YouTube Live' },
+    { id: 'pt-funchal-marina', lat: 32.6450, lng: -16.9100, name: 'Funchal Marina, Madeira', city: 'Funchal', country: 'Portugal', stream_url: 'https://www.youtube-nocookie.com/embed/-p1Xnt9n0yg?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'pt-costa-caparica', lat: 38.6400, lng: -9.2400, name: 'Costa da Caparica Beach (Lisbon)', city: 'Almada', country: 'Portugal', stream_url: 'https://www.youtube-nocookie.com/embed/oDbKeeojgyk?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'is-reykjavik-aurora', lat: 64.1466, lng: -21.9426, name: 'Reykjavík – Aurora Sky Cam', city: 'Reykjavik', country: 'Iceland', stream_url: 'https://www.youtube-nocookie.com/embed/sUrl5nXLpt8?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC6OWqjtFTsdtHAAuGWv1kPw', source: 'YouTube Live' },
+    { id: 'is-volcano-watch', lat: 63.8800, lng: -22.4000, name: 'Iceland Volcano Watch (multi-cam)', city: 'Reykjanes', country: 'Iceland', stream_url: 'https://www.youtube-nocookie.com/embed/qkSvU9j4kqM?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'ua-skyline-osint', lat: 50.4501, lng: 30.5234, name: 'Ukraine Skyline Cams (Kyiv/Kharkiv/Odesa OSINT)', city: 'Kyiv', country: 'Ukraine', stream_url: 'https://www.youtube-nocookie.com/embed/IcZ-7sFi1HM?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-nyc-times-square', lat: 40.7580, lng: -73.9855, name: 'New York – Times Square North 4K (EarthCam)', city: 'New York', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/JQ_jwk_7OVE?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-chicago-skydeck', lat: 41.8789, lng: -87.6359, name: 'Chicago – Skydeck Cam (EarthCam)', city: 'Chicago', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/O0UGT7AT3aw?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-houston-skyline', lat: 29.7604, lng: -95.3698, name: 'Houston – Downtown Skyline (ABC13)', city: 'Houston', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/wUQc3RoLAPs?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-la-venice-beach', lat: 33.9850, lng: -118.4695, name: 'Los Angeles – Venice Beach', city: 'Los Angeles', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/EO_1LWqsCNE?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-sf-bay-skyline', lat: 37.8080, lng: -122.4100, name: 'San Francisco – Bay & Golden Gate View', city: 'San Francisco', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/BSWhGNXxT9A?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-port-miami', lat: 25.7750, lng: -80.1700, name: 'Port Miami – Cruise Ship Cam', city: 'Miami', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/m1R-LmvVt30?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC-8U3VCeOEqdPJd2D77RqKw', source: 'YouTube Live' },
+    { id: 'us-duluth-ship-cam', lat: 46.7800, lng: -92.0930, name: 'Duluth – Canal Park Ship Cam', city: 'Duluth', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/H6cm5Hf-yFY?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC5UwWocd9b4F-GdEyJ4SKxA', source: 'YouTube Live' },
+    { id: 'us-katmai-brooks-falls', lat: 58.5550, lng: -155.7800, name: 'Brooks Falls Bears – Katmai NP (explore.org)', city: 'Katmai', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/J7ZrIDvqlic?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'us-kilauea-volcano', lat: 19.4069, lng: -155.2834, name: 'Kīlauea Volcano – USGS cams', city: 'Hawaii', country: 'US', stream_url: 'https://www.youtube-nocookie.com/embed/d93MlUgmk4s?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'sx-maho-beach', lat: 18.0400, lng: -63.1200, name: 'Maho Beach – Princess Juliana Airport Beach', city: 'Sint Maarten', country: 'Sint Maarten', stream_url: 'https://www.youtube-nocookie.com/embed/iSeH45R-8R0?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'mx-popocatepetl', lat: 19.0225, lng: -98.6278, name: 'Popocatépetl Volcano', city: 'Puebla', country: 'Mexico', stream_url: 'https://www.youtube-nocookie.com/embed/1j3T1kbrD1c?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'br-balneario-camboriu', lat: -26.9900, lng: -48.6350, name: 'Balneário Camboriú – Avenida Atlântica', city: 'Balneario Camboriu', country: 'Brazil', stream_url: 'https://www.youtube-nocookie.com/embed/5Xl6pSgiy3A?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCi1vQx48j_nfrMg6XH5PItQ', source: 'YouTube Live' },
+    { id: 'ca-vancouver-harbour', lat: 49.2900, lng: -123.1100, name: 'Vancouver – Harbour & Cruise Ships', city: 'Vancouver', country: 'Canada', stream_url: 'https://www.youtube-nocookie.com/embed/rxyNjFKwzJA?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCYky246qWfKe82NLQ9VXbgQ', source: 'YouTube Live' },
+    { id: 'na-namib-desert', lat: -23.6000, lng: 15.5000, name: 'Namib Desert Waterhole (NamibiaCam)', city: 'Namib', country: 'Namibia', stream_url: 'https://www.youtube-nocookie.com/embed/ydYDqZQpim8?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC9X6gGKDv2yhMoofoeS7-Gg', source: 'YouTube Live' },
+    { id: 'ke-ol-donyo', lat: -2.3600, lng: 37.6000, name: 'ol Donyo Lodge Wildlife Cam (Africam)', city: 'Chyulu Hills', country: 'Kenya', stream_url: 'https://www.youtube-nocookie.com/embed/XsOU8JnEpNM?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'za-tembe-elephants', lat: -27.0000, lng: 32.4000, name: 'Tembe Elephant Park (Africam)', city: 'Tembe', country: 'South Africa', stream_url: 'https://www.youtube-nocookie.com/embed/gdrNUUf-cQw?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'za-table-mountain', lat: -33.8000, lng: 18.4700, name: 'Cape Town – Table Mountain & Bloubergstrand', city: 'Cape Town', country: 'South Africa', stream_url: 'https://www.youtube-nocookie.com/embed/vOLCjL4kv-w?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCLaxio5CTbT1gl5i8FB2-yw', source: 'YouTube Live' },
+    { id: 'kr-seoul-han-river', lat: 37.5300, lng: 126.9300, name: 'Seoul – Han River Skyline 4K', city: 'Seoul', country: 'South Korea', stream_url: 'https://www.youtube-nocookie.com/embed/vk5BHoDxXf0?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UC4ueDZiC-xHAwql4QxVNQZg', source: 'YouTube Live' },
+    { id: 'tw-tamsui-wharf', lat: 25.1830, lng: 121.4100, name: "Tamsui Fisherman's Wharf", city: 'New Taipei', country: 'Taiwan', stream_url: 'https://www.youtube-nocookie.com/embed/xwAWSh35uuw?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'th-bangkok-skyline', lat: 13.7500, lng: 100.5000, name: 'Bangkok – 4K Skyline', city: 'Bangkok', country: 'Thailand', stream_url: 'https://www.youtube-nocookie.com/embed/k13iCmdiO_4?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCXBOD07bL65DJCwOmBIbZcQ', source: 'YouTube Live' },
+    { id: 'th-koh-samui-lamai', lat: 9.4700, lng: 100.0500, name: 'Koh Samui – Lamai Beach', city: 'Koh Samui', country: 'Thailand', stream_url: 'https://www.youtube-nocookie.com/embed/3N3ZwIB_X4Y?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'id-semeru-volcano', lat: -8.1080, lng: 112.9220, name: 'Semeru Volcano Watch', city: 'East Java', country: 'Indonesia', stream_url: 'https://www.youtube-nocookie.com/embed/EYYgrzyqgZM?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
+    { id: 'au-sydney-harbour', lat: -33.8600, lng: 151.2100, name: 'Sydney Harbour 24/7 (~4K)', city: 'Sydney', country: 'Australia', stream_url: 'https://www.youtube-nocookie.com/embed/5uZa3-RMFos?autoplay=1&mute=1', stream_type: 'iframe', yt_channel: 'UCLav_kTu9PmAEChvGyrPbhQ', source: 'YouTube Live' },
+    { id: 'nz-oamaru-penguins', lat: -45.1000, lng: 170.9700, name: 'Ōamaru Penguins Live Cam', city: 'Oamaru', country: 'New Zealand', stream_url: 'https://www.youtube-nocookie.com/embed/7V_7mzwjZaE?autoplay=1&mute=1', stream_type: 'iframe', source: 'YouTube Live' },
   ];
 }
 
 // ═══ REGION MAPPING (ported verbatim from route.ts) ═══
 const REGION_FETCHERS = {
+  'world-live': fetchWorldLiveCameras,
   'middle-east': fetchMiddleEastCameras,
   'uk': fetchTfLCameras,
   'us-west': fetchCaltransCameras,
@@ -654,11 +654,12 @@ function capCameras(cameras, max) {
 // The curated city cams are YouTube live streams, and live IDs rot: when a
 // stream restarts (or the channel vanishes) the old embed shows a permanent
 // "video unavailable". At assembly time (12h cache) every YouTube embed is
-// checked against its watch page for "isLiveNow"; entries carrying a
+// checked against its watch page for "isLiveNow" and "playableInEmbed";
+// entries carrying a
 // yt_channel are first re-resolved to whatever that channel is streaming NOW,
-// so those cams survive stream restarts. A definite "not live" drops the cam;
-// network errors keep it unverified (fail open) so a YouTube hiccup can't
-// nuke the whole curated set.
+// so those cams survive stream restarts. A definite "not live" or "not
+// embeddable" drops the cam; network errors keep it unverified (fail open) so
+// a YouTube hiccup can't nuke the whole curated set.
 const YT_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -680,18 +681,20 @@ async function ytVideoIsLive(videoId) {
   if (!html.includes('ytInitialPlayerResponse') && !html.includes('"playabilityStatus"')) {
     throw new Error('YouTube response did not contain player metadata');
   }
-  return html.includes('"isLiveNow":true');
+  if (html.includes('"playableInEmbed":false')) return 'not embeddable';
+  return html.includes('"isLiveNow":true') ? 'live' : 'not live';
 }
 
-// Resolve a channel's current live videoId, or null if it isn't streaming.
+// Resolve a channel's current live videoId and verification status.
 async function ytChannelLiveVideoId(channelId) {
   const html = await ytFetchHtml(`https://www.youtube.com/channel/${channelId}/live`);
   if (!html.includes('ytInitialPlayerResponse') && !html.includes('"playabilityStatus"')) {
     throw new Error('YouTube response did not contain player metadata');
   }
-  if (!html.includes('"isLiveNow":true')) return null;
+  if (html.includes('"playableInEmbed":false')) return { videoId: null, status: 'not embeddable' };
+  if (!html.includes('"isLiveNow":true')) return { videoId: null, status: 'not live' };
   const m = html.match(/"videoId":"([\w-]{11})"/);
-  return m ? m[1] : null;
+  return { videoId: m ? m[1] : null, status: m ? 'live' : 'not live' };
 }
 
 async function mapPool(items, limit, fn) {
@@ -706,7 +709,7 @@ async function mapPool(items, limit, fn) {
   return out;
 }
 
-async function verifyYouTubeLiveCams(cameras) {
+export async function verifyYouTubeLiveCams(cameras) {
   const passthrough = [];
   const targets = [];
   for (const cam of cameras) {
@@ -714,29 +717,35 @@ async function verifyYouTubeLiveCams(cameras) {
     else passthrough.push(cam);
   }
 
-  let live = 0, dropped = 0, errors = 0;
+  let live = 0, notLive = 0, notEmbeddable = 0, errors = 0;
+  const drop = (status) => {
+    if (status === 'not embeddable') notEmbeddable++;
+    else notLive++;
+    return null;
+  };
   const kept = await mapPool(targets, 5, async (cam) => {
     const { yt_channel, ...rest } = cam; // yt_channel is assembly-internal, not for clients
     try {
       if (yt_channel) {
-        const vid = await ytChannelLiveVideoId(yt_channel);
-        if (vid) {
+        const resolved = await ytChannelLiveVideoId(yt_channel);
+        if (resolved.status === 'not embeddable') return drop(resolved.status);
+        if (resolved.videoId) {
           live++;
-          return { ...rest, stream_url: `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1`, stream_type: 'iframe' };
+          return { ...rest, stream_url: `https://www.youtube-nocookie.com/embed/${resolved.videoId}?autoplay=1&mute=1`, stream_type: 'iframe' };
         }
         // channel offline — fall through to the pinned video, if any
       }
       const pinned = ytEmbedVideoId(cam.stream_url);
-      if (pinned && await ytVideoIsLive(pinned)) { live++; return rest; }
-      dropped++;
-      return null;
+      const status = pinned ? await ytVideoIsLive(pinned) : 'not live';
+      if (status === 'live') { live++; return rest; }
+      return drop(status);
     } catch {
       errors++;
       return rest;
     }
   });
 
-  console.log(`[cctv] yt-verify: ${live} live, ${dropped} dropped (not live), ${errors} kept unverified (fetch errors)`);
+  console.log(`[cctv] yt-verify: ${live} live, ${notLive} dropped (not live), ${notEmbeddable} dropped (not embeddable), ${errors} kept unverified (fetch errors)`);
   return [...passthrough, ...kept.filter(Boolean)];
 }
 

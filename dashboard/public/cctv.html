@@ -5,7 +5,7 @@
   satellites.html). Does not touch jarvis.html/satellites.html.
 
   The backend caps the global set (~500 cameras, MAX_CAMERAS in
-  cctvCameras.mjs), so all cameras render on load at the default zoom —
+  cctvCameras.mjs), so the selected camera set renders at the default zoom —
   no viewport gating. MAX_VISIBLE_POINTS below is the client-side cap.
 -->
 <html lang="en">
@@ -31,6 +31,12 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 .logo .sub{font-size:10px;color:var(--dim);margin-top:4px}
 .back-link{display:block;padding:8px 16px;color:var(--accent2);font-size:10px;text-decoration:none;border-top:1px solid var(--border);border-bottom:1px solid var(--border);letter-spacing:0.08em}
 .back-link:hover{background:rgba(68,204,255,0.08)}
+.mode-toggle{display:flex;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.mode-toggle button{flex:1;padding:8px;color:var(--accent2);font-family:var(--mono);font-size:10px;letter-spacing:0.08em;background:none;border:0;cursor:pointer}
+.mode-toggle button+button{border-left:1px solid var(--border)}
+.mode-toggle button:hover{background:rgba(68,204,255,0.08)}
+.mode-toggle button[aria-pressed="true"]{color:var(--accent);background:rgba(100,240,200,0.1)}
+.mode-toggle button:focus-visible{outline:1px solid var(--accent);outline-offset:-2px}
 .info{padding:12px 16px;font-size:10px;color:var(--dim);line-height:1.7}
 .info b{color:var(--text);font-weight:400}
 .info .hl{color:var(--cctv)}
@@ -71,12 +77,17 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 <body>
 <div id="wrap">
   <div id="sidebar">
-    <div class="logo"><h1>CRUCIX · CCTV</h1><div class="sub">PUBLIC TRAFFIC CAMERAS</div></div>
+    <div class="logo"><h1>CRUCIX · CCTV</h1><div class="sub" id="modeSubtitle">LIVE PUBLIC CAMERAS</div></div>
+    <div class="mode-toggle" role="group" aria-label="Camera display mode">
+      <button type="button" id="modeLive" aria-pressed="true">LIVE ONLY</button>
+      <button type="button" id="modeAll" aria-pressed="false">ALL</button>
+    </div>
     <a class="back-link" href="/">&larr; back to dashboard</a>
     <a class="back-link" href="/satellites.html">satellites &rarr;</a>
     <div class="info">
       <div><b>Cameras loaded:</b> <span class="hl" id="camCount">…</span></div>
-      <div style="margin-top:8px">All cameras are shown on load. Drag to rotate, scroll/pinch to zoom.</div>
+      <div><b>Live streams:</b> <span class="hl" id="liveCount">…</span></div>
+      <div style="margin-top:8px" id="modeInfo">Live streams are shown on load. Drag to rotate, scroll/pinch to zoom.</div>
       <div style="margin-top:8px"><b>Visible now:</b> <span id="visCount">0</span></div>
       <div style="margin-top:8px">Click a dot for the live feed. Where several overlap, a picker lists them all.</div>
     </div>
@@ -90,18 +101,28 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-famil
 <div id="popup" role="dialog" aria-modal="true" aria-labelledby="popupTitle" aria-hidden="true" tabindex="-1"></div>
 
 <script>
-// ─── The backend now caps the global set (~500 cameras), so we render them
-//     all immediately at the default zoom — no viewport gate needed. ───
+// ─── The backend caps the global set (~500 cameras), so we render the chosen
+//     mode immediately at the default zoom — no viewport gate needed. ───
 // Hard cap on rendered points; keep at/above the backend MAX_CAMERAS (400).
 const MAX_VISIBLE_POINTS = 500;
+const MODE_STORAGE_KEY = 'crucix_cctv_mode';
 
 const API = '/api/cctv';
 const statusEl = document.getElementById('status');
 const camCountEl = document.getElementById('camCount');
+const liveCountEl = document.getElementById('liveCount');
 const visCountEl = document.getElementById('visCount');
+const modeSubtitleEl = document.getElementById('modeSubtitle');
+const modeInfoEl = document.getElementById('modeInfo');
+const modeLiveBtn = document.getElementById('modeLive');
+const modeAllBtn = document.getElementById('modeAll');
 const popup = document.getElementById('popup');
 
 let allCameras = [];
+let plottedCameras = [];
+let cameraSourceCount = 0;
+let camerasUpdated = '';
+let camerasLoaded = false;
 let liveTimer = null;          // auto-refresh interval for snapshot (JPEG) feeds
 let hlsPlayer = null;          // active hls.js instance (destroyed on close/switch)
 let ytErrorWatch = null;       // active YouTube load/message listeners
@@ -118,27 +139,41 @@ const esc = window.CrucixCommon.escapeHtml;
 const safeHttpUrl = window.CrucixCommon.safeExternalUrl;   // '' when not http(s)
 function setStatus(m){ statusEl.innerHTML = m; }
 
+function loadCameraMode(){
+  try { return localStorage.getItem(MODE_STORAGE_KEY) === 'all' ? 'all' : 'live'; }
+  catch { return 'live'; }
+}
+function persistCameraMode(mode){
+  try { localStorage.setItem(MODE_STORAGE_KEY, mode); } catch { /* storage disabled */ }
+}
+let cameraMode = loadCameraMode();
+
 const globe = Globe()(document.getElementById('globe-container'))
   .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
   .backgroundColor('#020408')
   .pointLat('lat')
   .pointLng('lng')
-  .pointColor(() => '#ff8c42')
+  .pointColor(cam => isLiveCamera(cam) ? '#64f0c8' : '#ff8c42')
   .pointAltitude(0.012)
-  .pointRadius(0.34)
-  .pointLabel(d => `<div style="font-family:monospace;font-size:11px;color:#ff8c42">${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`)
+  .pointRadius(cam => isLiveCamera(cam) ? 0.42 : 0.34)
+  .pointLabel(d => {
+    const live = isLiveCamera(d);
+    const color = live ? '#64f0c8' : '#ff8c42';
+    return `<div style="font-family:monospace;font-size:11px;color:${color}"><span style="letter-spacing:.08em">${live ? 'LIVE' : 'SNAPSHOT'}</span> · ${esc(d.name)}<br><span style="color:#6a8a82">${esc(d.city)}, ${esc(d.country)} · ${esc(d.source)}</span></div>`;
+  })
   .onPointClick(showCamera)
   .pointsData([]);
 
 // Allow closer zoom than the default so clustered dots physically spread apart.
 globe.controls().minDistance = 110;
 
-// Render all loaded cameras at once (capped). The set is small enough now
-// that no viewport gating is needed — they show on load, at any zoom.
+// Render the selected camera set at once (capped). The set is small enough
+// that no viewport gating is needed — it shows on load, at any zoom.
 function updateVisiblePoints(){
-  const visible = allCameras.slice(0, MAX_VISIBLE_POINTS);
-  globe.pointsData(visible);
-  visCountEl.textContent = String(visible.length);
+  const selected = cameraMode === 'live' ? allCameras.filter(isLiveCamera) : allCameras;
+  plottedCameras = selected.slice(0, MAX_VISIBLE_POINTS);
+  globe.pointsData(plottedCameras);
+  visCountEl.textContent = String(plottedCameras.length);
 }
 
 // Classify a camera into how its feed must be displayed.
@@ -149,6 +184,45 @@ function feedKind(cam){
   if (cam.external_url) return 'external';
   return 'none';
 }
+
+function isLiveCamera(cam){
+  const kind = feedKind(cam);
+  return kind === 'iframe' || kind === 'hls';
+}
+
+function updateModeUi(){
+  const live = cameraMode === 'live';
+  modeLiveBtn.setAttribute('aria-pressed', String(live));
+  modeAllBtn.setAttribute('aria-pressed', String(!live));
+  modeSubtitleEl.textContent = live ? 'LIVE PUBLIC CAMERAS' : 'PUBLIC TRAFFIC CAMERAS';
+  modeInfoEl.textContent = live
+    ? 'Live streams are shown on load. Drag to rotate, scroll/pinch to zoom.'
+    : 'All cameras are shown on load. Drag to rotate, scroll/pinch to zoom.';
+}
+
+function updateCameraStatus(){
+  if (!camerasLoaded) return;
+  const firstLine = cameraMode === 'live'
+    ? `${plottedCameras.length.toLocaleString()} live streams shown · ${allCameras.length.toLocaleString()} loaded · ${cameraSourceCount} sources`
+    : `${allCameras.length.toLocaleString()} cameras · ${cameraSourceCount} sources`;
+  setStatus(`${firstLine}<br>updated ${esc(camerasUpdated)} UTC`);
+}
+
+function setCameraMode(mode){
+  if ((mode !== 'live' && mode !== 'all') || mode === cameraMode) return;
+  cameraMode = mode;
+  persistCameraMode(cameraMode);
+  updateModeUi();
+  cctvClose();
+  currentCluster = [];
+  updateVisiblePoints();
+  updateCameraStatus();
+}
+
+modeLiveBtn.addEventListener('click', () => setCameraMode('live'));
+modeAllBtn.addEventListener('click', () => setCameraMode('all'));
+updateModeUi();
+persistCameraMode(cameraMode);
 
 function snapshotUrl(id){ return API + '/snapshot?id=' + encodeURIComponent(id) + '&t=' + Date.now(); }
 
@@ -168,7 +242,7 @@ function getNearby(cam){
   try { c0 = globe.getScreenCoords(cam.lat, cam.lng, 0.012); } catch { return [cam]; }
   if (!c0) return [cam];
   const near = [];
-  for (const o of allCameras){
+  for (const o of plottedCameras){
     if (angDistDeg(cam, o) > 6) continue;        // skip far points / opposite face
     let c;
     try { c = globe.getScreenCoords(o.lat, o.lng, 0.012); } catch { continue; }
@@ -193,7 +267,7 @@ function clusterChooserHtml(activeId){
 
 // Switch the popup to another camera in the same cluster (no reposition).
 window.selectClusterCam = function(id){
-  const cam = currentCluster.find(c => c.id === id) || allCameras.find(c => c.id === id);
+  const cam = currentCluster.find(c => c.id === id) || plottedCameras.find(c => c.id === id);
   if (!cam) return;
   renderCameraInto(cam);
 };
@@ -427,15 +501,18 @@ async function loadCameras(){
     const data = await res.json();
     allCameras = (data.cameras || []).filter(c => typeof c.lat === 'number' && typeof c.lng === 'number');
     camCountEl.textContent = allCameras.length.toLocaleString();
-    const srcCount = Object.keys(data.sources || {}).length;
-    setStatus(`${allCameras.length.toLocaleString()} cameras · ${srcCount} sources<br>updated ${esc((data.updated||'').replace('T',' ').slice(0,19))} UTC`);
+    liveCountEl.textContent = allCameras.filter(isLiveCamera).length.toLocaleString();
+    cameraSourceCount = Object.keys(data.sources || {}).length;
+    camerasUpdated = (data.updated || '').replace('T',' ').slice(0,19);
+    camerasLoaded = true;
     updateVisiblePoints();
+    updateCameraStatus();
   } catch (err){
     setStatus('<span style="color:#ff5f63">load failed: ' + esc(err.message) + '</span>');
   }
 }
 
-// Initial POV — global view; all camera points are visible immediately.
+// Initial POV — global view; the selected camera points are visible immediately.
 globe.pointOfView({ lat: 30, lng: 10, altitude: 2.5 });
 loadCameras();
 // Refresh the (static) location set daily.
