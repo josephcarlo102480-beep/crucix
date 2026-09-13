@@ -671,6 +671,7 @@ let tickerMode = safeStorage.get('crucix_ticker_mode') === 'pinned' ? 'pinned' :
 let pinnedTickerItems = loadPinnedTickerItems();
 let askMessages = [];
 let askInFlight = false;
+let ideasInFlight = false;
 // Label for the Ask AI badge — filled in from /api/health, then refined by the
 // `model` each /api/ask response reports. Never hard-code a model name here.
 let askModelLabel = null;
@@ -833,7 +834,7 @@ function defaultDashboardData(){
     bls:[],treasury:{totalDebt:null,signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:null,alerts:[]},
     epa:{totalReadings:null,stations:[]},radBackground:{status:'failed',networks:[],stationsFresh:0,medianUSvH:null,maxUSvH:null,anomaly:null,elevated:[],stations:[],signals:[],lastObservationAt:null,error:null},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
     gdelt:{totalArticles:0,geoPoints:[]},space:null,health:[],news:[],markets:{indexes:[],crypto:[],rates:[],commodities:[],vix:null},
-    ideas:[],ideasSource:'disabled',newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
+    ideas:[],ideasSource:'disabled',ideasMode:'disabled',ideasGeneratedAt:null,newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
   };
 }
 
@@ -1322,7 +1323,7 @@ function renderHero(){
     <div class="hero-card hero-stat ${D.ideasSource === 'llm' ? 'good' : 'warn'}">
       <div class="hero-stat-label">Idea Engine</div>
       <div class="hero-stat-value">${D.ideas?.length || 0}</div>
-      <div class="hero-stat-sub">${D.ideasSource === 'llm' ? 'LLM-backed ideas active.' : D.ideasSource === 'disabled' ? 'LLM disabled, rules only.' : 'LLM degraded — rule-based fallback.'}</div>
+      <div class="hero-stat-sub">${D.ideasSource === 'llm' ? (D.ideasMode === 'manual' ? 'LLM ideas generated on demand.' : 'LLM-backed ideas active.') : D.ideasSource === 'manual' ? 'LLM on demand — press Generate.' : D.ideasSource === 'disabled' ? 'LLM disabled, rules only.' : 'LLM degraded — rule-based fallback.'}</div>
     </div>`;
 
   applyHeroCollapsedState();
@@ -2624,7 +2625,7 @@ function renderLower(){
   const panelMeta = {
     ticker: `${tickerMode === 'pinned' ? 'Pinned feed' : 'Merged feed'} · ${feedFreshLabel(feed.length)} · ${currentSweepAge()}`,
     macro: `FRED · BLS · Yahoo Finance · ${currentSweepAge()}`,
-    ideas: `${D.ideasSource === 'llm' ? 'AI enhanced' : D.ideasSource === 'disabled' ? 'Rules only' : 'Rules fallback'} · ${currentSweepAge()}`,
+    ideas: `${D.ideasSource === 'llm' ? (D.ideasMode === 'manual' && D.ideasGeneratedAt ? 'AI · generated ' + getAge(D.ideasGeneratedAt) : 'AI enhanced · ' + currentSweepAge()) : D.ideasSource === 'manual' ? 'Rules · AI on demand' : D.ideasSource === 'disabled' ? 'Rules only · ' + currentSweepAge() : 'Rules fallback · ' + currentSweepAge()}`,
     osint: `WHO · ${D.who.length} bulletins · ${currentSweepAge()}`,
     ask: `Dashboard snapshot · web search · ${currentSweepAge()}`
   };
@@ -2709,9 +2710,10 @@ function renderLower(){
         <div class="spark">${sparkHtml}</div>
       </div>
     </div>`;
-  const ideasBadge = D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.rulesFallback','RULES FALLBACK')+'</span>';
+  const ideasBadge = D.ideasSource==='llm'?'<span class="ideas-src llm">'+t('ideas.aiEnhanced','AI ENHANCED')+'</span>':D.ideasSource==='manual'?'<span class="ideas-src static">'+t('ideas.onDemand','AI ON DEMAND')+'</span>':D.ideasSource==='disabled'?'<span class="ideas-src static">'+t('ideas.llmOff','LLM OFF')+'</span>':'<span class="ideas-src static">'+t('ideas.rulesFallback','RULES FALLBACK')+'</span>';
+  const ideasActions = D.ideasMode === 'disabled' ? '' : `<button type="button" class="ask-clear ideas-generate" onclick="generateIdeasNow()" ${ideasInFlight?'disabled':''} title="${escapeAttr(t('ideas.generateTitle','Run the LLM on the current sweep now'))}">${ideasInFlight?t('ideas.generating','Generating…'):t('ideas.generate','Generate')}</button>`;
   const ideasPanel = `<div class="g-panel lp-ideas ${pinnedLowerPanel==='ideas'?'lp-pinned':''}">
-      ${panelHead(t('panels.tradeIdeas','Leverageable Ideas'), panelMeta.ideas, ideasBadge, 'ideas')}
+      ${panelHead(t('panels.tradeIdeas','Leverageable Ideas'), panelMeta.ideas, ideasBadge, 'ideas', ideasActions)}
       ${ideasHtml}
       <div class="disclosure">FOR INFORMATIONAL PURPOSES ONLY. This is not financial advice, a recommendation to buy or sell any security, or a solicitation of any kind. All signal-based observations are derived from publicly available OSINT data and should not be relied upon for investment decisions. Consult a licensed financial advisor before making any investment. Past performance does not guarantee future results.</div>
     </div>`;
@@ -3309,6 +3311,43 @@ function reinit(){
   applyPrimaryView();
   plotMarkers();
   if(flatG) plotFlatMarkers();
+}
+
+// === Leverageable Ideas: on-demand LLM generation ===
+async function generateIdeasNow(){
+  if(ideasInFlight) return;
+  ideasInFlight = true;
+  renderLower();
+  try{
+    const request = (token='') => fetch('/api/ideas/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', ...(token ? {'Authorization':`Bearer ${token}`} : {})},
+      body: '{}',
+    });
+    let storedToken = safeStorage.sessionGet('crucix_api_token', '') || '';
+    let res = await request(storedToken);
+    if(res.status === 401){
+      const enteredToken = window.prompt('Crucix API token');
+      if(enteredToken){
+        storedToken = enteredToken.trim();
+        safeStorage.sessionSet('crucix_api_token', storedToken);
+        res = await request(storedToken);
+      }
+    }
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || `Idea generation returned ${res.status}`);
+    // The server also broadcasts the new snapshot over SSE; apply directly so
+    // the panel updates even if the live connection is down.
+    if(D && Array.isArray(data.ideas)){
+      D.ideas = data.ideas; D.ideasSource = 'llm'; D.ideasGeneratedAt = data.generatedAt || new Date().toISOString();
+    }
+  }catch(err){
+    console.warn('[Crucix] Idea generation:', err.message);
+    window.alert(`Idea generation failed: ${err.message}`);
+  }finally{
+    ideasInFlight = false;
+    renderLower();
+  }
 }
 
 // === SSE: Live Updates from Server ===

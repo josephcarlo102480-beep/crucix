@@ -33,6 +33,9 @@ export default {
     provider: llmProvider, // anthropic | openai | gemini | codex | openrouter | minimax | mistral | ollama
     apiKey: process.env.LLM_API_KEY || (llmProvider?.toLowerCase() === 'openai' ? process.env.OPENAI_API_KEY : null) || null,
     model: process.env.LLM_MODEL || null,
+    // LLM_IDEAS_AUTO=0|false|manual: only generate LLM trade ideas when the
+    // dashboard's Generate button (POST /api/ideas/generate) is pressed.
+    ideasAuto: !/^(0|false|no|off|manual)$/i.test(String(process.env.LLM_IDEAS_AUTO ?? 'true').trim()),
     baseUrl: process.env.OLLAMA_BASE_URL || null,
   },
 

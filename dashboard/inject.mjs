@@ -797,7 +797,7 @@ export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.n
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
     who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, radBackground, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
-    ideas: [], ideasSource: 'disabled',
+    ideas: [], ideasSource: 'disabled', ideasMode: 'disabled', ideasGeneratedAt: null, // server.mjs overrides after the LLM step
     // newsFeed for ticker (merged RSS + GDELT)
     newsFeed: buildNewsFeed(news, gdeltData),
   };

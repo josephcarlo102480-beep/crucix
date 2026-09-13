@@ -17,7 +17,7 @@ import { MemoryManager } from './lib/delta/index.mjs';
 import { createLLMProvider } from './lib/llm/index.mjs';
 import { answerDashboardQuestion, validateAskQuestion } from './lib/llm/ask.mjs';
 import { getSatellitePassContext } from './lib/space/satellitePasses.mjs';
-import { generateLLMIdeas } from './lib/llm/ideas.mjs';
+import { generateLLMIdeas, resolveSweepIdeas } from './lib/llm/ideas.mjs';
 import { DiscordAlerter } from './lib/alerts/discord.mjs';
 import {
   buildBriefSnapshot,
@@ -53,6 +53,8 @@ let sweepTimer = null;
 let httpServer = null;
 let shuttingDown = false;
 let askRequestsInFlight = 0;
+let ideasGenerationInFlight = false;
+let manualIdeas = null;   // { ideas, generatedAt, model } from the last on-demand LLM run
 const askRateBuckets = new Map();
 
 // === Delta/Memory ===
@@ -190,7 +192,7 @@ app.get('/', (req, res) => {
 app.get('/api/data', (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!currentData) return res.status(503).json({ error: 'No data yet — first sweep in progress', sweepInProgress, sweepStartedAt });
-  res.json(currentData);
+  res.json({ ...currentData, runtime: { sweepInProgress, refreshIntervalMinutes: config.refreshIntervalMinutes } });
 });
 
 // API: health check
@@ -208,6 +210,8 @@ app.get('/api/health', (req, res) => {
     sourcesFailed: currentData?.meta?.sourcesFailed || 0,
     llmEnabled: !!llmProvider?.isConfigured,
     llmProvider: llmProvider?.name || null,
+    llmModel: llmProvider?.model || null,
+    ideasMode: !llmProvider?.isConfigured ? 'disabled' : config.llm.ideasAuto ? 'auto' : 'manual',
     askAiRequiresToken: !isLocalRequest(req),
     refreshIntervalMinutes: config.refreshIntervalMinutes,
     language: currentLanguage,
@@ -317,6 +321,44 @@ app.post('/api/ask', authorizeAskRequest, rateLimitAskRequest, async (req, res) 
   }
 });
 
+// API: generate LLM trade ideas on demand (the dashboard's Generate button).
+// Same loopback/token gate and rate limit as Ask AI; one generation at a time.
+app.post('/api/ideas/generate', authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!currentData) {
+    return res.status(503).json({ error: 'No data yet — first sweep in progress', sweepInProgress, sweepStartedAt });
+  }
+  if (!llmProvider?.isConfigured) {
+    return res.status(503).json({ error: 'LLM is not configured. Set LLM_PROVIDER and an API key in .env.' });
+  }
+  if (ideasGenerationInFlight) {
+    res.set('Retry-After', '10');
+    return res.status(429).json({ error: 'Idea generation is already running. Try again shortly.' });
+  }
+  ideasGenerationInFlight = true;
+  try {
+    console.log(`[Crucix] Generating LLM trade ideas on demand (${llmProvider.name} ${llmProvider.model || ''})...`);
+    const previousIdeas = memory.getLastRun()?.ideas || [];
+    const ideas = await generateLLMIdeas(llmProvider, currentData, currentData.delta || null, previousIdeas);
+    if (!ideas || !ideas.length) {
+      return res.status(502).json({ error: 'The LLM returned no usable ideas. Check the service log for the provider error.' });
+    }
+    const generatedAt = new Date().toISOString();
+    manualIdeas = { ideas, generatedAt, model: llmProvider.model || null };
+    currentData = { ...currentData, ideas, ideasSource: 'llm', ideasGeneratedAt: generatedAt,
+      ideasMode: config.llm.ideasAuto ? 'auto' : 'manual' };
+    memory.updateLastRunIdeas(ideas);
+    broadcast({ type: 'update', data: currentData });
+    console.log(`[Crucix] On-demand LLM generated ${ideas.length} ideas`);
+    res.json({ ideas, generatedAt, model: llmProvider.model || null, ideasSource: 'llm' });
+  } catch (err) {
+    console.error('[Crucix] On-demand ideas failed:', err?.message || err);
+    res.status(502).json({ error: err?.message || 'Idea generation failed' });
+  } finally {
+    ideasGenerationInFlight = false;
+  }
+});
+
 // API: local satellite pass calculations used by Ask AI and the satellite tracker.
 app.get('/api/satellite-passes', async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -349,7 +391,7 @@ app.get('/events', (req, res) => {
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
   });
-  res.write('data: {"type":"connected"}\n\n');
+  res.write(`data: ${JSON.stringify({ type: 'connected', sweepInProgress })}\n\n`);
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
 });
@@ -397,7 +439,7 @@ async function runSweepCycle() {
 
   try {
     // 1. Run the full briefing sweep
-    const rawData = await fullBriefing();
+    const rawData = await fullBriefing(currentData?.health || []);
 
     // 2. Save to runs/latest.json
     atomicWriteJsonSync(join(RUNS_DIR, 'latest.json'), rawData, { pretty: true });
@@ -417,28 +459,21 @@ async function runSweepCycle() {
     const ruleIdeas = () => {
       try { return generateIdeas(synthesized); } catch { return []; }
     };
-    if (llmProvider?.isConfigured) {
+    const llmConfigured = !!llmProvider?.isConfigured;
+    let llmIdeas = null;
+    if (llmConfigured && config.llm.ideasAuto) {
       try {
         console.log('[Crucix] Generating LLM trade ideas...');
-        const llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
-        if (llmIdeas) {
-          synthesized.ideas = llmIdeas;
-          synthesized.ideasSource = 'llm';
-          console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
-        } else {
-          synthesized.ideas = ruleIdeas();
-          synthesized.ideasSource = 'llm-failed';
-          console.log(`[Crucix] LLM returned no ideas — rule-based fallback generated ${synthesized.ideas.length}`);
-        }
+        llmIdeas = await generateLLMIdeas(llmProvider, synthesized, delta, previousIdeas);
+        if (llmIdeas) console.log(`[Crucix] LLM generated ${llmIdeas.length} ideas`);
+        else console.log('[Crucix] LLM returned no ideas — using rule-based fallback');
       } catch (llmErr) {
         console.error('[Crucix] LLM ideas failed (non-fatal):', llmErr.message);
-        synthesized.ideas = ruleIdeas();
-        synthesized.ideasSource = 'llm-failed';
       }
-    } else {
-      synthesized.ideas = ruleIdeas();
-      synthesized.ideasSource = 'disabled';
     }
+    Object.assign(synthesized, resolveSweepIdeas({
+      auto: config.llm.ideasAuto, llmConfigured, llmIdeas, manualIdeas, ruleIdeas: ruleIdeas(),
+    }));
     memory.updateLastRunIdeas(synthesized.ideas);
 
     // 6. Alert evaluation — Discord (LLM with rule-based fallback, multi-tier, semantic dedup)
@@ -461,7 +496,7 @@ async function runSweepCycle() {
 
     console.log(`[Crucix] Sweep complete — ${currentData.meta.sourcesOk}/${currentData.meta.sourcesQueried} sources OK`);
     console.log(`[Crucix] ${currentData.ideas.length} ideas (${synthesized.ideasSource}) | ${currentData.news.length} news | ${currentData.newsFeed.length} feed items`);
-    if (delta?.baselineReset) console.log('[Crucix] Delta baseline reset because the prior sweep was stale');
+    if (delta?.baselineReset) console.log('[Crucix] Delta baseline reset:', delta.baselineResetReason || 'The prior sweep was stale');
     else if (delta?.summary) console.log(`[Crucix] Delta: ${delta.summary.totalChanges} changes, ${delta.summary.criticalChanges} critical, direction: ${delta.summary.direction}`);
     console.log(`[Crucix] Next sweep at ${new Date(Date.now() + config.refreshIntervalMinutes * 60000).toLocaleTimeString()}`);
 
@@ -545,6 +580,7 @@ async function start() {
       const existing = JSON.parse(readFileSync(join(RUNS_DIR, 'latest.json'), 'utf8'));
       const data = await synthesize(existing);
       currentData = data;
+      lastSweepTime = existing.crucix?.timestamp || null;
       console.log('[Crucix] Loaded existing data from runs/latest.json — dashboard ready instantly');
       broadcast({ type: 'update', data: currentData });
     } catch (err) {
