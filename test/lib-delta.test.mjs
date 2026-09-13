@@ -39,6 +39,19 @@ function withMemory(opts, fn) {
 const degradation = (delta) => (delta?.signals?.new || []).filter(s => s.key === 'source_degradation');
 
 describe('source degradation signal', () => {
+  it('resets the comparison once when source-quality rules change', () => {
+    withMemory({}, memory => {
+      memory.addRun(snapshot('2026-09-05T02:00:00Z'));
+      const data = snapshot('2026-09-05T02:15:00Z', { sourcesDown: 4 });
+      data.meta.dataQualityVersion = 1;
+      const delta = memory.addRun(data);
+      assert.equal(delta.baselineReset, true);
+      assert.match(delta.baselineResetReason, /rules updated/);
+      assert.equal(delta.summary.totalChanges, 0);
+      data.meta.timestamp = '2026-09-05T02:30:00Z';
+      assert.equal(memory.addRun(data).baselineReset, undefined);
+    });
+  });
   it('does not re-fire when the same sources stay down', () => {
     withMemory({}, (memory) => {
       memory.addRun(snapshot('2026-07-09T00:00:00.000Z', { sourcesDown: 4 }));

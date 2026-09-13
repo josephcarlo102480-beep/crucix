@@ -64,6 +64,7 @@ export async function briefing(apiKey, opts = {}) {
   if (!apiKey) {
     return {
       source: 'FRED',
+      status: 'unconfigured',
       timestamp: new Date().toISOString(),
       error: 'No FRED API key. Get one free at https://fred.stlouisfed.org/docs/api/api_key.html',
       hint: 'Set FRED_API_KEY environment variable',

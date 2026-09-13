@@ -4,7 +4,9 @@
 
 import { safeFetch, delay } from '../utils/fetch.mjs';
 
-const BASE = 'https://public.api.bsky.app/xrpc';
+// Search is available on the direct AppView. The cached public host rejects
+// searchPosts with 403 even while other public endpoints remain accessible.
+const BASE = 'https://api.bsky.app/xrpc';
 
 // Search public posts by query string
 export async function searchPosts(query, opts = {}) {

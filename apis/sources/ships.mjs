@@ -34,13 +34,11 @@ export async function briefing() {
   return {
     source: 'Maritime/AIS',
     timestamp: new Date().toISOString(),
-    status: hasKey ? 'ready' : 'limited',
+    status: hasKey ? 'degraded' : 'unconfigured',
     message: hasKey
       ? 'AIS stream credentials present — run the WebSocket listener for real-time vessel data'
-      : 'Set AISSTREAM_API_KEY for real-time global vessel tracking (free at aisstream.io)',
-    ...(hasKey ? {} : {
-      error: 'No AISSTREAM_API_KEY — no vessel positions collected; chokepoints below are static reference geometry only',
-    }),
+      : 'Live vessel tracking requires AISSTREAM_API_KEY and an AIS WebSocket collector; this connector currently provides static reference locations only',
+    error: 'No vessel positions collected; chokepoints below are static reference geometry only',
     chokepoints: CHOKEPOINTS,
     monitoringCapabilities: [
       'Dark ship detection (AIS transponder shutoffs)',

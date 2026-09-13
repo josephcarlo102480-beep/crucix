@@ -10,7 +10,7 @@ import {
   questionNeedsSatellitePassContext,
   resolveObserver,
 } from '../lib/space/satellitePasses.mjs';
-import { GROUPS } from '../../Crucix/services/space/tleCatalog.mjs';
+import { GROUPS } from '../services/space/tleCatalog.mjs';
 
 // A structurally valid ISS element set. The epoch is rewritten to "now" so the
 // 14-day freshness filter keeps it; the orbit itself is irrelevant to the test.
@@ -73,6 +73,22 @@ describe('observer resolution', () => {
 });
 
 describe('getSatellitePassContext', () => {
+  it('reuses cached calculations without reusing the previous request’s ZIP metadata', async () => {
+    clearSatellitePassCache();
+    const first = await getSatellitePassContext('90210', { categories: [] });
+    const second = await getSatellitePassContext('70443', { categories: [] });
+    const third = await getSatellitePassContext('10001', { categories: [] });
+    assert.equal(second.currentAboveHorizon, first.currentAboveHorizon, 'the calculations should be cached');
+    assert.equal(second.observer.matched, true);
+    assert.equal(second.observer.requestedZip, '70443');
+    assert.equal(first.observer.requestedZip, '90210');
+    assert.equal(third.observer.requestedZip, '10001');
+    assert.equal(third.observer.matched, false);
+    const custom = await getSatellitePassContext('', { categories: [], observer: { ...second.observer, label: 'My location', zip: 'custom' } });
+    assert.equal(custom.observer.label, 'My location');
+    assert.equal(custom.observer.requestedZip, 'custom');
+    clearSatellitePassCache();
+  });
   const opts = (extra = {}) => ({
     now: new Date('2026-07-09T02:00:00.000Z'),
     hoursAhead: 2,

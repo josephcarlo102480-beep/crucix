@@ -12,6 +12,7 @@
  *
  *   node scripts/browser-probe.mjs --wait-for '.nuke-clickable' probe.js
  *   node scripts/browser-probe.mjs -e "return document.title"
+ *   node scripts/browser-probe.mjs --viewport 390x844 scripts/probes/data-quality.probe.js
  *   node scripts/browser-probe.mjs --url http://127.0.0.1:3118/satellites.html \
  *        --screenshot /tmp/sats.png --settle 8000
  *
@@ -40,7 +41,7 @@ const DEFAULT_URL = process.env.CRUCIX_URL || 'http://127.0.0.1:3118/';
 const argv = process.argv.slice(2);
 const opt = {
   url: DEFAULT_URL, program: null, expr: null, screenshot: null,
-  waitFor: null, settle: 3000, timeout: 120000, allowConsoleErrors: false, keepOpen: false,
+  waitFor: null, settle: 3000, timeout: 120000, allowConsoleErrors: false, keepOpen: false, viewport: null,
 };
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -49,6 +50,11 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--screenshot') opt.screenshot = argv[++i];
   else if (a === '--wait-for') opt.waitFor = argv[++i];
   else if (a === '--settle') opt.settle = Number(argv[++i]);
+  else if (a === '--viewport') {
+    const match = /^(\d+)x(\d+)$/.exec(argv[++i] || '');
+    if (!match || +match[1] < 1 || +match[2] < 1) throw new Error('--viewport must be WIDTHxHEIGHT, e.g. 390x844');
+    opt.viewport = { width: +match[1], height: +match[2] };
+  }
   else if (a === '--timeout') opt.timeout = Number(argv[++i]);
   else if (a === '--allow-console-errors') opt.allowConsoleErrors = true;
   else if (a === '--keep-open') opt.keepOpen = true;
@@ -134,6 +140,7 @@ try {
   await send('session.new', { capabilities: {} });
   await send('session.subscribe', { events: ['log.entryAdded'] });
   const context = (await send('browsingContext.getTree', {})).contexts[0].context;
+  if (opt.viewport) await send('browsingContext.setViewport', { context, viewport: opt.viewport });
   await send('browsingContext.navigate', { context, url: opt.url, wait: 'complete' });
 
   const evaluate = async (expression) => send('script.evaluate', {

@@ -15,6 +15,18 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const INTER_QUERY_DELAY_MS = 2000;    // 2s between hotspot queries
 const RATE_LIMIT_BACKOFF_MS = 5000;   // 5s extra wait after a 429
 
+// OpenSky uses states:null for a successful query without aircraft reports.
+// This says nothing about unobserved aircraft in that region.
+export function classifyStates(data) {
+  if (data?.error) return { status: 'failed', error: data.error };
+  const valid = Array.isArray(data?.states)
+    || (data?.states === null && Number.isFinite(data.time) && data.time > 0);
+  if (!valid) return { status: 'failed', error: 'OpenSky response had no valid states payload' };
+  return data.states?.length
+    ? { status: 'healthy' }
+    : { status: 'no_data', message: 'No aircraft observations reported; this does not establish an empty sky' };
+}
+
 // Module-level cache
 let cachedBriefing = null;
 let cacheTimestamp = 0;
@@ -103,7 +115,8 @@ export async function briefing(opts = {}) {
     if (signal?.aborted) break;
 
     const data = await getFlightsInArea(box.lamin, box.lomin, box.lamax, box.lomax, { signal });
-    const error = data?.error || (Array.isArray(data?.states) ? null : 'OpenSky response had no states array');
+    const observation = classifyStates(data);
+    const error = observation.error;
     const states = Array.isArray(data?.states) ? data.states : [];
 
     const is429 = error && error.includes('429');
@@ -111,6 +124,7 @@ export async function briefing(opts = {}) {
     results.push({
       region: box.label,
       key,
+      ...observation,
       totalAircraft: states.length,
       // states format: [icao24, callsign, origin_country, ...]
       byCountry: states.reduce((acc, s) => {
@@ -135,18 +149,23 @@ export async function briefing(opts = {}) {
   const hotspotErrors = results
     .filter(r => r.error)
     .map(r => ({ region: r.region, error: r.error }));
+  const emptyHotspots = results.filter(r => r.status === 'no_data').map(r => r.region);
 
   const failedAll = results.length === 0 || hotspotErrors.length === results.length;
   const briefingResult = {
     source: 'OpenSky',
     timestamp: new Date().toISOString(),
     hotspots: results,
-    ...(hotspotErrors.length || skipped ? {
+    ...(hotspotErrors.length || skipped || emptyHotspots.length ? {
       error: failedAll
         ? `OpenSky unavailable across all hotspots: ${hotspotErrors[0]?.error || 'aborted before any hotspot answered'}`
-        : `OpenSky unavailable for ${hotspotErrors.length}/${hotspotEntries.length} hotspots`
-          + (skipped ? ` (${skipped} not queried — aborted)` : ''),
+        : [
+          hotspotErrors.length ? `OpenSky requests failed for ${hotspotErrors.length}/${hotspotEntries.length} hotspots` : null,
+          skipped ? `${skipped} hotspots not queried — aborted` : null,
+          emptyHotspots.length ? `No aircraft observations for ${emptyHotspots.length}/${hotspotEntries.length} hotspots (${emptyHotspots.join(', ')}); these requests succeeded, sky conditions remain unknown` : null,
+        ].filter(Boolean).join('; '),
       hotspotErrors,
+      emptyHotspots,
       ...(skipped ? { skippedHotspots: skipped } : {}),
     } : {}),
   };

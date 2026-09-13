@@ -35,8 +35,7 @@ const COUNTRIES = {
   380: 'Italy',
 };
 
-// Comtrade is slow and the sweep kills a source at 30s, so single attempts are
-// kept short and the briefing fans out with a small concurrency limit.
+// Comtrade is slow, so keep individual attempts short and pace requests.
 const REQUEST_TIMEOUT_MS = 6000;
 // The keyless preview endpoint rate-limits hard ("Rate limit is exceeded. Try
 // again in 2 seconds"): four workers in parallel 429'd half the pairs. One
@@ -44,8 +43,9 @@ const REQUEST_TIMEOUT_MS = 6000;
 // aware retry from safeFetch.
 const CONCURRENCY = 1;
 const REQUEST_GAP_MS = 1100;
-// Leave headroom inside the 30s source budget for the optional second-year pass.
-const BUDGET_MS = 22_000;
+// Ten paced queries can exceed 22s even when the API is responding normally.
+// Leave room under the orchestrator's 75s cap for a final in-flight retry.
+const BUDGET_MS = 45_000;
 
 // Get trade data for a specific reporter, commodity, and period
 export async function getTradeData(opts = {}) {
@@ -172,7 +172,7 @@ export async function briefing(opts = {}) {
   const fetched = await mapWithConcurrency(pairs, CONCURRENCY, async ({ reporter, cmdCode }) => {
     // Sequential pacing means later pairs start late; stop cleanly at the
     // budget so the source comes back partial (degraded) rather than being
-    // killed by runSource's 30 s cap with nothing to show.
+    // killed by runSource's outer cap with nothing to show.
     if (Date.now() > deadline || signal?.aborted) {
       return { reporter, cmdCode, period: prevYear, error: 'skipped: source time budget exhausted' };
     }

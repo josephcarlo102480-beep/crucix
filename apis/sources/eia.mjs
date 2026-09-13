@@ -107,6 +107,7 @@ export async function briefing(apiKey, opts = {}) {
     return {
       source: 'EIA',
       error: 'No EIA API key. Register free at https://www.eia.gov/opendata/register.php',
+      status: 'unconfigured',
       hint: 'Set EIA_API_KEY environment variable',
       timestamp: new Date().toISOString(),
     };

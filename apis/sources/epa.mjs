@@ -6,6 +6,9 @@
 import { safeFetch } from '../utils/fetch.mjs';
 
 const BASE = 'https://data.epa.gov/dmapservice';
+// EPA rejects the shared custom Crucix User-Agent. Use the actual Node fetch
+// runtime's standard identifier for this public API (including metadata).
+const EPA_HEADERS = { 'User-Agent': 'node' };
 const RESULTS_TIMEOUT_MS = 16000;
 const LOCATIONS_TIMEOUT_MS = 8000;
 const RECENT_LOOKBACK_DAYS = 400;
@@ -72,7 +75,7 @@ export async function getAnalyticalResults(opts = {}) {
   ].join('/');
   return safeFetch(
     `${BASE}/${path}`,
-    { timeout: RESULTS_TIMEOUT_MS, retries: 0, signal }
+    { timeout: RESULTS_TIMEOUT_MS, retries: 0, signal, headers: EPA_HEADERS }
   );
 }
 
@@ -81,7 +84,7 @@ async function getLocations(locationNumbers, opts = {}) {
   if (!ids.length) return [];
   return safeFetch(
     `${BASE}/radnet.erm_location/loc_num/in/${ids.join(',')}/1:${ids.length}/json`,
-    { timeout: LOCATIONS_TIMEOUT_MS, retries: 0, signal: opts.signal }
+    { timeout: LOCATIONS_TIMEOUT_MS, retries: 0, signal: opts.signal, headers: EPA_HEADERS }
   );
 }
 
