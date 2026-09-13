@@ -79,6 +79,9 @@
     "monitors": "moniteurs",
     "fatalities": "victimes",
     "whoAlerts": "alertes OMS",
+    "euBackground": "Fond Radiologique UE",
+    "noBackground": "pas de données",
+    "median": "médiane",
     "rssGeolocated": "RSS géolocalisé",
     "earthquakes": "Séismes",
     "seismicEvents": "Événements Sismiques",
@@ -105,6 +108,7 @@
     "earthquake": "Séisme",
     "disaster": "Catastrophe",
     "weatherAlert": "Alerte Météo",
+    "radiationMonitors": "Moniteurs de Radiation",
     "epaRadNet": "EPA RadNet",
     "spaceStation": "Station Spatiale",
     "gdeltEvent": "Événement GDELT"
@@ -194,6 +198,9 @@
     "whoAlerts": "Alertes OMS"
   },
   "nuclear": {
+    "euBackground": "Fond européen",
+    "stateMonitors": "moniteurs d'État",
+    "peak": "pic",
     "allSitesNormal": "TOUS LES SITES NORMAUX",
     "anomalyDetected": "ANOMALIE DÉTECTÉE",
     "noData": "Pas de données"

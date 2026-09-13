@@ -831,7 +831,7 @@ function defaultDashboardData(){
     airMeta:{},sdr:{total:0,online:0,zones:[]},
     who:[],fred:[],energy:{wti:null,brent:null,natgas:null,wtiRecent:[],signals:[]},
     bls:[],treasury:{totalDebt:null,signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:null,alerts:[]},
-    epa:{totalReadings:null,stations:[]},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
+    epa:{totalReadings:null,stations:[]},radBackground:{status:'failed',networks:[],stationsFresh:0,medianUSvH:null,maxUSvH:null,anomaly:null,elevated:[],stations:[],signals:[],lastObservationAt:null,error:null},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
     gdelt:{totalArticles:0,geoPoints:[]},space:null,health:[],news:[],markets:{indexes:[],crypto:[],rates:[],commodities:[],vix:null},
     ideas:[],ideasSource:'disabled',newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
   };
@@ -867,6 +867,10 @@ function normalizeDashboardData(input){
   merged.noaa.alerts = asArray(merged.noaa.alerts);
   merged.epa = {...base.epa,...(data.epa && typeof data.epa === 'object' ? data.epa : {})};
   merged.epa.stations = asArray(merged.epa.stations);
+  merged.radBackground = {...base.radBackground,...(data.radBackground && typeof data.radBackground === 'object' ? data.radBackground : {})};
+  merged.radBackground.stations = asArray(merged.radBackground.stations);
+  merged.radBackground.networks = asArray(merged.radBackground.networks);
+  merged.radBackground.elevated = asArray(merged.radBackground.elevated);
   merged.acled = {...base.acled,...(data.acled && typeof data.acled === 'object' ? data.acled : {})};
   merged.acled.regions = asArray(merged.acled.regions);
   merged.acled.deadliestEvents = asArray(merged.acled.deadliestEvents);
@@ -1352,6 +1356,9 @@ function renderLeftRail(){
      items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'REFERENCE',meta:cp.note||'Chokepoint',detail:`Static location; no live vessel observations. ${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
      items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:radiationLabel(n),meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} recent readings`,detail:`Last observation: ${sourceTimestamp(n.lastReading)}`}:null}).filter(Boolean)},
+    {name:t('layers.euBackground','EU Radiation Background'),count:D.radBackground.stationsFresh,dot:'radiation',cat:'radiation',sub:D.radBackground.medianUSvH==null?t('layers.noBackground','no data'):`${t('layers.median','median')} ${D.radBackground.medianUSvH.toFixed(3)} µSv/h`,
+     items:[...D.radBackground.elevated.map(s=>({name:s.name,lat:s.lat,lon:s.lon,status:'ELEVATED',meta:`${s.uSvH.toFixed(3)} µSv/h · ${s.network}`,detail:`Last observation: ${sourceTimestamp(s.observedAt)}`})),
+       ...D.radBackground.networks.map(n=>({name:n.network==='BfS'?'Germany · BfS ODL':n.network==='STUK'?'Finland · STUK':n.network,lat:n.network==='BfS'?51.2:64.5,lon:n.network==='BfS'?10.4:26,status:n.status==='healthy'?'NORMAL':n.status.toUpperCase(),meta:n.medianUSvH==null?`${n.stations} stations · no fresh data`:`median ${n.medianUSvH.toFixed(3)} · max ${n.maxUSvH.toFixed(3)} µSv/h · ${n.fresh} stations`,detail:n.maxStation?`Peak at ${n.maxStation} · Last observation: ${sourceTimestamp(n.lastObservationAt)}`:`Last observation: ${sourceTimestamp(n.lastObservationAt)}`}))]},
     {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal} ${t('layers.fatalities','fatalities')}`,
      items:(D.acled?.regions||[]).map(r=>({name:r.region||r.country||'Unknown',lat:r.lat||0,lon:r.lon||0,status:`${r.events||0} events`,meta:`${(r.fatalities||0).toLocaleString()} fatalities`,detail:r.topType||'Armed conflict'})).filter(r=>r.lat!==0)},
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),
@@ -1364,8 +1371,13 @@ function renderLeftRail(){
        ...Object.entries(D.space?.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=>({name:`${c} Mil Sats`,lat:0,lon:0,status:`${n} sats`,meta:'Military constellation',detail:'No fixed position'}))
      ]}
   ];
-  const allNormal=D.nuke.length > 0 && D.nuke.every(s=>s.status === 'healthy' && !s.anom);
-  const anyAnomaly=D.nuke.some(s=>s.status === 'healthy' && s.anom);
+  const coveredNuke=D.nuke.filter(s=>s.status !== 'no_coverage');
+  const allNormal=coveredNuke.length > 0 && coveredNuke.every(s=>s.status === 'healthy' && !s.anom) && D.radBackground.anomaly !== true;
+  const anyAnomaly=D.nuke.some(s=>s.status === 'healthy' && s.anom) || D.radBackground.anomaly === true;
+  const bg=D.radBackground;
+  const bgHtml=bg.medianUSvH==null
+    ?`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${escapeHtml(bg.error||t('nuclear.noData','No data'))}</span></span><span class="site-val">${t('nuclear.noData','No data')}</span></div>`
+    :`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${bg.stationsFresh.toLocaleString()} ${t('nuclear.stateMonitors','state monitors')} · ${t('nuclear.peak','peak')} ${bg.maxUSvH.toFixed(3)} · ${escapeHtml(sourceTimestamp(bg.lastObservationAt))}</span></span><span class="site-val" style="${bg.anomaly?'color:var(--danger)':''}">${bg.medianUSvH.toFixed(3)} µSv/h</span></div>`;
   const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}" role="button" tabindex="0"><span>${escapeHtml(s.site)}<span class="site-age">Last observation: ${escapeHtml(sourceTimestamp(s.lastReading))}</span></span><span class="site-val">${s.status === 'healthy'?(s.cpm?.toFixed(1)||'--')+' CPM':s.status === 'stale'?'Stale':s.status === 'no_coverage'?'No sensors':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
@@ -1394,6 +1406,7 @@ function renderLeftRail(){
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
       <div class="nuke-ok ${anyAnomaly?'danger':allNormal?'':'warn'}">${anyAnomaly?'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED'):allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'CURRENT CONDITIONS UNKNOWN · COVERAGE GAPS'}</div>
       ${nukeHtml}
+      ${bgHtml}
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.riskGauges','Risk Gauges')}</h3><span class="badge">${t('badges.stress','STRESS')}</span></div>
@@ -1525,7 +1538,7 @@ function getMapLayerStats(data=D){
     {type:'health',name:t('map.healthAlert','Health Alert'),color:MAP_TYPE_COLORS.health,count:Math.min(asArray(data?.who).length,WHO_COORDS.length)},
     {type:'news',name:t('map.worldNews','World News'),color:MAP_TYPE_COLORS.news,count:asArray(data?.news).filter(item=>finiteMapCoords(item)).length},
     {type:'weather',name:t('map.weatherAlert','Weather Alert'),color:MAP_TYPE_COLORS.weather,count:asArray(data?.noaa?.alerts).filter(item=>finiteMapCoords(item)).length},
-    {type:'radiation',name:t('map.epaRadNet','EPA RadNet'),color:MAP_TYPE_COLORS.radiation,count:asArray(data?.epa?.stations).filter(item=>finiteMapCoords(item)).length},
+    {type:'radiation',name:t('map.radiationMonitors','Radiation Monitors'),color:MAP_TYPE_COLORS.radiation,count:asArray(data?.epa?.stations).filter(item=>finiteMapCoords(item)).length+asArray(data?.radBackground?.stations).filter(item=>finiteMapCoords(item)).length},
     {type:'space',name:t('map.spaceStation','Space Station'),color:MAP_TYPE_COLORS.space,count:asArray(data?.space?.stationPositions).filter(item=>finiteMapCoords(item)).length},
     {type:'gdelt',name:t('map.gdeltEvent','GDELT Event'),color:MAP_TYPE_COLORS.gdelt,count:asArray(data?.gdelt?.geoPoints).filter(item=>finiteMapCoords(item)).length}
   ];
@@ -1848,6 +1861,14 @@ function plotMarkers(){
     const coords = finiteMapCoords(station);
     if(!coords) return;
     points.push({lat:coords.lat,lng:coords.lon,size:0.18,alt:0.006,color:MAP_TYPE_COLORS.radiation,type:'radiation',priority:3,popHead:`RadNet: ${station?.location || 'Station'}`,popMeta:'EPA Radiation Monitor',popText:`${station?.analyte || '--'}: ${station?.result || '--'} ${station?.unit || ''}<br>State: ${station?.state || '--'}`});
+  });
+
+  // === European background (BfS + STUK) ===
+  asArray(D?.radBackground?.stations).forEach(station=>{
+    const coords = finiteMapCoords(station);
+    if(!coords) return;
+    const hot = Number(station?.uSvH) >= 0.5;
+    points.push({lat:coords.lat,lng:coords.lon,size:hot?0.2:0.12,alt:0.004,color:MAP_TYPE_COLORS.radiation,type:'radiation',priority:hot?2:4,popHead:`${station?.network || 'EU'}: ${station?.name || 'Station'}`,popMeta:'European Dose-Rate Monitor',popText:`${fmtNum(station?.uSvH,3,'--')} µSv/h<br>Last observation: ${sourceTimestamp(station?.observedAt)}`});
   });
 
   // === Space stations ===
@@ -2229,6 +2250,14 @@ function plotFlatMarkers(){
     const coords=finiteMapCoords(station);if(!coords)return;
     const g=bindPopup(markerGroup(coords.lat,coords.lon,'radiation',3),event=>showPopup(event,`RadNet: ${station?.location || 'Station'}`,`${station?.analyte || '--'}: ${station?.result || '--'} ${station?.unit || ''}`,'EPA'));
     if(g)g.append('rect').attr('x',-3).attr('y',-3).attr('width',6).attr('height',6).attr('fill',mapRgba(MAP_TYPE_COLORS.radiation,0.66)).attr('stroke',mapRgba(MAP_TYPE_COLORS.radiation,0.35)).attr('stroke-width',0.7);
+  });
+
+  // European background dose-rate monitors: small squares, brighter when elevated.
+  asArray(D?.radBackground?.stations).forEach(station=>{
+    const coords=finiteMapCoords(station);if(!coords)return;
+    const hot=Number(station?.uSvH)>=0.5;
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'radiation',hot?2:4),event=>showPopup(event,`${station?.network || 'EU'}: ${station?.name || 'Station'}`,`${fmtNum(station?.uSvH,3,'--')} µSv/h<br>Last observation: ${sourceTimestamp(station?.observedAt)}`,'Radiation-EU'));
+    if(g)g.append('rect').attr('x',hot?-2.4:-1.6).attr('y',hot?-2.4:-1.6).attr('width',hot?4.8:3.2).attr('height',hot?4.8:3.2).attr('fill',mapRgba(MAP_TYPE_COLORS.radiation,hot?0.8:0.42)).attr('stroke',mapRgba(MAP_TYPE_COLORS.radiation,hot?0.5:0.22)).attr('stroke-width',0.5);
   });
 
   // Space circles with a soft halo and shortened labels.

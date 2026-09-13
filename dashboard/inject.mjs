@@ -628,6 +628,28 @@ export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.n
   }
   const epa = { totalReadings: epaData.totalReadings ?? null, stations: epaStations.slice(0, 10) };
 
+  // Radiation-EU — European state dose-rate networks (BfS + STUK) as a
+  // background layer. Stations arrive pre-thinned to one per grid cell.
+  const radEu = data.sources['Radiation-EU'] || {};
+  const radBackground = {
+    status: radEu.status || (data.sources['Radiation-EU'] ? 'healthy' : 'failed'),
+    networks: (radEu.networks || []).map(n => ({
+      network: n.network, status: n.status, stations: n.stations || 0, fresh: n.fresh || 0,
+      medianUSvH: Number.isFinite(n.medianUSvH) ? n.medianUSvH : null,
+      maxUSvH: Number.isFinite(n.maxUSvH) ? n.maxUSvH : null,
+      maxStation: n.maxStation?.name || null, lastObservationAt: n.lastObservationAt || null,
+    })),
+    stationsFresh: radEu.stationsFresh || 0,
+    medianUSvH: Number.isFinite(radEu.medianUSvH) ? radEu.medianUSvH : null,
+    maxUSvH: Number.isFinite(radEu.maxUSvH) ? radEu.maxUSvH : null,
+    anomaly: typeof radEu.anomaly === 'boolean' ? radEu.anomaly : null,
+    elevated: (radEu.elevated || []).slice(0, 10),
+    stations: (radEu.stations || []).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon)).slice(0, 600),
+    signals: radEu.signals || [],
+    lastObservationAt: radEu.lastObservationAt || null,
+    error: radEu.error || null,
+  };
+
   // Space/CelesTrak satellite data
   const spaceData = data.sources.Space || {};
   // Subsatellite point via SGP4 — the Space source provides raw TLE lines (line1/line2),
@@ -773,7 +795,7 @@ export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.n
       ...(data.sources.OpenSky?.error ? { error: data.sources.OpenSky.error } : {}),
     },
     sdr: { total: sdrNet.totalReceivers || 0, online: sdrNet.online || 0, zones: sdrZones },
-    who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, acled, gdelt, space, health, news,
+    who, fred, energy, bls, treasury, gscpi, defense, noaa, epa, radBackground, acled, gdelt, space, health, news,
     markets, // Live Yahoo Finance market data
     ideas: [], ideasSource: 'disabled',
     // newsFeed for ticker (merged RSS + GDELT)

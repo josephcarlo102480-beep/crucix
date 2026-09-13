@@ -2,7 +2,7 @@
 
 # Crucix
 
-**Your own intelligence terminal. 25 sources. One command. Zero cloud.**
+**Your own intelligence terminal. 26 sources. One command. Zero cloud.**
 
 ## [Visit The Live Site: crucix.live](https://www.crucix.live/)
 
@@ -90,7 +90,7 @@ npm run dev
 > ```
 > This bypasses npm's script runner, which can swallow errors on some systems (particularly PowerShell on Windows). You can also run `node diag.mjs` to diagnose the exact issue — it checks your Node version, tests each module import individually, and verifies port availability. See [Troubleshooting](#troubleshooting) for more.
 
-The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 25 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
+The dashboard opens automatically at `http://localhost:3117` and immediately begins its first intelligence sweep. This initial sweep queries all 26 sources in parallel and typically takes 30–60 seconds — the dashboard will appear empty until the sweep completes and pushes the first data update. After that, it auto-refreshes every 15 minutes via SSE (Server-Sent Events). No manual page refresh needed.
 
 **Requirements:** Node.js 22+ (uses native `fetch`, top-level `await`, ESM)
 
@@ -161,8 +161,33 @@ Mobile-specific behavior:
 The preference is saved in browser local storage, so the UI will remember your last setting.
 
 ### Auto-Refresh
+
+The sweep brief starts compact so the map stays near the top of the page. Expand
+**Brief** for the full summary; Crucix remembers your choice. Click **Sources** or
+**Coverage Gaps** to inspect every feed, its status, collection/observation times,
+and setup or recovery instructions.
+
+Run `npm run source-health` for a local dependency and credential-presence check
+without exposing keys or making API requests. See [source coverage and setup](docs/source-coverage.md)
+for the remaining account requirements and connector limitations.
+
+Source status distinguishes **healthy**, **degraded**, **stale**, **unconfigured**,
+and **failed**. Missing credentials do not count as healthy coverage. Unknown
+counts stay unknown instead of becoming zero, and losing coverage cannot resolve
+a previous nuclear alarm or produce a conflict de-escalation signal.
+
+Nuclear Watch uses only dated CPM observations from the last **24 hours** for
+current readings and alerts. This is a freshness policy, not a safety threshold.
+Older observation dates remain visible, but stale/missing sites cannot produce
+an all-clear. Some locations have no recent citizen-science measurements.
+
+The connection indicator shows reconnecting or stale states, and the sweep age
+updates every 30 seconds. After reconnecting or returning to a backgrounded tab,
+the dashboard fetches the latest snapshot automatically. Data is marked stale
+after two configured sweep intervals without a new snapshot.
+
 The server runs a sweep cycle every 15 minutes (configurable). Each cycle:
-1. Queries all 25 sources in parallel (~30s)
+1. Queries all 26 sources in parallel (~30s)
 2. Synthesizes raw data into dashboard format
 3. Computes delta from previous run (what changed, escalated, de-escalated) — visible in the **Sweep Delta** panel on the dashboard
 4. Generates LLM trade ideas (if configured)
@@ -278,7 +303,7 @@ crucix/
 ├── docs/                      # Screenshots for README
 │
 ├── apis/
-│   ├── briefing.mjs           # Master orchestrator — runs all 25 sources in parallel
+│   ├── briefing.mjs           # Master orchestrator — runs all 26 sources in parallel
 │   ├── save-briefing.mjs      # CLI: save timestamped + latest.json
 │   ├── BRIEFING_PROMPT.md     # Intelligence synthesis protocol
 │   ├── BRIEFING_TEMPLATE.md   # Briefing output structure
@@ -324,7 +349,7 @@ crucix/
 ### Design Principles
 - **Pure ESM** — every file is `.mjs` with explicit imports
 - **Minimal dependencies** — Express and satellite.js are the only runtime dependencies. `discord.js` is optional (for Discord bot). LLM providers use raw `fetch()`, no SDKs.
-- **Parallel execution** — `Promise.allSettled()` fires all 25 sources simultaneously
+- **Parallel execution** — `Promise.allSettled()` fires all 26 sources simultaneously
 - **Graceful degradation** — missing keys produce errors, not crashes. LLM failures don't kill sweeps.
 - **Each source is standalone** — run `node apis/sources/gdelt.mjs` to test any source independently
 - **Self-contained dashboard** — the HTML file works with or without the server
@@ -482,7 +507,7 @@ Crucix requires Node.js 22 or later. If you have an older version, download the 
 
 ### Dashboard shows empty panels after first start
 
-This is normal — the first sweep takes 30–60 seconds to query all 25 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
+This is normal — the first sweep takes 30–60 seconds to query all 26 sources. The dashboard will populate automatically once the sweep completes. Check the terminal for sweep progress logs.
 
 ### Some sources show errors
 

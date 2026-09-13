@@ -5,6 +5,7 @@
 
 import './utils/env.mjs'; // Load API keys from .env
 import { pathToFileURL } from 'node:url';
+import { sourceState, buildSourceHealth, sourceCounts } from '../lib/source-health.mjs';
 
 // === Tier 1: Core OSINT & Geopolitical ===
 import { briefing as gdelt } from './sources/gdelt.mjs';
@@ -12,6 +13,7 @@ import { briefing as opensky } from './sources/opensky.mjs';
 import { briefing as firms } from './sources/firms.mjs';
 import { briefing as ships } from './sources/ships.mjs';
 import { briefing as safecast } from './sources/safecast.mjs';
+import { briefing as radiationEu } from './sources/radiation-eu.mjs';
 import { briefing as acled } from './sources/acled.mjs';
 import { briefing as reliefweb } from './sources/reliefweb.mjs';
 import { briefing as who } from './sources/who.mjs';
@@ -46,6 +48,7 @@ import { briefing as cloudflareRadar } from './sources/cloudflare-radar.mjs';
 const SOURCE_TIMEOUT_MS = 30_000; // 30s max per individual source
 const SOURCE_TIMEOUT_OVERRIDES = {
   OpenSky: 90_000, // OpenSky queries hotspots sequentially with delays to avoid 429s
+  Comtrade: 75_000, // Ten paced trade queries plus bounded retries
 };
 
 export async function runSource(name, fn, ...args) {
@@ -65,19 +68,17 @@ export async function runSource(name, fn, ...args) {
       }, timeoutMs);
     });
     const data = await Promise.race([dataPromise, timeoutPromise]);
-    // A source that resolves with `.error` still ran — it just came back
-    // partial or stale. That is 'degraded', not 'ok'.
-    const degraded = Boolean(data && typeof data === 'object' && data.error);
-    return { name, status: degraded ? 'degraded' : 'ok', durationMs: Date.now() - start, data };
+    const status = sourceState(data);
+    return { name, status, durationMs: Date.now() - start, data: data && typeof data === 'object' ? { ...data, status } : null };
   } catch (e) {
-    return { name, status: 'error', durationMs: Date.now() - start, error: e.message };
+    return { name, status: 'failed', durationMs: Date.now() - start, error: e.message };
   } finally {
     clearTimeout(timer);
   }
 }
 
-export async function fullBriefing() {
-  console.error('[Crucix] Starting intelligence sweep — 25 sources...');
+export async function fullBriefing(previousHealth = []) {
+  console.error('[Crucix] Starting intelligence sweep — 26 sources...');
   const start = Date.now();
 
   const allPromises = [
@@ -87,6 +88,7 @@ export async function fullBriefing() {
     runSource('FIRMS', firms),
     runSource('Maritime', ships),
     runSource('Safecast', safecast),
+    runSource('Radiation-EU', radiationEu),
     runSource('ACLED', acled),
     runSource('ReliefWeb', reliefweb),
     runSource('WHO', who),
@@ -126,26 +128,23 @@ export async function fullBriefing() {
   const sources = results.map(r => r.status === 'fulfilled' ? r.value : { status: 'failed', error: r.reason?.message });
   const totalMs = Date.now() - start;
 
-  const returnedData = sources.filter(s => s.status === 'ok' || s.status === 'degraded');
+  const returnedData = Object.fromEntries(sources.filter(s => s.data).map(s => [s.name, s.data]));
+  const errors = sources.filter(s => !s.data).map(s => ({ name: s.name, error: s.error || 'Source returned no data' }));
+  const timestamp = new Date().toISOString();
+  const sourceHealth = buildSourceHealth(returnedData, errors, previousHealth, timestamp);
 
   const output = {
     crucix: {
       version: '2.0.0',
-      timestamp: new Date().toISOString(),
+      timestamp,
       totalDurationMs: totalMs,
-      sourcesQueried: sources.length,
-      sourcesOk: sources.filter(s => s.status === 'ok').length,
-      sourcesDegraded: sources.filter(s => s.status === 'degraded').length,
-      // 'degraded' counts as failed here so consumers that only know ok/failed
-      // are not told a partial source was fine.
-      sourcesFailed: sources.filter(s => s.status !== 'ok').length,
+      ...sourceCounts(sourceHealth),
     },
     // Degraded sources keep their payload: it carries `.error` plus whatever
     // partial/stale data the source salvaged, which the dashboard renders.
-    sources: Object.fromEntries(returnedData.map(s => [s.name, s.data])),
-    errors: sources
-      .filter(s => s.status !== 'ok' && s.status !== 'degraded')
-      .map(s => ({ name: s.name, error: s.error })),
+    sources: returnedData,
+    sourceHealth,
+    errors,
     timing: Object.fromEntries(
       sources.map(s => [s.name, { status: s.status, ms: s.durationMs }])
     ),
