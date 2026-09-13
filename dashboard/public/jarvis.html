@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/topojson.v3.min.js"></script>
+<script src="/js/live-updates.js"></script>
 <script type="importmap">
 {
   "imports": {
@@ -67,15 +68,35 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 
 /* TOPBAR */
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border:1px solid var(--border);background:var(--panel);backdrop-filter:blur(20px);flex-wrap:wrap;gap:10px}
-.top-left{display:flex;align-items:center;gap:14px}
+.top-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .brand{font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:0.12em;text-transform:uppercase}
 .regime-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;border:1px solid rgba(255,95,99,0.3);color:#ffd8d9;background:rgba(255,95,99,0.08)}
 .regime-chip .blink{width:6px;height:6px;border-radius:50%;background:var(--danger);box-shadow:0 0 8px var(--danger);animation:pulse-blink 1.5s ease-in-out infinite}
 @keyframes pulse-blink{0%,100%{opacity:1}50%{opacity:0.3}}
 .top-center{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.top-right{display:flex;align-items:center;gap:10px}
+.top-right{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .meta-pill{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:0.06em;padding:5px 10px;border:1px solid var(--border)}
 .sweep-pill{display:inline-flex;align-items:center;gap:6px;color:var(--accent);border-color:var(--border-bright);background:rgba(100,240,200,0.07);text-transform:uppercase}
+.sweep-pill[hidden]{display:none}
+.connection-pill{color:var(--accent)}
+.connection-pill.warn{color:var(--warn)}
+.source-control{cursor:pointer;color:inherit;text-align:left;font:inherit}
+.source-control:hover{border-color:var(--accent2)}
+.hero-inline-stat.source-control{background:transparent;border:1px solid var(--border);padding:5px 8px}
+.source-dialog{margin:auto;width:min(760px,calc(100vw - 24px));max-height:85vh;padding:20px;color:var(--text);background:var(--panel);border:1px solid var(--border-bright);overflow:auto}
+.source-dialog::backdrop{background:rgba(0,0,0,.75)}
+.source-dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.source-dialog h2{font-size:18px}
+.source-dialog-intro{font-size:12px;color:var(--dim);line-height:1.5;margin-bottom:16px}
+.source-health-row{padding:12px 0;border-top:1px solid var(--border)}
+.source-health-row h3{font:600 13px var(--mono);display:flex;justify-content:space-between;gap:10px}
+.source-state{color:var(--warn);text-transform:uppercase;font-size:10px}
+.source-health-row[data-state="healthy"] .source-state{color:var(--accent)}
+.source-health-row p{font-size:12px;line-height:1.5;margin-top:6px;overflow-wrap:anywhere}
+.source-health-row .source-times{font:10px/1.6 var(--mono);color:var(--dim)}
+.nuke-ok.warn{color:var(--warn);border-color:var(--warn)}
+.nuke-ok.danger{color:var(--danger);border-color:var(--danger)}
+.site-age{display:block;font:9px var(--mono);color:var(--dim);margin-top:3px}
 .sweep-pill .blink{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse-blink 1.5s ease-in-out infinite}
 body.low-perf .sweep-pill .blink{animation:none}
 .meta-pill .v{color:var(--text);font-weight:500}
@@ -126,6 +147,12 @@ body.low-perf .sweep-pill .blink{animation:none}
 .hero-inline-stat strong{color:var(--text);font-size:11px;margin-left:4px}
 .hero-strip.collapsed .stage-switch{flex-wrap:nowrap}
 .hero-strip.collapsed .stage-tab{height:28px;padding:4px 8px}
+@media(max-width:1100px){
+  .hero-strip.collapsed{height:auto;min-height:42px;overflow:visible}
+  .hero-strip.collapsed .hero-collapsed-row{height:auto;flex-wrap:wrap;white-space:normal;overflow:visible;gap:8px}
+  .hero-inline-stats{min-width:0;flex-wrap:wrap;margin-left:0;gap:8px}
+  .hero-collapsed-title{font-size:10px}
+}
 
 /* VIEW MODES */
 .map-stage{display:flex;flex-direction:column;gap:10px}
@@ -659,7 +686,11 @@ let allMapLabels = [];
 let allMapRings = [];
 let sensorActiveFilter = null;
 let hiddenMapLayers = loadHiddenMapLayers();
-let heroCollapsed = safeStorage.get('crucix_hero_collapsed') === 'true';
+let heroCollapsed = safeStorage.get('crucix_hero_collapsed', 'true') === 'true';
+let liveUpdates = null;
+let connectionState = location.protocol === 'file:' ? 'offline snapshot' : 'connecting';
+let refreshIntervalMinutes = 15;
+let sourceDialogOpener = null;
 let mapHintSeen = safeStorage.sessionGet('crucix_map_hint_seen') === 'true';
 let isFlat = shouldStartFlat();
 let currentRegion = 'world';
@@ -799,8 +830,8 @@ function defaultDashboardData(){
     air:[],thermal:[],tSignals:[],chokepoints:[],nuke:[],nukeSignals:[],
     airMeta:{},sdr:{total:0,online:0,zones:[]},
     who:[],fred:[],energy:{wti:null,brent:null,natgas:null,wtiRecent:[],signals:[]},
-    bls:[],treasury:{totalDebt:'0',signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:0,alerts:[]},
-    epa:{totalReadings:0,stations:[]},acled:{totalEvents:0,totalFatalities:0,regions:[],deadliestEvents:[]},
+    bls:[],treasury:{totalDebt:null,signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:null,alerts:[]},
+    epa:{totalReadings:null,stations:[]},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
     gdelt:{totalArticles:0,geoPoints:[]},space:null,health:[],news:[],markets:{indexes:[],crypto:[],rates:[],commodities:[],vix:null},
     ideas:[],ideasSource:'disabled',newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
   };
@@ -827,7 +858,7 @@ function normalizeDashboardData(input){
   merged.who = asArray(data.who);
   merged.fred = asArray(data.fred);
   merged.energy = {...base.energy,...(data.energy && typeof data.energy === 'object' ? data.energy : {})};
-  merged.energy.wtiRecent = asArray(merged.energy.wtiRecent).filter(v => Number.isFinite(+v)).map(Number);
+  merged.energy.wtiRecent = asArray(merged.energy.wtiRecent).filter(v => v != null && Number.isFinite(+v)).map(Number);
   merged.energy.signals = asArray(merged.energy.signals);
   merged.bls = asArray(data.bls);
   merged.treasury = {...base.treasury,...(data.treasury && typeof data.treasury === 'object' ? data.treasury : {})};
@@ -864,6 +895,59 @@ function currentSweepAge(){
   return D?.meta?.timestamp ? getAge(D.meta.timestamp) : 'unknown';
 }
 
+function updateFreshnessUI(){
+  const age = document.getElementById('sweepAge');
+  if(age) age.textContent = currentSweepAge();
+  const pill = document.getElementById('connectionStatus');
+  if(!pill) return;
+  const timestamp = Date.parse(D?.meta?.timestamp);
+  const stale = !Number.isFinite(timestamp) || Date.now() - timestamp > refreshIntervalMinutes * 60000 * 2;
+  pill.textContent = `${connectionState.toUpperCase()}${stale ? ' · DATA STALE' : ''}`;
+  pill.classList.toggle('warn', connectionState !== 'live' || stale);
+}
+
+function radiationLabel(site){
+  if(site?.status === 'no_coverage') return 'NO SENSORS IN RANGE';
+  if(site?.status !== 'healthy') return site?.status === 'stale' ? 'STALE · UNKNOWN NOW' : 'NO CURRENT DATA';
+  return site.anom ? 'ANOMALY' : 'NORMAL';
+}
+
+function sourceTimestamp(value){
+  return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Not available';
+}
+
+function renderSourceHealth(){
+  const body = document.getElementById('sourceHealthBody');
+  if(!body) return;
+  const sources = [...D.health].sort((a,b) => Number(!a.err) - Number(!b.err) || a.n.localeCompare(b.n));
+  body.innerHTML = sources.map(source => `
+    <article class="source-health-row" data-state="${escapeAttr(source.status || 'unknown')}">
+      <h3>${escapeHtml(source.n)} <span class="source-state">${escapeHtml(source.status || (source.err?'degraded':'healthy'))}</span></h3>
+      ${source.reason ? `<p>${escapeHtml(source.reason)}</p>` : '<p>Source returned data successfully.</p>'}
+      <p class="source-times">Last observation: ${escapeHtml(sourceTimestamp(source.lastObservationAt))}<br>Last successful collection: ${escapeHtml(sourceTimestamp(source.lastSuccessAt))}<br>Last checked: ${escapeHtml(sourceTimestamp(source.checkedAt))}</p>
+      ${source.recovery ? `<p><strong>Next step:</strong> ${escapeHtml(source.recovery)}</p>` : ''}
+    </article>`).join('') || '<p>No source status is available yet.</p>';
+}
+
+function openSourceHealth(){
+  sourceDialogOpener = document.activeElement;
+  let dialog = document.getElementById('sourceHealthDialog');
+  if(!dialog){
+    dialog = document.createElement('dialog');
+    dialog.id = 'sourceHealthDialog';
+    dialog.className = 'source-dialog';
+    dialog.setAttribute('aria-labelledby','sourceHealthTitle');
+    dialog.innerHTML = '<div class="source-dialog-head"><h2 id="sourceHealthTitle">Source coverage</h2><button class="guide-btn" type="button" onclick="document.getElementById(\'sourceHealthDialog\').close()" aria-label="Close source coverage">Close</button></div><p class="source-dialog-intro">Gaps appear first. A successful collection does not establish when the underlying event occurred. Observation times are shown only when the feed supplies them.</p><div id="sourceHealthBody"></div>';
+    dialog.addEventListener('close', () => {
+      if(sourceDialogOpener?.isConnected) sourceDialogOpener.focus();
+      else document.querySelector('[data-source-health]')?.focus();
+    });
+    document.body.appendChild(dialog);
+  }
+  renderSourceHealth();
+  if(!dialog.open) dialog.showModal();
+}
+
 function sourceHealthTone(){
   if(!D?.meta?.sourcesQueried) return 'warn';
   const okRatio = D.meta.sourcesOk / D.meta.sourcesQueried;
@@ -883,15 +967,19 @@ function escapeAttr(value){ return escapeHtml(value).replace(/`/g,'&#96;'); }
 // Numeric formatting guards. A missing FRED/BLS/EIA series used to reach the DOM
 // as "$NaNT", "$undefined" or "+undefined%"; every optional number goes through
 // these so the fallback is a clean em-dash instead.
+function isKnownNumber(value){ return value != null && value !== '' && Number.isFinite(Number(value)); }
 function fmtNum(value, digits=1, fallback='--'){
+  if(!isKnownNumber(value)) return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : fallback;
 }
 function fmtInt(value, fallback='--'){
+  if(!isKnownNumber(value)) return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n).toLocaleString() : fallback;
 }
 function fmtSigned(value, digits=2, fallback='--'){
+  if(!isKnownNumber(value)) return fallback;
   const n = Number(value);
   if(!Number.isFinite(n)) return fallback;
   return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}`;
@@ -1128,8 +1216,9 @@ function renderTopbar(){
       </nav>
     </div>
     <div class="top-right">
-      <span class="meta-pill">${t('dashboard.lastSweep','LAST SWEEP')} <span class="v">${currentSweepAge()}</span></span>
-      <span class="meta-pill">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></span>
+      <span class="meta-pill">${t('dashboard.lastSweep','LAST SWEEP')} <span class="v" id="sweepAge">${currentSweepAge()}</span></span>
+      <button class="meta-pill source-control focusable" data-source-health type="button" onclick="openSourceHealth()" aria-haspopup="dialog">${t('dashboard.sources','SOURCES')} <span class="v">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</span></button>
+      <span class="meta-pill connection-pill" id="connectionStatus" role="status" aria-live="polite"></span>
       <span class="meta-pill">${d} <span class="v">${timeStr}</span></span>
       <button class="meta-pill perf-pill focusable" onclick="togglePerfMode()" title="Reduce visual effects and start mobile in flat mode">${t('dashboard.visuals','VISUALS')} <span class="v" id="perfStatus">${lowPerfMode?t('dashboard.visualsLite','LITE'):t('dashboard.visualsFull','FULL')}</span></button>
       <button class="meta-pill perf-pill fullscreen-btn focusable" id="fullscreenToggle" onclick="toggleFullscreen()" aria-pressed="false">FULL <span class="v">SCREEN</span></button>
@@ -1139,6 +1228,7 @@ function renderTopbar(){
   renderRegionControls();
   updateFullscreenControl();
   setSweepIndicator(sweepInFlight);
+  updateFreshnessUI();
 }
 
 // Shown by the SSE `sweep_start` event, cleared by `update`/`sweep_error`.
@@ -1169,7 +1259,7 @@ function renderHero(){
     ...(D.delta?.signals?.new || []).slice(0, 2).map(s => ({ badge: 'NEW', text: s.reason || s.label || s.key })),
     ...(D.delta?.signals?.escalated || []).slice(0, 3).map(s => ({ badge: 'UP', text: `${s.label || s.key}: ${s.from} → ${s.to}` })),
   ].slice(0, 3);
-  const statusLine = baselineReset ? 'The prior sweep was too old for a meaningful comparison. Change alerts resume on the next sweep.' : ds.direction === 'risk-off' ? 'Risk is deteriorating across the latest sweep.' : ds.direction === 'risk-on' ? 'Pressure eased in the latest sweep.' : 'Latest sweep is mixed with no clean directional regime.';
+  const statusLine = baselineReset ? escapeHtml(D.delta?.baselineResetReason || 'The prior sweep was too old for a meaningful comparison. Change alerts resume on the next sweep.') : ds.direction === 'risk-off' ? 'Risk is deteriorating across the latest sweep.' : ds.direction === 'risk-on' ? 'Pressure eased in the latest sweep.' : 'Latest sweep is mixed with no clean directional regime.';
   const critical = ds.criticalChanges || 0;
   const failures = (D.meta.sourcesQueried || 0) - (D.meta.sourcesOk || 0);
   const failedNames = (D.health || []).filter(s => s.err).slice(0, 4).map(s => s.n).join(' · ') || 'No failed sources';
@@ -1181,9 +1271,9 @@ function renderHero(){
       <button class="hero-toggle focusable" type="button" onclick="toggleHeroCollapsed()" aria-expanded="false" aria-controls="heroStrip">&#9656; Brief</button>
       <span class="hero-collapsed-title">${escapeHtml(briefTitle)}</span>
       <div class="hero-inline-stats">
-        <span class="hero-inline-stat">Source Trust <strong>${D.meta.sourcesOk}/${D.meta.sourcesQueried}</strong></span>
+        <button class="hero-inline-stat source-control focusable" data-source-health type="button" onclick="openSourceHealth()" aria-haspopup="dialog">Sources <strong>${D.meta.sourcesOk}/${D.meta.sourcesQueried}</strong></button>
         <span class="hero-inline-stat">Critical Delta <strong>${critical}</strong></span>
-        <span class="hero-inline-stat">Coverage Gaps <strong>${failures}</strong></span>
+        <button class="hero-inline-stat source-control focusable" data-source-health type="button" onclick="openSourceHealth()" aria-haspopup="dialog">Coverage Gaps <strong>${failures}</strong></button>
         <span class="hero-inline-stat">Idea Engine <strong>${D.ideas?.length || 0}</strong></span>
       </div>
       <div class="stage-switch">
@@ -1196,35 +1286,35 @@ function renderHero(){
       <div class="hero-title">${escapeHtml(briefTitle)}</div>
       <div class="hero-sub">${statusLine} ${critical > 0 ? `Critical changes detected: ${critical}.` : 'No critical changes flagged.'}</div>
       <div class="hero-changes">
-        ${(candidateChanges.length ? candidateChanges : [{ badge:'INFO', text:baselineReset ? 'Stale comparison suppressed.' : 'No material changes since the previous sweep.' }]).map(item => `
+        ${(candidateChanges.length ? candidateChanges : [{ badge:'INFO', text:baselineReset ? (D.delta?.baselineResetReason || 'Stale comparison suppressed.') : 'No material changes since the previous sweep.' }]).map(item => `
           <div class="hero-change">
             <span class="hero-change-badge">${escapeHtml(item.badge)}</span>
             <div class="hero-change-text">${escapeHtml(cleanText(String(item.text || '')))}</div>
           </div>`).join('')}
       </div>
       <div class="hero-foot">
-        <div class="hero-meta">Freshness ${currentSweepAge()} · Sweep ${sweepSeconds}s · Failed ${failures}</div>
+        <div class="hero-meta">Freshness ${currentSweepAge()} · Sweep ${sweepSeconds}s · Coverage gaps ${failures}</div>
         <div class="stage-switch">
           <button class="stage-tab focusable" data-view="overview" onclick="setPrimaryView('overview')">Overview</button>
           <button class="stage-tab focusable" data-view="map" onclick="setPrimaryView('map')">Map</button>
         </div>
       </div>
     </div>
-    <div class="hero-card hero-stat ${tone}">
+    <button class="hero-card hero-stat source-control focusable ${tone}" data-source-health type="button" onclick="openSourceHealth()" aria-haspopup="dialog">
       <div class="hero-stat-label">Source Trust</div>
       <div class="hero-stat-value">${D.meta.sourcesOk}/${D.meta.sourcesQueried}</div>
       <div class="hero-stat-sub">${escapeHtml(failedNames)}</div>
-    </div>
+    </button>
     <div class="hero-card hero-stat ${critical > 0 ? 'danger' : 'good'}">
       <div class="hero-stat-label">Critical Delta</div>
       <div class="hero-stat-value">${critical}</div>
       <div class="hero-stat-sub">${ds.totalChanges || 0} total changes this sweep</div>
     </div>
-    <div class="hero-card hero-stat ${failures > 0 ? 'warn' : 'good'}">
+    <button class="hero-card hero-stat source-control focusable ${failures > 0 ? 'warn' : 'good'}" data-source-health type="button" onclick="openSourceHealth()" aria-haspopup="dialog">
       <div class="hero-stat-label">Coverage Gaps</div>
       <div class="hero-stat-value">${failures}</div>
-      <div class="hero-stat-sub">${failures > 0 ? 'Fallbacks or stale inputs may be affecting some panels.' : 'Core ingest is healthy.'}</div>
-    </div>
+      <div class="hero-stat-sub">${failures > 0 ? 'Inspect affected feeds and recovery steps →' : 'Inspect source status →'}</div>
+    </button>
     <div class="hero-card hero-stat ${D.ideasSource === 'llm' ? 'good' : 'warn'}">
       <div class="hero-stat-label">Idea Engine</div>
       <div class="hero-stat-value">${D.ideas?.length || 0}</div>
@@ -1246,23 +1336,23 @@ function renderLeftRail(){
   const totalThermal=D.thermal.reduce((s,t)=>s+(Number(t.det)||0),0);
   const totalNight=D.thermal.reduce((s,t)=>s+(Number(t.night)||0),0);
   const newsCount=(D.news||[]).length;
-  const conflictEvents = D.acled?.totalEvents || 0;
-  const conflictFatal = D.acled?.totalFatalities || 0;
+  const conflictEvents = D.acled?.totalEvents ?? 'Unknown';
+  const conflictFatal = D.acled?.totalFatalities == null ? 'Unknown' : D.acled.totalFatalities.toLocaleString();
   const airCoords=[{lat:30,lon:44},{lat:24,lon:120},{lat:49,lon:32},{lat:57,lon:24},{lat:14,lon:114},{lat:37,lon:127},{lat:25,lon:-80},{lat:4,lon:2},{lat:-34,lon:18},{lat:10,lon:51}];
   const nukeCoords=[{lat:47.5,lon:34.6},{lat:51.4,lon:30.1},{lat:28.8,lon:50.9},{lat:39.8,lon:125.8},{lat:37.4,lon:141},{lat:31.0,lon:35.1}];
   const whoGeo=[{lat:0.3,lon:32.6},{lat:-6.2,lon:106.8},{lat:-4.3,lon:15.3},{lat:35,lon:105},{lat:12.5,lon:105},{lat:35,lon:105},{lat:28,lon:84},{lat:24,lon:45},{lat:30,lon:70},{lat:-0.8,lon:11.6}];
   const layers=[
     {name:t('layers.airActivity','Air Activity'),count:totalAir,dot:'air',sub:`${D.air.length} ${t('layers.theaters','theaters')}`,
-     items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:String(a.region||`Air theatre ${i+1}`).replace(' Region',''),lat:c.lat,lon:c.lon,status:'ACTIVE',meta:`${a.total||0} acft · No CS: ${a.noCallsign||0} · Hi-alt: ${a.highAlt||0}`,detail:`Top: ${asArray(a.top).slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
+     items:D.air.map((a,i)=>{const c=airCoords[i];return c?{name:String(a.region||`Air theatre ${i+1}`).replace(' Region',''),lat:c.lat,lon:c.lon,status:a.status==='failed'?'UNAVAILABLE':a.status==='no_data'?'NO OBSERVATIONS':'ACTIVE',meta:a.observationNote||`${a.total||0} acft · No CS: ${a.noCallsign||0} · Hi-alt: ${a.highAlt||0}`,detail:a.observationNote||`Top: ${asArray(a.top).slice(0,3).map(t2=>t2[0]+' ('+t2[1]+')').join(', ')}`}:null}).filter(Boolean)},
     {name:t('layers.thermalSpikes','Thermal Spikes'),count:totalThermal.toLocaleString(),dot:'thermal',sub:`${totalNight.toLocaleString()} ${t('layers.nightDet','night det.')}`,
      items:D.thermal.map(tr=>{const fires=asArray(tr.fires);const peak=fires.length?Math.max(...fires.map(f=>Number(f.frp)||0)):0;return {name:tr.region||'Thermal region',lat:fires[0]?.lat||0,lon:fires[0]?.lon||0,status:`${fires.length} fires`,meta:`${(Number(tr.det)||0).toLocaleString()} det · ${(Number(tr.night)||0).toLocaleString()} night`,detail:`Peak FRP: ${peak.toFixed(1)} MW`}}).filter(tr=>tr.lat!==0)},
     {name:t('layers.sdrCoverage','SDR Coverage'),count:D.sdr.total,dot:'sdr',sub:`${D.sdr.online} ${t('layers.online','online')}`,
      items:D.sdr.zones.flatMap(z=>asArray(z.receivers).map(r=>({name:r.name||z.region,lat:r.lat,lon:r.lon,status:'ONLINE',meta:`Zone: ${z.region} · ${z.count} in zone`,detail:`Freq coverage active`})))},
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),
-     items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'MONITORED',meta:cp.note||'Chokepoint',detail:`${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
+     items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'REFERENCE',meta:cp.note||'Chokepoint',detail:`Static location; no live vessel observations. ${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
-     items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:n.anom?'ANOMALY':'NORMAL',meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} readings`,detail:n.anom?'⚠ Anomaly detected':'All readings nominal'}:null}).filter(Boolean)},
-    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal.toLocaleString()} ${t('layers.fatalities','fatalities')}`,
+     items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:radiationLabel(n),meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} recent readings`,detail:`Last observation: ${sourceTimestamp(n.lastReading)}`}:null}).filter(Boolean)},
+    {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal} ${t('layers.fatalities','fatalities')}`,
      items:(D.acled?.regions||[]).map(r=>({name:r.region||r.country||'Unknown',lat:r.lat||0,lon:r.lon||0,status:`${r.events||0} events`,meta:`${(r.fatalities||0).toLocaleString()} fatalities`,detail:r.topType||'Armed conflict'})).filter(r=>r.lat!==0)},
     {name:t('layers.healthWatch','Health Watch'),count:D.who.length,dot:'health',sub:t('layers.whoAlerts','WHO alerts'),
      items:D.who.slice(0,10).map((w,i)=>{const c=whoGeo[i];return c?{name:w.title?.substring(0,40)||'Alert',lat:c.lat,lon:c.lon,status:'WHO ALERT',meta:w.summary?.substring(0,60)||'',detail:`${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°`}:null}).filter(Boolean)},
@@ -1274,8 +1364,9 @@ function renderLeftRail(){
        ...Object.entries(D.space?.militaryByCountry||{}).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c,n])=>({name:`${c} Mil Sats`,lat:0,lon:0,status:`${n} sats`,meta:'Military constellation',detail:'No fixed position'}))
      ]}
   ];
-  const allNormal=D.nuke.every(s=>!s.anom);
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}"><span>${escapeHtml(s.site)}</span><span class="site-val">${s.n>0?(s.cpm?.toFixed(1)||'--')+' CPM':'No data'}</span></div>`).join('');
+  const allNormal=D.nuke.length > 0 && D.nuke.every(s=>s.status === 'healthy' && !s.anom);
+  const anyAnomaly=D.nuke.some(s=>s.status === 'healthy' && s.anom);
+  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}" role="button" tabindex="0"><span>${escapeHtml(s.site)}<span class="site-age">Last observation: ${escapeHtml(sourceTimestamp(s.lastReading))}</span></span><span class="site-val">${s.status === 'healthy'?(s.cpm?.toFixed(1)||'--')+' CPM':s.status === 'stale'?'Stale':s.status === 'no_coverage'?'No sensors':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
   const usd=D.fred.find(f=>f.id==='DTWEXBGS');
@@ -1301,7 +1392,7 @@ function renderLeftRail(){
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.nuclearWatch','Nuclear Watch')}</h3><span class="badge">${t('badges.radiation','RADIATION')}</span></div>
-      <div class="nuke-ok">${allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED')}</div>
+      <div class="nuke-ok ${anyAnomaly?'danger':allNormal?'':'warn'}">${anyAnomaly?'&#9888; '+t('nuclear.anomalyDetected','ANOMALY DETECTED'):allNormal?'&#9679; '+t('nuclear.allSitesNormal','ALL SITES NORMAL'):'CURRENT CONDITIONS UNKNOWN · COVERAGE GAPS'}</div>
       ${nukeHtml}
     </div>
     <div class="g-panel">
@@ -1312,7 +1403,7 @@ function renderLeftRail(){
       <div class="econ-row"><span class="elabel">${t('metrics.joblessClaims','Jobless Claims')}</span><span class="eval">${fmtInt(claims?.value)}</span></div>
       <div class="econ-row"><span class="elabel">${t('metrics.mortgage30y','30Y Mortgage')}</span><span class="eval">${Number.isFinite(Number(mort?.value))?fmtNum(mort.value,2)+'%':'--'}</span></div>
       <div class="econ-row"><span class="elabel">${t('metrics.m2Supply','M2 Supply')}</span><span class="eval">${Number.isFinite(Number(m2?.value))?'$'+fmtNum(Number(m2.value)/1000,1)+'T':'--'}</span></div>
-      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">$${((parseFloat(D.treasury.totalDebt)||0)/1e12).toFixed(2)}T</span></div>
+      <div class="econ-row"><span class="elabel">${t('metrics.natDebt','Nat. Debt')}</span><span class="eval">${D.treasury.totalDebt == null?'--':'$'+(parseFloat(D.treasury.totalDebt)/1e12).toFixed(2)+'T'}</span></div>
     </div>
     <div class="g-panel">
       <div class="sec-head"><h3>${t('panels.spaceWatch','Space Watch')}</h3><span class="badge">${t('badges.orbital','CELESTRAK')}</span></div>
@@ -1715,7 +1806,7 @@ function plotMarkers(){
     points.push({
       lat:coords.lat,lng:coords.lon,size:0.3,alt:0.012,color:MAP_TYPE_COLORS.nuke,type:'nuke',priority:2,
       popHead:site?.site || 'Nuclear site',popMeta:'Radiation Monitoring',
-      popText:`Status: ${site?.anom?'ANOMALY':'Normal'}<br>Avg CPM: ${fmtNum(site?.cpm,1,'No data')}<br>Readings: ${finiteMapNumber(site?.n) ?? 0}`
+      popText:`Status: ${radiationLabel(site)}<br>Avg CPM: ${fmtNum(site?.cpm,1,'No data')}<br>Recent readings: ${finiteMapNumber(site?.n) ?? 0}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`
     });
   });
 
@@ -2097,7 +2188,7 @@ function plotFlatMarkers(){
   // Nuclear triangles.
   asArray(D?.nuke).forEach((site,index)=>{
     const coords=NUKE_COORDS[index];if(!coords)return;
-    const g=bindPopup(markerGroup(coords.lat,coords.lon,'nuke',2),event=>showPopup(event,site?.site || 'Nuclear site',`CPM: ${fmtNum(site?.cpm,1)}`,'Radiation'));
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'nuke',2),event=>showPopup(event,site?.site || 'Nuclear site',`${radiationLabel(site)}<br>CPM: ${fmtNum(site?.cpm,1)}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`,'Radiation'));
     if(g)g.append('path').attr('d','M0,-5 L5,4 L-5,4 Z').attr('fill',mapRgba(MAP_TYPE_COLORS.nuke,0.76)).attr('stroke',mapRgba(MAP_TYPE_COLORS.nuke,0.42)).attr('stroke-width',0.8);
   });
 
@@ -2451,7 +2542,7 @@ function renderLower(){
 
   // Helper: format market quote card
   const mktCard = (q) => {
-    if(!q||q.error||!Number.isFinite(+q.price)) return '';
+    if(!q||q.error||!isKnownNumber(q.price)) return '';
     const symbol = String(q.symbol || '');
     const price = +q.price;
     const changePct = Number.isFinite(+q.changePct) ? +q.changePct : 0;
@@ -2466,8 +2557,8 @@ function renderLower(){
   const vixVal = vixLive?.value ?? vixFred?.value;
   const vixNum = Number(vixVal);
   const vixChg = Number.isFinite(Number(vixLive?.changePct)) ? `${fmtSigned(vixLive.changePct,2)}%` : '';
-  const money = (value, digits=2) => Number.isFinite(Number(value)) ? `$${fmtNum(value,digits)}` : '--';
-  const pct = (value, digits=2) => Number.isFinite(Number(value)) ? `${fmtNum(value,digits)}%` : '--';
+  const money = (value, digits=2) => isKnownNumber(value) ? `$${fmtNum(value,digits)}` : '--';
+  const pct = (value, digits=2) => isKnownNumber(value) ? `${fmtNum(value,digits)}%` : '--';
 
   const metrics=[
     {l:'WTI Crude',v:money(D.energy.wti,2),s:'$/bbl',p:70},
@@ -2718,7 +2809,7 @@ function getCategoryMapTarget(category){
     const idx=Math.max(0,D.nuke.findIndex(n=>n.anom));
     const site=D.nuke[idx];
     const c=rightMapRefs.nuke[idx];
-    return c && normalizeMapTarget({...c,head:site.site,text:`${site.anom?'Anomaly':'Normal'} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:'Radiation monitoring'});
+    return c && normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
   }
   if((category==='osint' || category==='health') && D.who.length){
     const alert=D.who[0];
@@ -2788,7 +2879,7 @@ function findTextMapTarget(value, fallbackCategory=''){
         const words=cleanText(site.site).toLowerCase().split(/[^a-z0-9]+/).filter(word=>word.length>4);
         if(words.some(word=>text.includes(word))){
           const c=rightMapRefs.nuke[i];
-          if(c) return normalizeMapTarget({...c,head:site.site,text:`${site.anom?'Anomaly':'Normal'} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:'Radiation monitoring'});
+          if(c) return normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
         }
       }
       return null;
@@ -2970,7 +3061,7 @@ function renderRight(){
     const val=signal.pctChange!==undefined?`${signal.pctChange}%`:`${signal.change}`;
     deltaRows.push(`<div class="delta-row delta-expandable right-interactive" tabindex="0" role="button" aria-expanded="false" data-right-item="delta"><span class="delta-badge down">&#9660;</span><span class="delta-label">${escapeHtml(signal.label||signal.key)}</span><span class="delta-val">${escapeHtml(signal.from)}→${escapeHtml(signal.to)} (${escapeHtml(val)})</span><span class="right-chevron" aria-hidden="true">&#9656;</span></div>${deltaDetail(signal,'down')}`);
   }
-  const deltaHtml=hasDelta?deltaRows.join(''):`<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset?'Baseline reset after stale gap':t('delta.noChanges','No changes since last sweep')}</div>`;
+  const deltaHtml=hasDelta?deltaRows.join(''):`<div style="padding:12px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:10px">${baselineReset?escapeHtml(delta.baselineResetReason || 'Baseline reset after stale gap'):t('delta.noChanges','No changes since last sweep')}</div>`;
   const rightMeta={
     delta:`Latest sweep ${currentSweepAge()} · ${ds.totalChanges||0} total changes`,
     osint:`WHO · ${D.who.length} bulletins · ${currentSweepAge()}`,
@@ -3011,7 +3102,7 @@ function renderRight(){
 }
 
 // === HELPERS ===
-function getAge(d){const ts=new Date(d).getTime();if(!Number.isFinite(ts))return 'unknown';const ms=Math.max(0,Date.now()-ts);const h=Math.floor(ms/3600000);if(h<1)return 'just now';if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
+function getAge(d){const ts=Date.parse(d);if(!Number.isFinite(ts))return 'unknown';const ms=Math.max(0,Date.now()-ts);const m=Math.floor(ms/60000);if(m<1)return 'just now';if(m<60)return m+'m ago';const h=Math.floor(m/60);if(h<24)return h+'h ago';return Math.floor(h/24)+'d ago'}
 function cleanText(t){return String(t||'').replace(/&#39;/g,"'").replace(/&#33;/g,"!").replace(/&amp;/g,"&").replace(/<[^>]+>/g,'').trim()}
 function safeExternalUrl(raw){try{const u=new URL(raw,location.href);return u.protocol==='http:'||u.protocol==='https:'?u.toString():null}catch{return null}}
 function feedFreshLabel(count){return `${count} items`;}
@@ -3184,6 +3275,7 @@ function syncResponsiveLayout(force=false){
 // === REINIT (for live updates without boot sequence) ===
 function reinit(){
   renderTopbar();renderHero();renderLeftRail();renderLower();renderRight();
+  renderSourceHealth();
   renderMapLegend();
   applyPrimaryView();
   plotMarkers();
@@ -3192,39 +3284,18 @@ function reinit(){
 
 // === SSE: Live Updates from Server ===
 function connectSSE(){
-  if (typeof EventSource === 'undefined') return;
-  // Only connect if served from localhost (not file://)
   if (location.protocol === 'file:') return;
-
-  const es = new EventSource('/events');
-  es.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'update' && msg.data) {
-        D = normalizeDashboardData(msg.data);
-        setSweepIndicator(false);
-        reinit();
-        // Flash the topbar to indicate update
-        const topbar = document.querySelector('.topbar');
-        if (topbar) {
-          topbar.style.borderColor = 'var(--accent)';
-          setTimeout(() => topbar.style.borderColor = '', 1500);
-        }
-      } else if (msg.type === 'sweep_start') {
-        setSweepIndicator(true);
-      } else if (msg.type === 'sweep_error') {
-        setSweepIndicator(false);
-        console.warn('[Crucix] Sweep error:', msg.error || 'unknown error');
-      }
-    } catch (err) {
-      console.warn('[Crucix] Ignoring malformed SSE message:', err?.message || err);
-    }
-  };
-  es.onerror = () => {
-    // Reconnect after 5s on error
-    es.close();
-    setTimeout(connectSSE, 5000);
-  };
+  if(liveUpdates) return;
+  liveUpdates = CrucixLiveUpdates.createLiveUpdates({
+    applySnapshot(data){
+      if(data.runtime?.refreshIntervalMinutes > 0) refreshIntervalMinutes = data.runtime.refreshIntervalMinutes;
+      D = normalizeDashboardData(data);
+      reinit();
+    },
+    onState(state){ connectionState = state; updateFreshnessUI(); },
+    onSweep: setSweepIndicator,
+    onError(error){ console.warn('[Crucix] Live update:', error.message); },
+  });
 }
 
 // === INIT ===
@@ -3267,6 +3338,7 @@ function init(){
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  setInterval(updateFreshnessUI, 30000);
   const hasInlineData = !!(D && D.meta);
   const canProbeApi = location.protocol !== 'file:';
 
@@ -3323,6 +3395,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const rail = document.getElementById('leftRail');
     if (!rail || rail._nukeClicksBound) return;
     rail._nukeClicksBound = true;
+    rail.addEventListener('keydown', e => {
+      if((e.key === 'Enter' || e.key === ' ') && closestTarget(e, '.nuke-clickable')){
+        e.preventDefault();
+        closestTarget(e, '.nuke-clickable').click();
+      }
+    });
     rail.addEventListener('click', (e) => {
         const el = closestTarget(e, '.nuke-clickable[data-site]');
         if (!el) return;
@@ -3342,14 +3420,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // .pp-head/.pp-text/.pp-meta children showPopup() depends on).
         const popup = document.getElementById('nukePopup') || createNukePopup();
         const cpmVal = nukeData?.cpm?.toFixed(1) || 'No data';
-        const status = nukeData?.anom ? 'ANOMALY DETECTED' : 'Normal';
-        const statusColor = nukeData?.anom ? 'var(--danger)' : 'var(--accent)';
+        const status = radiationLabel(nukeData);
+        const statusColor = nukeData?.anom ? 'var(--danger)' : nukeData?.status === 'healthy' ? 'var(--accent)' : 'var(--warn)';
         popup.innerHTML = `
           <div style="padding:12px;background:var(--panel);border:1px solid var(--border-bright);font-family:var(--mono);font-size:11px;max-width:280px">
             <div style="color:var(--accent);font-weight:600;margin-bottom:6px">${escapeHtml(site)}</div>
             <div style="margin-bottom:4px">CPM: <span style="color:var(--accent)">${cpmVal}</span></div>
             <div style="margin-bottom:4px">Status: <span style="color:${statusColor}">${status}</span></div>
             <div style="margin-bottom:4px">Readings: ${nukeData?.n || 0}</div>
+            <div style="margin-bottom:4px">Last observation: ${escapeHtml(sourceTimestamp(nukeData?.lastReading))}</div>
             <div style="color:var(--dim);font-size:9px;margin-top:6px">Click anywhere to close</div>
           </div>`;
         popup.style.display = 'block';

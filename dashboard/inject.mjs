@@ -13,6 +13,8 @@ import * as satellite from 'satellite.js';
 import config from '../crucix.config.mjs';
 import { createLLMProvider } from '../lib/llm/index.mjs';
 import { generateLLMIdeas } from '../lib/llm/ideas.mjs';
+import { buildSourceHealth, sourceCounts, sourceState } from '../lib/source-health.mjs';
+import { radiationState } from '../lib/radiation.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -220,6 +222,8 @@ function summarizeAirHotspots(hotspots = []) {
     total: h.totalAircraft || 0,
     noCallsign: h.noCallsign || 0,
     highAlt: h.highAltitude || 0,
+    status: h.status || (h.error ? 'failed' : h.totalAircraft > 0 ? 'healthy' : 'no_data'),
+    observationNote: h.error || h.message || (h.totalAircraft > 0 ? null : 'No aircraft observations reported; this does not establish an empty sky'),
     top: Object.entries(h.byCountry || {}).sort((a, b) => b[1] - a[1]).slice(0, 5),
   }));
 }
@@ -411,10 +415,10 @@ export function generateIdeas(V2) {
     });
   }
   if (V2.energy.wtiRecent.length > 1) {
-    const latest = V2.energy.wtiRecent[0];
-    const oldest = V2.energy.wtiRecent[V2.energy.wtiRecent.length - 1];
+    const latest = V2.energy.wtiRecent.at(-1);
+    const oldest = V2.energy.wtiRecent[0];
     const pct = ((latest - oldest) / oldest * 100).toFixed(1);
-    if (Math.abs(pct) > 3) {
+    if (oldest > 0 && Number.isFinite(+pct) && Math.abs(pct) > 3) {
       ideas.push({
         title: pct > 0 ? 'Oil Momentum Building' : 'Oil Under Pressure',
         text: `WTI moved ${pct > 0 ? '+' : ''}${pct}% recently to $${V2.energy.wti}/bbl. ${pct > 0 ? 'Energy and commodity names benefit.' : 'Demand concerns may be emerging.'}`,
@@ -454,7 +458,7 @@ export function generateIdeas(V2) {
   // ACLED Conflict + Energy Momentum
   const conflictEvents = V2.acled?.totalEvents || 0;
   if (conflictEvents > 50 && V2.energy.wtiRecent.length > 1) {
-    const wtiMove = V2.energy.wtiRecent[0] - V2.energy.wtiRecent[V2.energy.wtiRecent.length - 1];
+    const wtiMove = V2.energy.wtiRecent.at(-1) - V2.energy.wtiRecent[0];
     if (wtiMove > 2) {
       ideas.push({
         title: 'Conflict Fueling Energy Momentum',
@@ -515,7 +519,45 @@ export function generateIdeas(V2) {
 }
 
 // === Synthesize raw sweep data into dashboard format ===
-export async function synthesize(data) {
+export function chronologicalValues(rows, field) {
+  return rows.filter(row => Number.isFinite(row[field]) && Number.isFinite(Date.parse(row.date || row.period)))
+    .slice().sort((a, b) => Date.parse(a.date || a.period) - Date.parse(b.date || b.period))
+    .map(row => row[field]);
+}
+
+export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.now() } = {}) {
+  // Re-evaluate old caches as well as new sweeps; pre-fix snapshots must not
+  // resurrect years-old radiation alerts after a restart.
+  const safecast = data.sources.Safecast;
+  const nuke = (safecast?.sites || []).map(s => {
+    const status = radiationState(s, now);
+    return {
+      site: s.site, status, lastReading: s.lastReading || null,
+      anom: status === 'healthy' ? Boolean(s.anomaly) : null,
+      cpm: status === 'healthy' ? s.avgCPM : null,
+      n: status === 'healthy' ? s.recentReadings : 0,
+      error: status === 'healthy' ? null : s.error || `Radiation observations are ${status}`,
+    };
+  });
+  const nukeSignals = nuke.filter(s => s.anom).map(s => `ELEVATED RADIATION at ${s.site}: ${s.cpm.toFixed(1)} CPM`);
+  // Sites with no sensors in range are permanent, declared gaps; they neither
+  // block the all-clear nor count as a source outage.
+  const covered = nuke.filter(s => s.status !== 'no_coverage');
+  const uncovered = nuke.filter(s => s.status === 'no_coverage');
+  if (covered.length && covered.every(s => s.status === 'healthy') && !nukeSignals.length) {
+    nukeSignals.push(uncovered.length
+      ? `Radiation normal at all ${covered.length} sites with sensor coverage (no sensors: ${uncovered.map(s => s.site).join(', ')})`
+      : 'All monitored nuclear sites within normal radiation levels');
+  }
+  const sources = { ...data.sources };
+  if (safecast && (!covered.length || covered.some(s => s.status !== 'healthy'))) {
+    sources.Safecast = { ...safecast,
+      status: covered.some(s => s.status === 'healthy') ? 'degraded' : covered.some(s => s.status === 'stale') ? 'stale' : 'failed',
+      error: 'Some monitored sites have missing, failed or stale observations; current radiation conditions are unknown there.',
+      lastObservationAt: nuke.map(s => s.lastReading).filter(Boolean).sort().at(-1) || null,
+    };
+  }
+  const health = buildSourceHealth(sources, data.errors || [], data.sourceHealth || [], data.crucix?.timestamp);
   const liveAirHotspots = data.sources.OpenSky?.hotspots || [];
   const airFallback = sumAirHotspots(liveAirHotspots) > 0
     ? null
@@ -531,10 +573,6 @@ export async function synthesize(data) {
   const chokepoints = Object.values(data.sources.Maritime?.chokepoints || {}).map(c => ({
     label: c.label || c.name, note: c.note || '', lat: c.lat || 0, lon: c.lon || 0
   }));
-  const nuke = (data.sources.Safecast?.sites || []).map(s => ({
-    site: s.site, anom: s.anomaly || false, cpm: s.avgCPM, n: s.recentReadings || 0
-  }));
-  const nukeSignals = (data.sources.Safecast?.signals || []).filter(s => s);
   const sdrData = data.sources.KiwiSDR || {};
   const sdrNet = sdrData.network || {};
   const sdrConflict = sdrData.conflictZones || {};
@@ -554,7 +592,8 @@ export async function synthesize(data) {
   }));
   const energyData = data.sources.EIA || {};
   const oilPrices = energyData.oilPrices || {};
-  const wtiRecent = (oilPrices.wti?.recent || []).map(d => d.value);
+  // Every history exposed to the page/idea engine is chronological.
+  const wtiRecent = chronologicalValues(oilPrices.wti?.recent || [], 'value');
   const energy = {
     wti: oilPrices.wti?.value, brent: oilPrices.brent?.value,
     natgas: energyData.gasPrice?.value, crudeStocks: energyData.inventories?.crudeStocks?.value,
@@ -563,13 +602,13 @@ export async function synthesize(data) {
   const bls = data.sources.BLS?.indicators || [];
   const treasuryData = data.sources.Treasury || {};
   const debtArr = treasuryData.debt || [];
-  const treasury = { totalDebt: debtArr[0]?.totalDebt || '0', signals: treasuryData.signals || [] };
+  const treasury = { totalDebt: debtArr[0]?.totalDebt ?? null, signals: treasuryData.signals || [] };
   const gscpi = data.sources.GSCPI?.latest || null;
   const defense = (data.sources.USAspending?.recentDefenseContracts || []).slice(0, 5).map(c => ({
     recipient: c.recipient?.substring(0, 40), amount: c.amount, desc: c.description?.substring(0, 80)
   }));
   const noaa = {
-    totalAlerts: data.sources.NOAA?.totalSevereAlerts || 0,
+    totalAlerts: data.sources.NOAA?.totalSevereAlerts ?? null,
     alerts: (data.sources.NOAA?.topAlerts || []).filter(a => a.lat != null && a.lon != null).slice(0, 10).map(a => ({
       event: a.event, severity: a.severity, headline: a.headline?.substring(0, 120),
       lat: a.lat, lon: a.lon
@@ -587,7 +626,7 @@ export async function synthesize(data) {
     seenEpa.add(key);
     epaStations.push({ location: r.location, state: r.state, lat: r.lat, lon: r.lon, analyte: r.analyte, result: r.result, unit: r.unit });
   }
-  const epa = { totalReadings: epaData.totalReadings || 0, stations: epaStations.slice(0, 10) };
+  const epa = { totalReadings: epaData.totalReadings ?? null, stations: epaStations.slice(0, 10) };
 
   // Space/CelesTrak satellite data
   const spaceData = data.sources.Space || {};
@@ -653,9 +692,9 @@ export async function synthesize(data) {
 
   // ACLED conflict events
   const acledData = data.sources.ACLED || {};
-  const acled = acledData.error ? { totalEvents: 0, totalFatalities: 0, byRegion: {}, byType: {}, regions: [], deadliestEvents: [] } : {
-    totalEvents: acledData.totalEvents || 0,
-    totalFatalities: acledData.totalFatalities || 0,
+  const acled = sourceState(data.sources.ACLED) !== 'healthy' ? { totalEvents: null, totalFatalities: null, byRegion: {}, byType: {}, regions: [], deadliestEvents: [] } : {
+    totalEvents: acledData.totalEvents ?? null,
+    totalFatalities: acledData.totalFatalities ?? null,
     byRegion: acledData.byRegion || {},
     byType: acledData.byType || {},
     // Plottable per-region rollup for the Conflict Events sensor layer.
@@ -682,12 +721,6 @@ export async function synthesize(data) {
 
   // Sources that fail outright land in data.errors (not data.sources) —
   // include them or the dashboard reports "No failed sources" next to 27/29.
-  const health = [
-    ...Object.entries(data.sources).map(([name, src]) => ({
-      n: name, err: Boolean(src.error), stale: Boolean(src.stale)
-    })),
-    ...(data.errors || []).map(e => ({ n: e.name, err: true, stale: false })),
-  ];
 
   // === Yahoo Finance live market data ===
   const yfData = data.sources.YFinance || {};
@@ -724,13 +757,13 @@ export async function synthesize(data) {
   if (yfWti?.price) energy.wti = yfWti.price;
   if (yfBrent?.price) energy.brent = yfBrent.price;
   if (yfNatgas?.price) energy.natgas = yfNatgas.price;
-  if (yfWti?.history?.length) energy.wtiRecent = yfWti.history.map(h => h.close);
+  if (yfWti?.history?.length) energy.wtiRecent = chronologicalValues(yfWti.history, 'close');
 
   // Fetch RSS
-  const news = await fetchAllNews();
+  const news = await newsLoader();
 
   const V2 = {
-    meta: data.crucix, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
+    meta: { ...data.crucix, ...sourceCounts(health), dataQualityVersion: 1 }, air, thermal, tSignals, chokepoints, nuke, nukeSignals,
     airMeta: {
       fallback: Boolean(airFallback),
       liveTotal: sumAirHotspots(liveAirHotspots),
