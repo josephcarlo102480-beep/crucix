@@ -105,6 +105,8 @@ tbody tr.recon td:first-child{box-shadow:inset 2px 0 0 var(--asw)}
 .pp-cat{display:inline-block;font-size:9px;padding:1px 6px;border:1px solid;border-radius:2px;margin-left:6px;vertical-align:1px}
 .pp-desc{color:var(--text);margin:2px 0 6px}
 .pp-mission{color:var(--asw);margin:2px 0 6px;font-size:10px}
+.pp-role{color:var(--text);margin:0 0 6px;font-size:10px;line-height:1.45}
+.pp-role .k{color:var(--dim);margin-right:6px}
 .pp-grid{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-size:10px}
 .pp-grid .k{color:var(--dim)}
 .pp-orbit{margin-top:6px;color:var(--warn);font-size:10px}
@@ -234,6 +236,7 @@ function popupHtml(ac) {
     `<span class="pp-cat" style="color:${color};border-color:${color}">${esc(ac.cat)}</span></div>` +
     (ac.mission ? `<div class="pp-mission">◈ ${esc(ac.mission)}</div>` : '') +
     (ac.desc ? `<div class="pp-desc">${esc(ac.desc)}</div>` : '') +
+    (ac.role ? `<div class="pp-role"><span class="k">USED FOR</span> ${esc(ac.role)}</div>` : '') +
     `<div class="pp-grid">${rows.map(([k, v]) => `<span class="k">${k}</span><span>${esc(v)}</span>`).join('')}</div>` +
     (orbitFlags.get(ac.hex) ? '<div class="pp-orbit">◉ ON STATION — orbit/racetrack pattern (tanker or ISR holding)</div>' : '') +
     (posNote ? `<div class="pp-pos">${esc(posNote)}</div>` : '');

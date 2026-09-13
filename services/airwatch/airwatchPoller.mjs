@@ -92,7 +92,7 @@ export const CATEGORIES = ['ASW', 'ISR', 'TANKER', 'HEAVY', 'FIGHTER', 'HELO', '
 // ── Classification by ICAO type designator ──────────────────────────────
 // Exact designators as they appear in the feeds' `t` field. DC10 in a
 // military-only feed is a KC-10; A330s in a military-only feed are MRTT /
-// Voyager tankers.
+// Voyager tankers; 767-2Cs (B762) are KC-46A Pegasus / KC-767.
 //
 // ASW is split out from ISR because maritime patrol is the question this
 // panel gets asked most ("is anything hunting submarines out there?").
@@ -103,12 +103,12 @@ const TYPE_EXACT = {
   // Tankers
   K35R: 'TANKER', K35E: 'TANKER', K35A: 'TANKER', KC35: 'TANKER',
   K46: 'TANKER', KC46: 'TANKER', DC10: 'TANKER', KC10: 'TANKER',
-  A332: 'TANKER', A333: 'TANKER', MRTT: 'TANKER',
+  A332: 'TANKER', A333: 'TANKER', MRTT: 'TANKER', B762: 'TANKER',
   // ISR / AEW / SIGINT / high-altitude recon
   R135: 'ISR', RC135: 'ISR', C135: 'ISR', E3CF: 'ISR', E3TF: 'ISR', E3: 'ISR',
   E6: 'ISR', E8: 'ISR', E737: 'ISR', E7: 'ISR', E2: 'ISR', E2C: 'ISR', E2D: 'ISR',
   EP3: 'ISR', U2: 'ISR', RQ4: 'ISR', RQ4B: 'ISR', Q4: 'ISR', MQ9: 'ISR',
-  E11A: 'ISR',
+  E11A: 'ISR', BTB2: 'ISR',
   // Heavy lift
   C17: 'HEAVY', C5: 'HEAVY', C5M: 'HEAVY', A400: 'HEAVY',
   C130: 'HEAVY', C30J: 'HEAVY', K30J: 'HEAVY',
@@ -188,6 +188,7 @@ const MISSION = {
   RQ4: 'RQ-4 Global Hawk — high-altitude ISR',
   RQ4B: 'RQ-4B Global Hawk — high-altitude ISR',
   MQ9: 'MQ-9 Reaper — armed ISR',
+  BTB2: 'Bayraktar TB2 — armed ISR drone',
 };
 
 // Business jets flown as contractor ISR (ARTEMIS, ARES, ATHENA, BACN) share
@@ -224,6 +225,302 @@ export function missionFor(type, usMil) {
   if (MISSION[t]) return MISSION[t];
   if (usMil && MISSION_IF_US_MIL[t]) return MISSION_IF_US_MIL[t];
   return null;
+}
+
+// ── Typical role ────────────────────────────────────────────────────────
+// What a type is *normally* used for, for every aircraft (not only the
+// recon watch above). Keyed by ICAO type designator; prefix rules below
+// catch sub-variants, and the category fallback covers unknown types so
+// the popup always has something to say.
+const ROLE = {
+  // Maritime patrol / ASW
+  P8: 'Maritime patrol, anti-submarine warfare, surface search',
+  P3: 'Maritime patrol, anti-submarine warfare',
+  AP3: 'Maritime patrol, anti-submarine warfare',
+  P1: 'Maritime patrol, anti-submarine warfare',
+  ATLA: 'Maritime patrol, anti-submarine warfare',
+  S3: 'Carrier-based anti-submarine warfare, later tanker',
+  CP40: 'Maritime patrol, anti-submarine warfare, sovereignty patrols',
+  MQ4: 'Unmanned high-altitude maritime surveillance',
+  MQ4C: 'Unmanned high-altitude maritime surveillance',
+  // Tankers
+  K35R: 'Aerial refuelling, some cargo and medevac',
+  K35E: 'Aerial refuelling',
+  K35A: 'Aerial refuelling',
+  KC35: 'Aerial refuelling',
+  K46: 'Aerial refuelling, cargo, medevac',
+  KC46: 'Aerial refuelling, cargo, medevac',
+  DC10: 'Aerial refuelling and cargo (KC-10 Extender)',
+  KC10: 'Aerial refuelling and cargo',
+  A332: 'Aerial refuelling and troop/cargo transport (MRTT / Voyager)',
+  A333: 'Aerial refuelling and troop/cargo transport (MRTT)',
+  MRTT: 'Aerial refuelling and troop/cargo transport',
+  // ISR / AEW / SIGINT / comms relay
+  R135: 'Signals intelligence — listening to radars and radio',
+  RC135: 'Signals intelligence — listening to radars and radio',
+  C135: 'Reconnaissance, test and support variants',
+  EP3: 'Signals intelligence',
+  E6: 'Nuclear command relay to ballistic missile submarines (TACAMO)',
+  E3: 'Airborne early warning and control — watching the airspace',
+  E3TF: 'Airborne early warning and control — watching the airspace',
+  E3CF: 'Airborne early warning and control — watching the airspace',
+  E7: 'Airborne early warning and control',
+  E737: 'Airborne early warning and control',
+  E8: 'Ground surveillance radar and battle management',
+  E2: 'Carrier-based airborne early warning',
+  E2C: 'Carrier-based airborne early warning',
+  E2D: 'Carrier-based airborne early warning',
+  E11A: 'Airborne communications relay (BACN)',
+  U2: 'High-altitude photo and signals reconnaissance',
+  Q4: 'Unmanned high-altitude reconnaissance',
+  RQ4: 'Unmanned high-altitude reconnaissance',
+  RQ4B: 'Unmanned high-altitude reconnaissance',
+  MQ9: 'Unmanned armed surveillance and strike',
+  MQ1: 'Unmanned surveillance and strike',
+  MQ1C: 'Unmanned surveillance and strike',
+  MQ9B: 'Unmanned long-endurance surveillance',
+  BTB2: 'Unmanned armed surveillance and strike (Bayraktar TB2)',
+  // Heavy / tactical airlift
+  C17: 'Strategic airlift — troops, vehicles, cargo, medevac',
+  C5: 'Outsize strategic airlift — tanks, helicopters, bulk cargo',
+  C5M: 'Outsize strategic airlift — tanks, helicopters, bulk cargo',
+  A400: 'Strategic and tactical airlift, paradrop, refuelling',
+  C130: 'Tactical airlift, paradrop, special operations',
+  C30J: 'Tactical airlift, paradrop, special operations',
+  K30J: 'Tactical airlift and helicopter refuelling',
+  C27J: 'Light tactical airlift, short rough strips',
+  C295: 'Light tactical airlift, maritime patrol variants',
+  C160: 'Tactical airlift',
+  Y20: 'Strategic airlift (China)',
+  KC2: 'Tactical and strategic airlift (Kawasaki C-2, Japan)',
+  Y8: 'Tactical airlift and special-mission variants',
+  Y9: 'Tactical airlift and special-mission variants',
+  IL76: 'Strategic airlift, some tanker and AEW variants',
+  AN12: 'Tactical airlift',
+  AN26: 'Light tactical airlift',
+  AN24: 'Light transport',
+  AN72: 'Light tactical airlift, short rough strips',
+  AN124: 'Outsize heavy cargo',
+  C2: 'Carrier onboard delivery — mail, parts, people to ships',
+  C2A: 'Carrier onboard delivery — mail, parts, people to ships',
+  V22: 'Tilt-rotor assault transport and special operations',
+  CMV2: 'Tilt-rotor carrier onboard delivery',
+  DHC6: 'Light utility transport, paradrop, remote strips',
+  CN35: 'Light tactical airlift and maritime patrol',
+  // Airliner-based transports, VIP and staff jets
+  B762: 'Aerial refuelling, cargo, medevac (KC-46A / KC-767 on a 767 airframe)',
+  B763: 'Passenger and cargo airlift, tanker variants',
+  B752: 'VIP and staff transport (C-32), passenger airlift',
+  B737: 'VIP and staff transport (C-40), passenger airlift',
+  B738: 'VIP and staff transport (C-40), passenger airlift',
+  B38M: 'VIP and government transport (737 MAX BBJ)',
+  B744: 'Head-of-state transport, airborne command post (E-4B)',
+  B748: 'Head-of-state transport, airborne command post',
+  E4: 'Airborne command post — flying war room',
+  A310: 'Passenger transport and refuelling',
+  A319: 'VIP and government transport',
+  A320: 'VIP and government transport',
+  A321: 'VIP and government transport',
+  A343: 'Head-of-state and long-range government transport',
+  A359: 'Head-of-state and long-range government transport',
+  A388: 'Head-of-state transport',
+  C560: 'Staff and utility transport (UC-35), light cargo',
+  C56X: 'Staff and utility transport',
+  C680: 'Staff and utility transport',
+  C750: 'Staff and utility transport',
+  LJ35: 'Staff transport, medevac, target towing',
+  LJ45: 'Staff transport, medevac',
+  LJ60: 'Staff transport',
+  GLF4: 'VIP and staff transport (C-20)',
+  GLF5: 'VIP and staff transport (C-37)',
+  GLF6: 'VIP and staff transport',
+  G550: 'VIP transport, special-mission and AEW variants',
+  CL60: 'VIP and staff transport, contractor surveillance variants',
+  CL30: 'VIP and staff transport',
+  CL35: 'VIP and staff transport',
+  GLEX: 'VIP transport, radar and sensor test variants',
+  GL5T: 'VIP transport',
+  GL6X: 'VIP transport',
+  F2TH: 'VIP and government transport (Falcon 2000)',
+  F900: 'VIP and government transport (Falcon 900)',
+  FA7X: 'VIP and government transport (Falcon 7X)',
+  FA8X: 'VIP and government transport (Falcon 8X)',
+  FA50: 'VIP transport and maritime surveillance variants',
+  FA20: 'Utility, electronic warfare training, maritime surveillance',
+  E35L: 'VIP and staff transport (Legacy 600)',
+  E135: 'VIP transport, AEW and surveillance variants',
+  E145: 'VIP transport, AEW and surveillance variants',
+  E190: 'VIP and government transport',
+  H25B: 'Utility, navaid calibration, radar training',
+  BE20: 'Light utility transport, surveillance variants',
+  B350: 'Light utility transport, surveillance variants',
+  B200: 'Light utility transport, training, surveillance variants',
+  PC12: 'Light utility transport, special-operations surveillance',
+  PC24: 'Light utility and medevac transport',
+  DH8D: 'Light passenger transport, maritime patrol variants',
+  AT72: 'Light passenger transport, maritime patrol variants',
+  SB20: 'Light passenger transport, AEW variants',
+  // Fighters and attack
+  F16: 'Multirole fighter — air combat and ground attack',
+  F15: 'Air superiority fighter (F-15E: strike)',
+  F15E: 'Strike fighter — long-range ground attack',
+  F18: 'Carrier-based multirole fighter',
+  F18S: 'Carrier-based multirole fighter',
+  F14: 'Fleet air defence fighter',
+  F22: 'Stealth air superiority fighter',
+  F35: 'Stealth multirole strike fighter',
+  F4: 'Multirole fighter (legacy)',
+  F5: 'Light fighter, aggressor and lead-in training',
+  A10: 'Close air support — attacking ground forces',
+  EUFI: 'Multirole fighter (Eurofighter Typhoon)',
+  TYPH: 'Multirole fighter (Eurofighter Typhoon)',
+  RFAL: 'Multirole fighter (Rafale)',
+  MIR2: 'Multirole fighter (Mirage 2000)',
+  M2000: 'Multirole fighter (Mirage 2000)',
+  TOR: 'Strike and electronic-warfare aircraft (Tornado)',
+  MG29: 'Air superiority fighter (MiG-29)',
+  MG31: 'High-speed interceptor (MiG-31)',
+  SU27: 'Air superiority fighter (Su-27)',
+  SU30: 'Multirole fighter (Su-30)',
+  SU34: 'Strike fighter (Su-34)',
+  SU35: 'Multirole fighter (Su-35)',
+  SU57: 'Stealth multirole fighter (Su-57)',
+  SU24: 'Strike bomber (Su-24)',
+  SU25: 'Close air support (Su-25)',
+  J10: 'Multirole fighter (China)',
+  J11: 'Air superiority fighter (China)',
+  J16: 'Strike fighter (China)',
+  J20: 'Stealth fighter (China)',
+  GRIP: 'Multirole fighter (Gripen)',
+  HAWK: 'Advanced jet trainer, light attack',
+  EA18: 'Electronic attack — jamming enemy radars',
+  EA6: 'Electronic attack — jamming enemy radars',
+  B52: 'Long-range heavy bomber',
+  B1: 'Long-range supersonic bomber',
+  B2: 'Stealth heavy bomber',
+  TU95: 'Long-range bomber and missile carrier',
+  TU160: 'Supersonic long-range bomber',
+  TU22: 'Long-range bomber and maritime strike',
+  H6: 'Long-range bomber and missile carrier (China)',
+  // Trainers
+  TEX2: 'Primary pilot training (T-6 Texan II)',
+  T6: 'Primary pilot training',
+  T38: 'Advanced jet pilot training, aggressor',
+  T45: 'Carrier-capable jet pilot training',
+  T7: 'Advanced jet pilot training',
+  T1: 'Multi-engine and tanker/transport pilot training',
+  PC21: 'Advanced turboprop pilot training',
+  PC9: 'Basic and advanced pilot training',
+  PC7: 'Basic pilot training',
+  PC6: 'Utility, paradrop and short-strip transport',
+  M346: 'Advanced jet pilot training',
+  L39: 'Jet pilot training, light attack',
+  L159: 'Light attack and advanced training',
+  AJET: 'Jet pilot training and aerobatic display',
+  TUCA: 'Basic pilot training, light attack',
+  EMB3: 'Basic pilot training, light attack',
+  F260: 'Basic pilot training and screening',
+  G120: 'Basic pilot training',
+  T34: 'Basic pilot training',
+  C172: 'Basic flight screening and cadet training',
+  DA40: 'Basic flight screening',
+  DA42: 'Multi-engine training, surveillance variants',
+  // Helicopters
+  H60: 'Utility and assault transport, medevac, combat search and rescue',
+  H47: 'Heavy-lift transport — troops, artillery, vehicles',
+  H53: 'Heavy-lift transport and special operations',
+  H53S: 'Heavy-lift transport and special operations',
+  H64: 'Attack helicopter — anti-armour and close support',
+  AH1: 'Attack helicopter — close support',
+  UH1: 'Utility transport and training',
+  UH1Y: 'Utility transport, assault, medevac',
+  OH58: 'Armed scout and observation',
+  H1: 'Utility transport',
+  NH90: 'Tactical transport and naval utility',
+  EH10: 'Medium transport, search and rescue, naval utility (Merlin)',
+  TIGR: 'Attack and armed reconnaissance helicopter',
+  LYNX: 'Naval utility, anti-ship and anti-submarine',
+  WCAT: 'Naval utility, anti-ship and anti-submarine (Wildcat)',
+  AS65: 'Search and rescue, naval utility (Dauphin / MH-65)',
+  EC45: 'Light utility, training, medevac',
+  EC35: 'Light utility, training, medevac',
+  EC55: 'Light utility and VIP transport',
+  H145: 'Light utility, training, medevac',
+  H135: 'Light utility and training',
+  S92: 'Search and rescue, VIP transport',
+  S61: 'Search and rescue, transport',
+  A139: 'Utility, search and rescue, VIP transport',
+  A109: 'Light utility, training, medevac',
+  AS32: 'Medium transport, search and rescue, special operations',
+  H225: 'Medium transport, search and rescue, special operations',
+  AS50: 'Light utility and training',
+  B412: 'Utility transport, search and rescue',
+  B429: 'Light utility and training',
+  B06: 'Light utility and training',
+  KA50: 'Attack helicopter',
+  KA52: 'Attack and reconnaissance helicopter',
+  MI8: 'Medium transport and assault',
+  MI17: 'Medium transport and assault',
+  MI24: 'Attack helicopter and assault transport',
+  MI28: 'Attack helicopter',
+  MI26: 'Heavy-lift transport',
+  // Other mission types
+  E4B: 'Airborne command post — flying war room',
+  WC13: 'Weather reconnaissance — hurricane hunting',
+  HC13: 'Combat search and rescue, helicopter refuelling',
+  MC13: 'Special operations infiltration and refuelling',
+  AC13: 'Gunship — close air support',
+  EC13: 'Psychological and electronic operations',
+  OV10: 'Forward air control and light attack',
+  A29: 'Light attack and armed reconnaissance',
+  AT6: 'Light attack and armed reconnaissance',
+  SR71: 'High-speed strategic reconnaissance',
+};
+
+// Prefix rules for families with many sub-designators, checked after exact
+// matches so a specific entry always wins.
+const ROLE_PREFIX = [
+  ['P8', ROLE.P8], ['K35', ROLE.K35R], ['R135', ROLE.R135],
+  ['RQ4', ROLE.RQ4], ['MQ9', ROLE.MQ9], ['C130', ROLE.C130],
+  ['F16', ROLE.F16], ['F15E', ROLE.F15E], ['F15', ROLE.F15], ['F18', ROLE.F18],
+  ['F14', ROLE.F14], ['F22', ROLE.F22], ['F35', ROLE.F35],
+  ['A10', ROLE.A10], ['EUFI', ROLE.EUFI], ['TYPH', ROLE.TYPH],
+  ['RFAL', ROLE.RFAL], ['MIR2', ROLE.MIR2], ['M2000', ROLE.M2000], ['TOR', ROLE.TOR],
+  ['MG29', ROLE.MG29], ['MG31', ROLE.MG31], ['SU27', ROLE.SU27], ['SU30', ROLE.SU30],
+  ['SU34', ROLE.SU34], ['SU35', ROLE.SU35], ['SU57', ROLE.SU57],
+  ['H47', ROLE.H47], ['H53', ROLE.H53], ['H60', ROLE.H60], ['H64', ROLE.H64],
+  ['UH1', ROLE.UH1], ['AH1', ROLE.AH1], ['MI8', ROLE.MI8], ['MI17', ROLE.MI17],
+  ['B52', ROLE.B52], ['GLF', ROLE.GLF5],
+  ['TEX', ROLE.TEX2], ['PC12', ROLE.PC12], ['PC21', ROLE.PC21], ['HAWK', ROLE.HAWK],
+];
+
+// Last resort when the type is unknown or missing: say what the category
+// usually means rather than leaving the popup blank.
+const ROLE_BY_CAT = {
+  ASW: 'Maritime patrol, anti-submarine warfare',
+  ISR: 'Intelligence, surveillance and reconnaissance',
+  TANKER: 'Aerial refuelling',
+  HEAVY: 'Airlift — troops, vehicles, cargo',
+  FIGHTER: 'Air combat and ground attack',
+  HELO: 'Rotary-wing transport, utility or attack',
+  OTHER: 'Transport, training or utility (type not identified)',
+};
+
+/**
+ * What this type of aircraft is normally used for. Always returns a
+ * string: the type table first, then family prefixes, then the category.
+ * @param {string} type ICAO type designator
+ * @param {string} cat one of CATEGORIES (used only as the fallback)
+ */
+export function roleFor(type, cat) {
+  const t = normType(type);
+  if (t && ROLE[t]) return ROLE[t];
+  if (t) {
+    for (const [prefix, role] of ROLE_PREFIX) {
+      if (t.startsWith(prefix)) return role;
+    }
+  }
+  return ROLE_BY_CAT[cat] || ROLE_BY_CAT.OTHER;
 }
 
 // ── Origin country from ICAO 24-bit hex allocation ──────────────────────
@@ -341,6 +638,7 @@ export function normalizeAircraft(ac) {
     : Number.isFinite(Number(ac?.true_heading)) ? Number(ac.true_heading) : null;
   const usMil = isUsMilHex(ac?.hex);
   const mission = missionFor(type, usMil);
+  const cat = classify(type, ac?.category);
 
   return {
     hex: String(ac?.hex || '').trim(),
@@ -349,8 +647,9 @@ export function normalizeAircraft(ac) {
     type,
     desc: ac?.desc || null,
     operator: ac?.ownOp || null,
-    cat: classify(type, ac?.category),
+    cat,
     mission,
+    role: roleFor(type, cat),
     recon: Boolean(mission),
     usMil,
     lat, lon, alt, posSource, onGround,

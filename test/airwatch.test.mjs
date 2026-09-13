@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   classify, hexCountry, inRegion, normalizeAircraft, countByCategory,
-  backoffDelay, missionFor, isUsMilHex, buildSample, getSnapshot, getSourceStatus,
+  backoffDelay, missionFor, roleFor, isUsMilHex, buildSample, getSnapshot, getSourceStatus,
   CATEGORIES, REGION, THEATRES, THEATRE_IDS, DEFAULT_THEATRE,
 } from '../services/airwatch/airwatchPoller.mjs';
 import {
@@ -15,12 +15,55 @@ import {
 } from '../services/airwatch/airwatchBaseline.mjs';
 import airwatchRouter from '../services/airwatch/airwatchRouter.mjs';
 
+describe('airwatch typical role', () => {
+  test('every type gets a plain-language role, recon or not', () => {
+    assert.match(roleFor('C17', 'HEAVY'), /airlift/i);
+    assert.match(roleFor('K35R', 'TANKER'), /refuelling/i);
+    assert.match(roleFor('H60', 'HELO'), /transport/i);
+    assert.match(roleFor('TEX2', 'OTHER'), /training/i);
+    assert.match(roleFor('P8', 'ASW'), /submarine/i);
+  });
+
+  test('family prefixes cover sub-variants', () => {
+    assert.equal(roleFor('F16C', 'FIGHTER'), roleFor('F16', 'FIGHTER'));
+    assert.equal(roleFor('H60M', 'HELO'), roleFor('H60', 'HELO'));
+  });
+
+  test('civilian look-alike codes do not inherit military family roles', () => {
+    assert.match(roleFor('E35L', 'OTHER'), /Legacy 600/);
+    assert.doesNotMatch(roleFor('E295', 'OTHER'), /early warning/i);
+    assert.doesNotMatch(roleFor('P32R', 'OTHER'), /submarine/i);
+    assert.doesNotMatch(roleFor('F406', 'OTHER'), /fighter/i);
+  });
+
+  test('unknown or missing type falls back to the category', () => {
+    assert.match(roleFor('ZZZZ', 'TANKER'), /refuelling/i);
+    assert.match(roleFor(null, 'OTHER'), /not identified/i);
+    assert.match(roleFor('', 'BOGUS'), /not identified/i);
+  });
+
+  test('feed-specific codes seen live are named correctly', () => {
+    assert.match(roleFor('KC2', 'OTHER'), /Kawasaki C-2/);
+    assert.match(roleFor('BTB2', 'ISR'), /Bayraktar/);
+    assert.equal(classify('BTB2'), 'ISR');
+  });
+
+  test('normalizeAircraft carries the role through to the record', () => {
+    const ac = normalizeAircraft({ hex: 'ae1234', t: 'C17', lat: 38.9, lon: -77, alt_baro: 30000 });
+    assert.match(ac.role, /airlift/i);
+    assert.equal(ac.mission, null);
+    const unk = normalizeAircraft({ hex: 'ae1235', lat: 38.9, lon: -77, alt_baro: 30000 });
+    assert.match(unk.role, /not identified/i);
+  });
+});
+
 describe('airwatch classification', () => {
   test('classifies tankers by type designator', () => {
     assert.equal(classify('K35R'), 'TANKER');
     assert.equal(classify('K46'), 'TANKER');
     assert.equal(classify('DC10'), 'TANKER'); // KC-10 in a mil-only feed
     assert.equal(classify('A332'), 'TANKER'); // MRTT / Voyager in a mil-only feed
+    assert.equal(classify('B762'), 'TANKER'); // KC-46A Pegasus in a mil-only feed
   });
 
   test('maritime patrol is its own category, not lumped into ISR', () => {
