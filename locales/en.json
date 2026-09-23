@@ -82,6 +82,7 @@
     "euBackground": "EU Radiation Background",
     "noBackground": "no data",
     "median": "median",
+    "rising": "rising",
     "rssGeolocated": "RSS geolocated",
     "earthquakes": "Earthquakes",
     "seismicEvents": "Seismic Events",
@@ -204,6 +205,7 @@
   "nuclear": {
     "euBackground": "European background",
     "stateMonitors": "state monitors",
+    "risingVsOwn": "above own baseline",
     "peak": "peak",
     "allSitesNormal": "ALL SITES NORMAL",
     "anomalyDetected": "ANOMALY DETECTED",

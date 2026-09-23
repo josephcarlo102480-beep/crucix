@@ -7,6 +7,7 @@
     "start": "node server.mjs",
     "dev": "node --trace-warnings server.mjs",
     "test": "node --test test/*.test.mjs",
+    "test:future": "node scripts/test-future.mjs",
     "sweep": "node apis/briefing.mjs",
     "inject": "node dashboard/inject.mjs",
     "brief": "node apis/briefing.mjs",

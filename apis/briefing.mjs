@@ -13,7 +13,7 @@ import { briefing as opensky } from './sources/opensky.mjs';
 import { briefing as firms } from './sources/firms.mjs';
 import { briefing as ships } from './sources/ships.mjs';
 import { briefing as safecast } from './sources/safecast.mjs';
-import { briefing as radiationEu } from './sources/radiation-eu.mjs';
+import { sweepBriefing as radiationEu } from './sources/radiation-eu.mjs';
 import { briefing as acled } from './sources/acled.mjs';
 import { briefing as reliefweb } from './sources/reliefweb.mjs';
 import { briefing as who } from './sources/who.mjs';

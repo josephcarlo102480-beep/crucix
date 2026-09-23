@@ -832,7 +832,7 @@ function defaultDashboardData(){
     airMeta:{},sdr:{total:0,online:0,zones:[]},
     who:[],fred:[],energy:{wti:null,brent:null,natgas:null,wtiRecent:[],signals:[]},
     bls:[],treasury:{totalDebt:null,signals:[]},gscpi:null,defense:[],noaa:{totalAlerts:null,alerts:[]},
-    epa:{totalReadings:null,stations:[]},radBackground:{status:'failed',networks:[],stationsFresh:0,medianUSvH:null,maxUSvH:null,anomaly:null,elevated:[],stations:[],signals:[],lastObservationAt:null,error:null},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
+    epa:{totalReadings:null,stations:[]},radBackground:{status:'failed',networks:[],stationsFresh:0,medianUSvH:null,maxUSvH:null,anomaly:null,elevated:[],risingCount:null,rising:[],baselineStations:0,stations:[],signals:[],lastObservationAt:null,error:null},acled:{totalEvents:null,totalFatalities:null,regions:[],deadliestEvents:[]},
     gdelt:{totalArticles:0,geoPoints:[]},space:null,health:[],news:[],markets:{indexes:[],crypto:[],rates:[],commodities:[],vix:null},
     ideas:[],ideasSource:'disabled',ideasMode:'disabled',ideasGeneratedAt:null,newsFeed:[],delta:{summary:{totalChanges:0,criticalChanges:0,direction:'mixed'},signals:{new:[],escalated:[],deescalated:[]}}
   };
@@ -872,6 +872,7 @@ function normalizeDashboardData(input){
   merged.radBackground.stations = asArray(merged.radBackground.stations);
   merged.radBackground.networks = asArray(merged.radBackground.networks);
   merged.radBackground.elevated = asArray(merged.radBackground.elevated);
+  merged.radBackground.rising = asArray(merged.radBackground.rising);
   merged.acled = {...base.acled,...(data.acled && typeof data.acled === 'object' ? data.acled : {})};
   merged.acled.regions = asArray(merged.acled.regions);
   merged.acled.deadliestEvents = asArray(merged.acled.deadliestEvents);
@@ -915,6 +916,13 @@ function radiationLabel(site){
   if(site?.status === 'no_coverage') return 'NO SENSORS IN RANGE';
   if(site?.status !== 'healthy') return site?.status === 'stale' ? 'STALE · UNKNOWN NOW' : 'NO CURRENT DATA';
   return site.anom ? 'ANOMALY' : 'NORMAL';
+}
+
+// Popup note for an EU probe reading well above its own recent median.
+function euBaselineNote(station){
+  return station?.rising === true && Number.isFinite(station?.baselineUSvH)
+    ? `<br>Usual here: ${station.baselineUSvH.toFixed(3)} µSv/h (72h median) — rising`
+    : '';
 }
 
 // Median dose rate for a Safecast site; CPM only when an older cache lacks it.
@@ -1364,8 +1372,9 @@ function renderLeftRail(){
      items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'REFERENCE',meta:cp.note||'Chokepoint',detail:`Static location; no live vessel observations. ${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
      items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:radiationLabel(n),meta:`${nukeDose(n)} · ${n.n} recent readings`,detail:`Last observation: ${sourceTimestamp(n.lastReading)}`}:null}).filter(Boolean)},
-    {name:t('layers.euBackground','EU Radiation Background'),count:D.radBackground.stationsFresh,dot:'radiation',cat:'radiation',sub:D.radBackground.medianUSvH==null?t('layers.noBackground','no data'):`${t('layers.median','median')} ${D.radBackground.medianUSvH.toFixed(3)} µSv/h`,
-     items:[...D.radBackground.elevated.map(s=>({name:s.name,lat:s.lat,lon:s.lon,status:'ELEVATED',meta:`${s.uSvH.toFixed(3)} µSv/h · ${s.network}`,detail:`Last observation: ${sourceTimestamp(s.observedAt)}`})),
+    {name:t('layers.euBackground','EU Radiation Background'),count:D.radBackground.stationsFresh,dot:'radiation',cat:'radiation',sub:D.radBackground.medianUSvH==null?t('layers.noBackground','no data'):`${D.radBackground.risingCount>0?`${D.radBackground.risingCount} ${t('layers.rising','rising')} · `:''}${t('layers.median','median')} ${D.radBackground.medianUSvH.toFixed(3)} µSv/h`,
+     items:[...D.radBackground.rising.map(s=>({name:s.name,lat:s.lat,lon:s.lon,status:'RISING',meta:`${s.uSvH.toFixed(3)} vs usual ${s.baselineUSvH.toFixed(3)} µSv/h (×${s.ratio.toFixed(1)}) · ${s.network}`,detail:`Compared with this station's own 72h median. Heavy rain can cause short rises. Last observation: ${sourceTimestamp(s.observedAt)}`})),
+       ...D.radBackground.elevated.map(s=>({name:s.name,lat:s.lat,lon:s.lon,status:'ELEVATED',meta:`${s.uSvH.toFixed(3)} µSv/h · ${s.network}`,detail:`Last observation: ${sourceTimestamp(s.observedAt)}`})),
        ...D.radBackground.networks.map(n=>({name:n.network==='BfS'?'Germany · BfS ODL':n.network==='STUK'?'Finland · STUK':n.network,lat:n.network==='BfS'?51.2:64.5,lon:n.network==='BfS'?10.4:26,status:n.status==='healthy'?'NORMAL':n.status.toUpperCase(),meta:n.medianUSvH==null?`${n.stations} stations · no fresh data`:`median ${n.medianUSvH.toFixed(3)} · max ${n.maxUSvH.toFixed(3)} µSv/h · ${n.fresh} stations`,detail:n.maxStation?`Peak at ${n.maxStation} · Last observation: ${sourceTimestamp(n.lastObservationAt)}`:`Last observation: ${sourceTimestamp(n.lastObservationAt)}`}))]},
     {name:t('layers.conflictEvents','Conflict Events'),count:conflictEvents,dot:'thermal',cat:'conflict',sub:`${conflictFatal} ${t('layers.fatalities','fatalities')}`,
      items:(D.acled?.regions||[]).map(r=>({name:r.region||r.country||'Unknown',lat:r.lat||0,lon:r.lon||0,status:`${r.events||0} events`,meta:`${(r.fatalities||0).toLocaleString()} fatalities`,detail:r.topType||'Armed conflict'})).filter(r=>r.lat!==0)},
@@ -1385,7 +1394,7 @@ function renderLeftRail(){
   const bg=D.radBackground;
   const bgHtml=bg.medianUSvH==null
     ?`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${escapeHtml(bg.error||t('nuclear.noData','No data'))}</span></span><span class="site-val">${t('nuclear.noData','No data')}</span></div>`
-    :`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${bg.stationsFresh.toLocaleString()} ${t('nuclear.stateMonitors','state monitors')} · ${t('nuclear.peak','peak')} ${bg.maxUSvH.toFixed(3)} · ${escapeHtml(sourceTimestamp(bg.lastObservationAt))}</span></span><span class="site-val" style="${bg.anomaly?'color:var(--danger)':''}">${bg.medianUSvH.toFixed(3)} µSv/h</span></div>`;
+    :`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${bg.stationsFresh.toLocaleString()} ${t('nuclear.stateMonitors','state monitors')} · ${t('nuclear.peak','peak')} ${bg.maxUSvH.toFixed(3)}${bg.risingCount>0?` · <span style="color:var(--warn)">${bg.risingCount} ${t('nuclear.risingVsOwn','above own baseline')}</span>`:''} · ${escapeHtml(sourceTimestamp(bg.lastObservationAt))}</span></span><span class="site-val" style="${bg.anomaly?'color:var(--danger)':''}">${bg.medianUSvH.toFixed(3)} µSv/h</span></div>`;
   const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}" role="button" tabindex="0"><span>${escapeHtml(s.site)}<span class="site-age">Last observation: ${escapeHtml(sourceTimestamp(s.lastReading))}</span></span><span class="site-val">${s.status === 'healthy'?nukeDose(s):s.status === 'stale'?'Stale':s.status === 'no_coverage'?'No sensors':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
@@ -1875,8 +1884,8 @@ function plotMarkers(){
   asArray(D?.radBackground?.stations).forEach(station=>{
     const coords = finiteMapCoords(station);
     if(!coords) return;
-    const hot = Number(station?.uSvH) >= 0.5;
-    points.push({lat:coords.lat,lng:coords.lon,size:hot?0.2:0.12,alt:0.004,color:MAP_TYPE_COLORS.radiation,type:'radiation',priority:hot?2:4,popHead:`${station?.network || 'EU'}: ${station?.name || 'Station'}`,popMeta:'European Dose-Rate Monitor',popText:`${fmtNum(station?.uSvH,3,'--')} µSv/h<br>Last observation: ${sourceTimestamp(station?.observedAt)}`});
+    const hot = Number(station?.uSvH) >= 0.5 || station?.rising === true;
+    points.push({lat:coords.lat,lng:coords.lon,size:hot?0.2:0.12,alt:0.004,color:MAP_TYPE_COLORS.radiation,type:'radiation',priority:hot?2:4,popHead:`${station?.network || 'EU'}: ${station?.name || 'Station'}`,popMeta:'European Dose-Rate Monitor',popText:`${fmtNum(station?.uSvH,3,'--')} µSv/h${euBaselineNote(station)}<br>Last observation: ${sourceTimestamp(station?.observedAt)}`});
   });
 
   // === Space stations ===
@@ -2263,8 +2272,8 @@ function plotFlatMarkers(){
   // European background dose-rate monitors: small squares, brighter when elevated.
   asArray(D?.radBackground?.stations).forEach(station=>{
     const coords=finiteMapCoords(station);if(!coords)return;
-    const hot=Number(station?.uSvH)>=0.5;
-    const g=bindPopup(markerGroup(coords.lat,coords.lon,'radiation',hot?2:4),event=>showPopup(event,`${station?.network || 'EU'}: ${station?.name || 'Station'}`,`${fmtNum(station?.uSvH,3,'--')} µSv/h<br>Last observation: ${sourceTimestamp(station?.observedAt)}`,'Radiation-EU'));
+    const hot=Number(station?.uSvH)>=0.5 || station?.rising===true;
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'radiation',hot?2:4),event=>showPopup(event,`${station?.network || 'EU'}: ${station?.name || 'Station'}`,`${fmtNum(station?.uSvH,3,'--')} µSv/h${euBaselineNote(station)}<br>Last observation: ${sourceTimestamp(station?.observedAt)}`,'Radiation-EU'));
     if(g)g.append('rect').attr('x',hot?-2.4:-1.6).attr('y',hot?-2.4:-1.6).attr('width',hot?4.8:3.2).attr('height',hot?4.8:3.2).attr('fill',mapRgba(MAP_TYPE_COLORS.radiation,hot?0.8:0.42)).attr('stroke',mapRgba(MAP_TYPE_COLORS.radiation,hot?0.5:0.22)).attr('stroke-width',0.5);
   });
 

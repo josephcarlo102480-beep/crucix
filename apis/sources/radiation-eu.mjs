@@ -8,6 +8,7 @@
 
 import { safeFetch } from '../utils/fetch.mjs';
 import { RADIATION_MAX_AGE_MS } from '../../lib/radiation.mjs';
+import { openStationHistory, findRisingStations, RISE_RATIO } from '../../lib/radiation-history.mjs';
 
 export const BFS_URL = 'https://www.imis.bfs.de/ogc/opendata/ows?service=WFS&version=1.1.0&request=GetFeature'
   + '&typeName=opendata:odlinfo_odl_1h_latest&outputFormat=application/json';
@@ -86,7 +87,7 @@ export function thinStations(stations, cellDeg = THIN_GRID_DEG) {
   for (const s of stations) {
     const key = `${Math.floor(s.lat / cellDeg)}:${Math.floor(s.lon / cellDeg)}`;
     const cur = cells.get(key);
-    if (!cur || s.uSvH > cur.uSvH) cells.set(key, s);
+    if (!cur || (s.rank ?? s.uSvH) > (cur.rank ?? cur.uSvH)) cells.set(key, s);
   }
   return [...cells.values()];
 }
@@ -116,8 +117,13 @@ function summariseNetwork(network, stations, fetchError, now) {
   };
 }
 
+/**
+ * @param {object} [opts]
+ * @param {object|null} [opts.history] station history store (lib/radiation-history.mjs).
+ *   Omitted = no per-station baselines; the sweep passes the persistent store.
+ */
 export async function briefing(opts = {}) {
-  const { signal, now = Date.now() } = opts || {};
+  const { signal, now = Date.now(), history = null } = opts || {};
   const [bfsRaw, stukRaw] = await Promise.all([
     safeFetch(BFS_URL, { timeout: 25000, retries: 0, signal }),
     safeFetch(STUK_URL, { timeout: 25000, retries: 0, signal, responseType: 'text' }),
@@ -138,6 +144,22 @@ export async function briefing(opts = {}) {
     .sort((a, b) => b.uSvH - a.uSvH).slice(0, 10)
     .map(s => ({ network: s.network, name: s.name, lat: round(s.lat, 3), lon: round(s.lon, 3), uSvH: round(s.uSvH, 3), observedAt: s.observedAt }));
 
+  // Each probe against its own recent median. History problems must never
+  // cost the source its data, so failures only switch the comparison off.
+  let rising = [];
+  let baselineStations = 0;
+  if (history && fresh.length) {
+    try {
+      const baselines = history.baselines(fresh, now);
+      baselineStations = baselines.size;
+      rising = findRisingStations(fresh, baselines);
+      history.record(fresh, now);
+    } catch (err) {
+      console.error('[Radiation-EU] station history unavailable:', err?.message || err);
+    }
+  }
+  const risingBaseline = new Map(rising.map(r => [r.station.id, r.baselineUSvH]));
+
   const healthy = networks.filter(n => n.status === 'healthy');
   const medianUSvH = fresh.length ? round(median(fresh.map(s => s.uSvH)), 3) : null;
   // BfS outnumbers STUK roughly 6:1, so a combined median would hide a rise
@@ -150,7 +172,11 @@ export async function briefing(opts = {}) {
     const detail = anomalousNetworks.map(n => `${n.network} median ${n.medianUSvH.toFixed(2)} µSv/h over ${n.fresh} stations`).join('; ');
     signals.push(`ELEVATED RADIATION across European background network: ${detail} (normal: <0.30)`);
   } else if (elevated.length) signals.push(`${elevatedAll.length} European station${elevatedAll.length === 1 ? '' : 's'} above ${ELEVATED_STATION_USVH} µSv/h (peak ${elevated[0].uSvH} at ${elevated[0].name}); network median ${medianUSvH.toFixed(2)} is normal`);
-  else if (healthy.length === networks.length) signals.push(`European background normal: median ${medianUSvH.toFixed(2)} µSv/h across ${fresh.length} state monitors (${healthy.map(n => n.network).join(' + ')})`);
+  if (rising.length) {
+    const top = rising[0];
+    signals.push(`${rising.length} European station${rising.length === 1 ? '' : 's'} at ≥${RISE_RATIO}× ${rising.length === 1 ? 'its' : 'their'} own 72h median (largest: ${top.station.name} ${round(top.station.uSvH, 3)} vs ${round(top.baselineUSvH, 3)} µSv/h). Heavy rain can cause short rises; check neighbouring stations.`);
+  }
+  if (!signals.length && healthy.length === networks.length) signals.push(`European background normal: median ${medianUSvH.toFixed(2)} µSv/h across ${fresh.length} state monitors (${healthy.map(n => n.network).join(' + ')})`);
 
   const failed = networks.filter(n => n.status !== 'healthy');
   const out = {
@@ -164,9 +190,18 @@ export async function briefing(opts = {}) {
     anomaly,
     elevatedCount: elevatedAll.length,
     elevated,
+    // Stations at >= RISE_RATIO x their own recent median (null = no history yet).
+    risingCount: history ? rising.length : null,
+    rising: rising.slice(0, 10).map(({ station: s, baselineUSvH, ratio }) => ({
+      network: s.network, name: s.name, lat: round(s.lat, 3), lon: round(s.lon, 3),
+      uSvH: round(s.uSvH, 3), baselineUSvH: round(baselineUSvH, 3), ratio: round(ratio, 2), observedAt: s.observedAt,
+    })),
+    baselineStations,
     // Thinned for the map: highest reading per grid cell, coordinates rounded.
-    stations: thinStations(fresh).map(s => ({
+    // Rising stations win their grid cell so thinning cannot hide them.
+    stations: thinStations(fresh.map(s => ({ ...s, rank: risingBaseline.has(s.id) ? s.uSvH + 1000 : s.uSvH }))).map(s => ({
       network: s.network, name: s.name, lat: round(s.lat, 3), lon: round(s.lon, 3), uSvH: round(s.uSvH, 3), observedAt: s.observedAt,
+      ...(risingBaseline.has(s.id) ? { rising: true, baselineUSvH: round(risingBaseline.get(s.id), 3) } : {}),
     })),
     signals,
     lastObservationAt: networks.map(n => n.lastObservationAt).filter(Boolean).sort().at(-1) || null,
@@ -185,4 +220,14 @@ export async function briefing(opts = {}) {
 if (process.argv[1]?.endsWith('radiation-eu.mjs')) {
   const data = await briefing();
   console.log(JSON.stringify({ ...data, stations: `${data.stations.length} stations (omitted)` }, null, 2));
+}
+
+// The sweep's entry point: same briefing, with the persistent station history.
+let sweepHistory;
+export async function sweepBriefing(opts = {}) {
+  sweepHistory ??= openStationHistory().catch(err => {
+    console.error('[Radiation-EU] could not open station history:', err?.message || err);
+    return null;
+  });
+  return briefing({ ...opts, history: await sweepHistory });
 }

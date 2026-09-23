@@ -82,6 +82,7 @@
     "euBackground": "Fond Radiologique UE",
     "noBackground": "pas de données",
     "median": "médiane",
+    "rising": "en hausse",
     "rssGeolocated": "RSS géolocalisé",
     "earthquakes": "Séismes",
     "seismicEvents": "Événements Sismiques",
@@ -204,6 +205,7 @@
   "nuclear": {
     "euBackground": "Fond européen",
     "stateMonitors": "moniteurs d'État",
+    "risingVsOwn": "au-dessus de leur base",
     "peak": "pic",
     "allSitesNormal": "TOUS LES SITES NORMAUX",
     "anomalyDetected": "ANOMALIE DÉTECTÉE",

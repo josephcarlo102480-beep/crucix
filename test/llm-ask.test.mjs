@@ -61,3 +61,15 @@ describe('Ask AI helpers', () => {
     assert.equal(result.model, 'gpt-5.5');
   });
 });
+
+describe('radiation background in the Ask AI context', () => {
+  it('is grouped with the map layers as a summary without the map points', () => {
+    const compact = compactDashboardForAsk({
+      radBackground: { medianUSvH: 0.11, anomaly: false, risingCount: 1, rising: [{ name: 'P' }], stations: [{ lat: 1, lon: 2 }] },
+    });
+    assert.equal(compact.mapLayers.radiationBackground.medianUSvH, 0.11);
+    assert.equal(compact.mapLayers.radiationBackground.risingCount, 1);
+    assert.equal(compact.mapLayers.radiationBackground.stations, undefined);
+    assert.equal(compact.additional?.radBackground, undefined);
+  });
+});
