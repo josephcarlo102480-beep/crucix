@@ -535,11 +535,14 @@ export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.n
       site: s.site, status, lastReading: s.lastReading || null,
       anom: status === 'healthy' ? Boolean(s.anomaly) : null,
       cpm: status === 'healthy' ? s.avgCPM : null,
+      uSvH: status === 'healthy' && Number.isFinite(s.avgUSvH) ? s.avgUSvH : null,
       n: status === 'healthy' ? s.recentReadings : 0,
       error: status === 'healthy' ? null : s.error || `Radiation observations are ${status}`,
     };
   });
-  const nukeSignals = nuke.filter(s => s.anom).map(s => `ELEVATED RADIATION at ${s.site}: ${s.cpm.toFixed(1)} CPM`);
+  // The anomaly is decided in µSv/h; CPM depends on the tube, so it is only a fallback.
+  const nukeSignals = nuke.filter(s => s.anom).map(s => `ELEVATED RADIATION at ${s.site}: ${
+    Number.isFinite(s.uSvH) ? `${s.uSvH.toFixed(2)} µSv/h median` : `${s.cpm?.toFixed(1) ?? '--'} CPM`}`);
   // Sites with no sensors in range are permanent, declared gaps; they neither
   // block the all-clear nor count as a source outage.
   const covered = nuke.filter(s => s.status !== 'no_coverage');
@@ -643,6 +646,7 @@ export async function synthesize(data, { newsLoader = fetchAllNews, now = Date.n
     medianUSvH: Number.isFinite(radEu.medianUSvH) ? radEu.medianUSvH : null,
     maxUSvH: Number.isFinite(radEu.maxUSvH) ? radEu.maxUSvH : null,
     anomaly: typeof radEu.anomaly === 'boolean' ? radEu.anomaly : null,
+    elevatedCount: radEu.elevatedCount ?? (radEu.elevated || []).length,
     elevated: (radEu.elevated || []).slice(0, 10),
     stations: (radEu.stations || []).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon)).slice(0, 600),
     signals: radEu.signals || [],

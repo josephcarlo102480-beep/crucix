@@ -24,10 +24,15 @@ const INDICATORS = {
 
 // Get Disease Outbreak News via WHO JSON API
 // The old RSS feed at /feeds/entity/don/en/rss.xml returns 404.
-// This JSON endpoint returns ~50 items; OData $orderby is ignored by
-// the server, so we sort client-side by PublicationDate descending.
+// Without an explicit order the endpoint returns its 50 oldest items
+// (2004 onwards), so every recent notice fell outside the 30-day window.
+// It honours $orderby on PublicationDateAndTime; we still sort client-side
+// in case that ever changes.
+const DON_QUERY = '?$orderby=PublicationDateAndTime%20desc&$top=50';
+const ARCHIVE_ONLY_MS = 365 * 24 * 60 * 60 * 1000;
+
 export async function getOutbreakNews(opts = {}) {
-  const data = await safeFetch(DON_API, { timeout: 15000, signal: opts.signal });
+  const data = await safeFetch(DON_API + DON_QUERY, { timeout: 15000, signal: opts.signal });
 
   if (!data || data.error) return { error: data?.error || 'no response from WHO DON API' };
   if (data.rawText !== undefined) {
@@ -37,12 +42,19 @@ export async function getOutbreakNews(opts = {}) {
 
   const items = [...data.value];
 
-  // Sort by PublicationDate descending (server ignores $orderby)
   items.sort((a, b) => {
     const da = new Date(a.PublicationDate || 0);
     const db = new Date(b.PublicationDate || 0);
     return db - da;
   });
+
+  // WHO publishes several notices a month. If even the newest item is a year
+  // old, the query is being served from the archive again, and an empty list
+  // would read as "no outbreaks".
+  const newest = new Date(items[0]?.PublicationDate || 0).getTime();
+  if (items.length && Date.now() - newest > ARCHIVE_ONLY_MS) {
+    return { error: `WHO DON API returned only archive items (newest ${items[0].PublicationDate})` };
+  }
 
   // Filter to last 30 days only
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);

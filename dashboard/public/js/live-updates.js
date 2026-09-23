@@ -49,7 +49,7 @@
             revision++;
             sweepRevision++;
             applySnapshot(message.data);
-            onSweep(false);
+            onSweep(typeof message.sweepInProgress === 'boolean' ? message.sweepInProgress : false);
             onState('live');
           } else if (message.type === 'connected') {
             sweepRevision++;

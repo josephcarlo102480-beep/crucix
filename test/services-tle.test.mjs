@@ -7,12 +7,22 @@ import { join } from 'node:path';
 const cacheDir = mkdtempSync(join(tmpdir(), 'crucix-tle-'));
 process.env.CRUCIX_TLE_CACHE_DIR = cacheDir;
 
+// The catalogue drops elements older than 21 days, so the fixture epoch must
+// track the clock rather than a fixed date.
+function tleEpoch(ms = Date.now()) {
+  const date = new Date(ms);
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const day = 1 + (ms - yearStart) / 86400000;
+  const yy = String(date.getUTCFullYear() % 100).padStart(2, '0');
+  return `${yy}${day.toFixed(8).padStart(12, '0')}`;
+}
+
 function sat(id, name = `SAT ${id}`) {
   const catalog = String(id).padStart(5, '0');
   return {
     id,
     name,
-    line1: `1 ${catalog}U 98067A   26244.50000000  .00000000  00000-0  00000-0 0  9999`,
+    line1: `1 ${catalog}U 98067A   ${tleEpoch()}  .00000000  00000-0  00000-0 0  9999`,
     line2: `2 ${catalog}  51.6400 100.0000 0005000 100.0000 260.0000 15.50000000123456`,
     epoch: Date.now(),
   };

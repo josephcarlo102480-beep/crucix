@@ -126,7 +126,30 @@ test('a network-wide rise is an anomaly', async t => {
   });
   const result = await briefing({ now });
   assert.equal(result.anomaly, true);
-  assert.match(result.signals[0], /^ELEVATED RADIATION across European background network: median 0\.60 µSv\/h/);
+  assert.match(result.signals[0], /^ELEVATED RADIATION across European background network: BfS median 0\.65 µSv\/h over 2 stations; STUK median 0\.55/);
+});
+
+test('a rise across the smaller network is not hidden by the larger one', async t => {
+  const bfsFeatures = Array.from({ length: 12 }, (_, i) => bfsFeature({ id: `B${i}`, lat: 47 + i * 0.6, lon: 8 + i * 0.6, value: 0.1 }));
+  const stukElements = Array.from({ length: 12 }, (_, i) => stukElement(60 + i * 0.6, 22 + i * 0.6, 0.6));
+  mockFeeds(t, { bfs: bfsPayload(bfsFeatures), stuk: stukPayload(...stukElements) });
+  const result = await briefing({ now });
+  assert.equal(result.anomaly, true);
+  assert.match(result.signals[0], /STUK median 0\.60 µSv\/h over 12 stations/);
+  assert.doesNotMatch(result.signals[0], /BfS median/);
+  assert.equal(result.elevatedCount, 12);
+  assert.equal(result.elevated.length, 10);
+});
+
+test('the elevated-station count is not capped by the listed top ten', async t => {
+  const hot = Array.from({ length: 14 }, (_, i) => bfsFeature({ id: `H${i}`, name: `Hot ${i}`, lat: 47 + i * 0.6, lon: 8, value: 0.6 }));
+  const normal = Array.from({ length: 30 }, (_, i) => bfsFeature({ id: `N${i}`, lat: 47 + i * 0.3, lon: 12, value: 0.1 }));
+  mockFeeds(t, { bfs: bfsPayload([...hot, ...normal]), stuk: stukPayload(stukElement(60.2229, 25.1788, 0.111)) });
+  const result = await briefing({ now });
+  assert.equal(result.anomaly, false);
+  assert.equal(result.elevatedCount, 14);
+  assert.equal(result.elevated.length, 10);
+  assert.match(result.signals[0], /^14 European stations above 0\.5/);
 });
 
 test('dashboard synthesizes a radBackground block and counts the source in health', async () => {

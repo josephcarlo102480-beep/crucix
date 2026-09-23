@@ -223,13 +223,38 @@ function isLoopbackHost(host) {
   return h === '::1' || h === 'localhost' || /^127\.\d+\.\d+\.\d+$/.test(h);
 }
 
+// Hostname from a Host header, without the port ("[::1]:3118" -> "::1").
+function hostHeaderName(hostHeader) {
+  const h = String(hostHeader || '').trim();
+  const bracketed = h.match(/^\[([^\]]+)\]/);
+  if (bracketed) return bracketed[1];
+  return h.replace(/:\d+$/, '');
+}
+
 // True only when the server is bound to loopback AND this particular request
 // came straight from loopback without passing through a proxy or tunnel.
 // A reverse proxy in front of a 127.0.0.1 bind must not inherit the bypass.
+// The Host header must also name loopback: a DNS-rebinding page reaches
+// 127.0.0.1 from the browser but still sends its own hostname.
 function isLocalRequest(req) {
   if (!isLoopbackHost(config.host)) return false;
   const forwarded = Boolean(req.get('x-forwarded-for') || req.get('forwarded') || req.get('x-real-ip'));
-  return !forwarded && isLoopbackHost(req.socket?.remoteAddress);
+  return !forwarded
+    && isLoopbackHost(req.socket?.remoteAddress)
+    && isLoopbackHost(hostHeaderName(req.get('host')));
+}
+
+// State-changing JSON routes. Requiring application/json forces a CORS
+// preflight (which this server never approves), so another site open in the
+// same browser cannot fire these with a simple no-cors POST.
+function requireJsonPost(req, res, next) {
+  if (String(req.get('sec-fetch-site') || '').toLowerCase() === 'cross-site') {
+    return res.status(403).json({ error: 'Cross-site requests are not allowed.' });
+  }
+  if (!req.is('application/json')) {
+    return res.status(415).json({ error: 'Content-Type must be application/json.' });
+  }
+  next();
 }
 
 function tokensEqual(actual, expected) {
@@ -247,8 +272,9 @@ function getRequestToken(req) {
 }
 
 function isAskRequestAuthorized(host, expectedToken, actualToken, client = {}) {
-  const { remoteAddress = '127.0.0.1', forwarded = false } = client;
-  const local = isLoopbackHost(host) && !forwarded && isLoopbackHost(remoteAddress);
+  const { remoteAddress = '127.0.0.1', forwarded = false, hostHeader = '127.0.0.1:3117' } = client;
+  const local = isLoopbackHost(host) && !forwarded && isLoopbackHost(remoteAddress)
+    && isLoopbackHost(hostHeaderName(hostHeader));
   return local || tokensEqual(actualToken, expectedToken);
 }
 
@@ -256,7 +282,7 @@ function authorizeAskRequest(req, res, next) {
   if (isLocalRequest(req)) return next();
   if (!config.api.token) {
     return res.status(503).json({
-      error: 'Ask AI is disabled on non-loopback bindings until CRUCIX_API_TOKEN is configured.',
+      error: 'This request is not a direct loopback connection; set CRUCIX_API_TOKEN to allow it.',
     });
   }
   if (!tokensEqual(getRequestToken(req), config.api.token)) {
@@ -286,7 +312,7 @@ function rateLimitAskRequest(req, res, next) {
 }
 
 // API: ask the configured OpenAI model about the current dashboard, with web search.
-app.post('/api/ask', authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
+app.post('/api/ask', requireJsonPost, authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
   res.set('Cache-Control', 'no-store');
 
   if (!currentData) {
@@ -323,7 +349,7 @@ app.post('/api/ask', authorizeAskRequest, rateLimitAskRequest, async (req, res) 
 
 // API: generate LLM trade ideas on demand (the dashboard's Generate button).
 // Same loopback/token gate and rate limit as Ask AI; one generation at a time.
-app.post('/api/ideas/generate', authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
+app.post('/api/ideas/generate', requireJsonPost, authorizeAskRequest, rateLimitAskRequest, async (req, res) => {
   res.set('Cache-Control', 'no-store');
   if (!currentData) {
     return res.status(503).json({ error: 'No data yet — first sweep in progress', sweepInProgress, sweepStartedAt });
@@ -345,10 +371,13 @@ app.post('/api/ideas/generate', authorizeAskRequest, rateLimitAskRequest, async 
     }
     const generatedAt = new Date().toISOString();
     manualIdeas = { ideas, generatedAt, model: llmProvider.model || null };
+    saveManualIdeas(manualIdeas);
     currentData = { ...currentData, ideas, ideasSource: 'llm', ideasGeneratedAt: generatedAt,
       ideasMode: config.llm.ideasAuto ? 'auto' : 'manual' };
     memory.updateLastRunIdeas(ideas);
-    broadcast({ type: 'update', data: currentData });
+    // Carries the sweep state so a Generate click mid-sweep does not clear
+    // the dashboard's SWEEPING indicator.
+    broadcast({ type: 'update', data: currentData, sweepInProgress });
     console.log(`[Crucix] On-demand LLM generated ${ideas.length} ideas`);
     res.json({ ideas, generatedAt, model: llmProvider.model || null, ideasSource: 'llm' });
   } catch (err) {
@@ -405,6 +434,27 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return;
   res.status(status).json({ error: status >= 500 ? 'Internal server error' : (err?.message || 'Bad request') });
 });
+
+function manualIdeasPath() {
+  return join(RUNS_DIR, 'memory', 'manual-ideas.json');
+}
+
+function saveManualIdeas(value) {
+  try {
+    atomicWriteJsonSync(manualIdeasPath(), value);
+  } catch (err) {
+    console.error('[Crucix] Could not save on-demand ideas:', err?.message || err);
+  }
+}
+
+function loadManualIdeas() {
+  try {
+    const saved = JSON.parse(readFileSync(manualIdeasPath(), 'utf8'));
+    return Array.isArray(saved?.ideas) && saved.ideas.length ? saved : null;
+  } catch {
+    return null;
+  }
+}
 
 function broadcast(data) {
   const msg = `data: ${JSON.stringify(data)}\n\n`;
@@ -524,7 +574,7 @@ async function start() {
 
   const lines = [
     '           CRUCIX INTELLIGENCE ENGINE         ',
-    '          Local Palantir · 25 Sources         ',
+    '          Local Palantir · 26 Sources         ',
     null, // separator
     `  Dashboard:  http://${displayHost}:${port}`,
     `  Health:     http://${displayHost}:${port}/api/health`,
@@ -574,6 +624,10 @@ async function start() {
     warmTle()
       .then(() => console.log('[Crucix] TLE catalog warmed'))
       .catch(() => {});
+
+    // On-demand ideas survive restarts; manual mode would otherwise fall back
+    // to rule-based ideas until someone presses Generate again.
+    manualIdeas = loadManualIdeas();
 
     // Try to load existing data first for instant display (await so dashboard shows immediately)
     try {

@@ -133,17 +133,23 @@ export async function briefing(opts = {}) {
   ];
   const all = [...(bfs || []), ...(stuk || [])];
   const fresh = all.filter(s => now - Date.parse(s.observedAt) <= RADIATION_MAX_AGE_MS);
-  const elevated = fresh.filter(s => s.uSvH >= ELEVATED_STATION_USVH)
+  const elevatedAll = fresh.filter(s => s.uSvH >= ELEVATED_STATION_USVH);
+  const elevated = elevatedAll
     .sort((a, b) => b.uSvH - a.uSvH).slice(0, 10)
     .map(s => ({ network: s.network, name: s.name, lat: round(s.lat, 3), lon: round(s.lon, 3), uSvH: round(s.uSvH, 3), observedAt: s.observedAt }));
 
   const healthy = networks.filter(n => n.status === 'healthy');
   const medianUSvH = fresh.length ? round(median(fresh.map(s => s.uSvH)), 3) : null;
-  const anomaly = medianUSvH === null ? null : medianUSvH > ANOMALY_USVH;
+  // BfS outnumbers STUK roughly 6:1, so a combined median would hide a rise
+  // across the whole Finnish network. Judge each network on its own median.
+  const anomalousNetworks = healthy.filter(n => n.medianUSvH > ANOMALY_USVH);
+  const anomaly = medianUSvH === null ? null : anomalousNetworks.length > 0;
 
   const signals = [];
-  if (anomaly) signals.push(`ELEVATED RADIATION across European background network: median ${medianUSvH.toFixed(2)} µSv/h over ${fresh.length} stations (normal: <0.30)`);
-  else if (elevated.length) signals.push(`${elevated.length} European station${elevated.length === 1 ? '' : 's'} above ${ELEVATED_STATION_USVH} µSv/h (peak ${elevated[0].uSvH} at ${elevated[0].name}); network median ${medianUSvH.toFixed(2)} is normal`);
+  if (anomaly) {
+    const detail = anomalousNetworks.map(n => `${n.network} median ${n.medianUSvH.toFixed(2)} µSv/h over ${n.fresh} stations`).join('; ');
+    signals.push(`ELEVATED RADIATION across European background network: ${detail} (normal: <0.30)`);
+  } else if (elevated.length) signals.push(`${elevatedAll.length} European station${elevatedAll.length === 1 ? '' : 's'} above ${ELEVATED_STATION_USVH} µSv/h (peak ${elevated[0].uSvH} at ${elevated[0].name}); network median ${medianUSvH.toFixed(2)} is normal`);
   else if (healthy.length === networks.length) signals.push(`European background normal: median ${medianUSvH.toFixed(2)} µSv/h across ${fresh.length} state monitors (${healthy.map(n => n.network).join(' + ')})`);
 
   const failed = networks.filter(n => n.status !== 'healthy');
@@ -156,6 +162,7 @@ export async function briefing(opts = {}) {
     medianUSvH,
     maxUSvH: fresh.length ? round(Math.max(...fresh.map(s => s.uSvH)), 3) : null,
     anomaly,
+    elevatedCount: elevatedAll.length,
     elevated,
     // Thinned for the map: highest reading per grid cell, coordinates rounded.
     stations: thinStations(fresh).map(s => ({

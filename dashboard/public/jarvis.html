@@ -917,6 +917,13 @@ function radiationLabel(site){
   return site.anom ? 'ANOMALY' : 'NORMAL';
 }
 
+// Median dose rate for a Safecast site; CPM only when an older cache lacks it.
+function nukeDose(site, fallback='--'){
+  if(Number.isFinite(site?.uSvH)) return `${site.uSvH.toFixed(2)} µSv/h`;
+  if(Number.isFinite(site?.cpm)) return `${site.cpm.toFixed(1)} CPM`;
+  return fallback;
+}
+
 function sourceTimestamp(value){
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Not available';
 }
@@ -1356,7 +1363,7 @@ function renderLeftRail(){
     {name:t('layers.maritimeWatch','Maritime Watch'),count:D.chokepoints.length,dot:'maritime',sub:t('layers.chokepoints','chokepoints'),
      items:D.chokepoints.map(cp=>({name:cp.label||'Chokepoint',lat:cp.lat||0,lon:cp.lon||0,status:'REFERENCE',meta:cp.note||'Chokepoint',detail:`Static location; no live vessel observations. ${Number(cp.lat||0).toFixed(2)}°, ${Number(cp.lon||0).toFixed(2)}°`}))},
     {name:t('layers.nuclearSites','Nuclear Sites'),count:D.nuke.length,dot:'nuke',sub:t('layers.monitors','monitors'),
-     items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:radiationLabel(n),meta:`${n.cpm?.toFixed(1)||'--'} CPM · ${n.n} recent readings`,detail:`Last observation: ${sourceTimestamp(n.lastReading)}`}:null}).filter(Boolean)},
+     items:D.nuke.map((n,i)=>{const c=nukeCoords[i];return c?{name:n.site,lat:c.lat,lon:c.lon,status:radiationLabel(n),meta:`${nukeDose(n)} · ${n.n} recent readings`,detail:`Last observation: ${sourceTimestamp(n.lastReading)}`}:null}).filter(Boolean)},
     {name:t('layers.euBackground','EU Radiation Background'),count:D.radBackground.stationsFresh,dot:'radiation',cat:'radiation',sub:D.radBackground.medianUSvH==null?t('layers.noBackground','no data'):`${t('layers.median','median')} ${D.radBackground.medianUSvH.toFixed(3)} µSv/h`,
      items:[...D.radBackground.elevated.map(s=>({name:s.name,lat:s.lat,lon:s.lon,status:'ELEVATED',meta:`${s.uSvH.toFixed(3)} µSv/h · ${s.network}`,detail:`Last observation: ${sourceTimestamp(s.observedAt)}`})),
        ...D.radBackground.networks.map(n=>({name:n.network==='BfS'?'Germany · BfS ODL':n.network==='STUK'?'Finland · STUK':n.network,lat:n.network==='BfS'?51.2:64.5,lon:n.network==='BfS'?10.4:26,status:n.status==='healthy'?'NORMAL':n.status.toUpperCase(),meta:n.medianUSvH==null?`${n.stations} stations · no fresh data`:`median ${n.medianUSvH.toFixed(3)} · max ${n.maxUSvH.toFixed(3)} µSv/h · ${n.fresh} stations`,detail:n.maxStation?`Peak at ${n.maxStation} · Last observation: ${sourceTimestamp(n.lastObservationAt)}`:`Last observation: ${sourceTimestamp(n.lastObservationAt)}`}))]},
@@ -1379,7 +1386,7 @@ function renderLeftRail(){
   const bgHtml=bg.medianUSvH==null
     ?`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${escapeHtml(bg.error||t('nuclear.noData','No data'))}</span></span><span class="site-val">${t('nuclear.noData','No data')}</span></div>`
     :`<div class="site-row"><span>${t('nuclear.euBackground','European background')}<span class="site-age">${bg.stationsFresh.toLocaleString()} ${t('nuclear.stateMonitors','state monitors')} · ${t('nuclear.peak','peak')} ${bg.maxUSvH.toFixed(3)} · ${escapeHtml(sourceTimestamp(bg.lastObservationAt))}</span></span><span class="site-val" style="${bg.anomaly?'color:var(--danger)':''}">${bg.medianUSvH.toFixed(3)} µSv/h</span></div>`;
-  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}" role="button" tabindex="0"><span>${escapeHtml(s.site)}<span class="site-age">Last observation: ${escapeHtml(sourceTimestamp(s.lastReading))}</span></span><span class="site-val">${s.status === 'healthy'?(s.cpm?.toFixed(1)||'--')+' CPM':s.status === 'stale'?'Stale':s.status === 'no_coverage'?'No sensors':'No data'}</span></div>`).join('');
+  const nukeHtml=D.nuke.map(s=>`<div class="site-row nuke-clickable" data-site="${escapeAttr(s.site)}" role="button" tabindex="0"><span>${escapeHtml(s.site)}<span class="site-age">Last observation: ${escapeHtml(sourceTimestamp(s.lastReading))}</span></span><span class="site-val">${s.status === 'healthy'?nukeDose(s):s.status === 'stale'?'Stale':s.status === 'no_coverage'?'No sensors':'No data'}</span></div>`).join('');
   const vix=D.fred.find(f=>f.id==='VIXCLS');
   const hy=D.fred.find(f=>f.id==='BAMLH0A0HYM2');
   const usd=D.fred.find(f=>f.id==='DTWEXBGS');
@@ -1820,7 +1827,7 @@ function plotMarkers(){
     points.push({
       lat:coords.lat,lng:coords.lon,size:0.3,alt:0.012,color:MAP_TYPE_COLORS.nuke,type:'nuke',priority:2,
       popHead:site?.site || 'Nuclear site',popMeta:'Radiation Monitoring',
-      popText:`Status: ${radiationLabel(site)}<br>Avg CPM: ${fmtNum(site?.cpm,1,'No data')}<br>Recent readings: ${finiteMapNumber(site?.n) ?? 0}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`
+      popText:`Status: ${radiationLabel(site)}<br>Median dose: ${nukeDose(site,'No data')}<br>Recent readings: ${finiteMapNumber(site?.n) ?? 0}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`
     });
   });
 
@@ -2210,7 +2217,7 @@ function plotFlatMarkers(){
   // Nuclear triangles.
   asArray(D?.nuke).forEach((site,index)=>{
     const coords=NUKE_COORDS[index];if(!coords)return;
-    const g=bindPopup(markerGroup(coords.lat,coords.lon,'nuke',2),event=>showPopup(event,site?.site || 'Nuclear site',`${radiationLabel(site)}<br>CPM: ${fmtNum(site?.cpm,1)}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`,'Radiation'));
+    const g=bindPopup(markerGroup(coords.lat,coords.lon,'nuke',2),event=>showPopup(event,site?.site || 'Nuclear site',`${radiationLabel(site)}<br>Dose: ${nukeDose(site)}<br>Last observation: ${sourceTimestamp(site?.lastReading)}`,'Radiation'));
     if(g)g.append('path').attr('d','M0,-5 L5,4 L-5,4 Z').attr('fill',mapRgba(MAP_TYPE_COLORS.nuke,0.76)).attr('stroke',mapRgba(MAP_TYPE_COLORS.nuke,0.42)).attr('stroke-width',0.8);
   });
 
@@ -2684,7 +2691,7 @@ function renderLower(){
   const tickerPanel = `<div class="g-panel lp-ticker ${expandedTickerKey?'ticker-expanded':''} ${pinnedLowerPanel==='ticker'?'lp-pinned':''}" style="display:flex;flex-direction:column">
       ${panelHead(t('panels.newsTicker','Live News Ticker'), panelMeta.ticker, `<span class="badge">${feed.length} ${t('badges.items','ITEMS')}</span>`, 'ticker', tickerTabs)}
       <div class="ticker-wrap ${expandedTickerKey?'has-expanded':''}" style="--ticker-duration:${tickerDuration}s">
-        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerKey) ? '' : marqueeClone(tickerCards)}</div>
+        <div class="ticker-track">${tickerCards}${(lowPerfMode || expandedTickerKey || !feed.length) ? '' : marqueeClone(tickerCards)}</div>
       </div>
     </div>`;
   const osintPanel = mobile ? buildOsintPanel(`lp-osint ${pinnedLowerPanel==='osint'?'lp-pinned':''}`, 240, panelMeta.osint, true) : '';
@@ -2840,7 +2847,7 @@ function getCategoryMapTarget(category){
     const idx=Math.max(0,D.nuke.findIndex(n=>n.anom));
     const site=D.nuke[idx];
     const c=rightMapRefs.nuke[idx];
-    return c && normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
+    return c && normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${nukeDose(site)}`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
   }
   if((category==='osint' || category==='health') && D.who.length){
     const alert=D.who[0];
@@ -2910,7 +2917,7 @@ function findTextMapTarget(value, fallbackCategory=''){
         const words=cleanText(site.site).toLowerCase().split(/[^a-z0-9]+/).filter(word=>word.length>4);
         if(words.some(word=>text.includes(word))){
           const c=rightMapRefs.nuke[i];
-          if(c) return normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${site.cpm?.toFixed(1)||'--'} CPM`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
+          if(c) return normalizeMapTarget({...c,head:site.site,text:`${radiationLabel(site)} · ${nukeDose(site)}`,meta:`Last observation: ${sourceTimestamp(site.lastReading)}`});
         }
       }
       return null;
@@ -3221,9 +3228,9 @@ function buildOsintPanel(panelClass='', maxHeight=260, meta='', showPin=false){
         <div class="sec-actions">${showPin ? `<button class="pin-btn focusable ${pinnedLowerPanel==='osint'?'active':''}" onclick="setPinnedPanel('osint')">${pinnedLowerPanel==='osint'?'Pinned':'Pin'}</button>` : ''}<span class="badge">${D.who.length} ${t('badges.active','ACTIVE')}</span></div>
       </div>
       <div class="right-panel-hint">Click a report to read it and locate mapped items</div>
-      <div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
+      ${osintItems.length ? `<div class="ticker-wrap" style="--ticker-duration:${osintDuration}s;max-height:${maxHeight}px">
         <div class="ticker-track">${osintCards}${lowPerfMode ? '' : marqueeClone(osintCards)}</div>
-      </div>
+      </div>` : osintCards}
     </div>`;
 }
 
@@ -3487,13 +3494,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show popup overlay — own element, NOT the shared #mapPopup (whose
         // .pp-head/.pp-text/.pp-meta children showPopup() depends on).
         const popup = document.getElementById('nukePopup') || createNukePopup();
-        const cpmVal = nukeData?.cpm?.toFixed(1) || 'No data';
+        const doseVal = nukeDose(nukeData,'No data');
         const status = radiationLabel(nukeData);
         const statusColor = nukeData?.anom ? 'var(--danger)' : nukeData?.status === 'healthy' ? 'var(--accent)' : 'var(--warn)';
         popup.innerHTML = `
           <div style="padding:12px;background:var(--panel);border:1px solid var(--border-bright);font-family:var(--mono);font-size:11px;max-width:280px">
             <div style="color:var(--accent);font-weight:600;margin-bottom:6px">${escapeHtml(site)}</div>
-            <div style="margin-bottom:4px">CPM: <span style="color:var(--accent)">${cpmVal}</span></div>
+            <div style="margin-bottom:4px">Dose: <span style="color:var(--accent)">${doseVal}</span></div>
             <div style="margin-bottom:4px">Status: <span style="color:${statusColor}">${status}</span></div>
             <div style="margin-bottom:4px">Readings: ${nukeData?.n || 0}</div>
             <div style="margin-bottom:4px">Last observation: ${escapeHtml(sourceTimestamp(nukeData?.lastReading))}</div>

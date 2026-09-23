@@ -114,6 +114,17 @@ test('dashboard treats sites without sensors as declared gaps, not outages', asy
   assert.equal(result.health.find(h => h.n === 'Safecast').status, 'healthy');
 });
 
+test('a radiation anomaly is reported in µSv/h, the unit it was decided in', async () => {
+  const data = raw({
+    Safecast: { status: 'healthy', sites: [
+      { site: 'Zaporizhzhia', key: 'zaporizhzhia', status: 'healthy', recentReadings: 5, avgCPM: 150, avgUSvH: 0.45, anomaly: true, lastReading: recent },
+    ], signals: [] },
+  });
+  const result = await synthesize(data, options);
+  assert.equal(result.nuke[0].uSvH, 0.45);
+  assert.equal(result.nukeSignals[0], 'ELEVATED RADIATION at Zaporizhzhia: 0.45 µSv/h median');
+});
+
 test('old cache hydration removes stale radiation alarms and does not count missing credentials as healthy', async () => {
   const data = raw({
     Safecast: { sites: [{ site: 'Chernobyl', recentReadings: 25, avgCPM: 124, anomaly: true, lastReading: old }], signals: ['ELEVATED RADIATION'] },

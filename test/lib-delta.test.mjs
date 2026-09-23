@@ -194,3 +194,55 @@ describe('batched alert marking', () => {
     });
   });
 });
+
+describe('air activity delta', () => {
+  const run = (air, openSkyStatus) => ({
+    ...snapshot('2026-09-23T12:00:00Z'),
+    air,
+    health: [{ n: 'OpenSky', status: openSkyStatus, err: openSkyStatus !== 'healthy', stale: false }],
+  });
+  const airSignal = (delta) => [...delta.signals.escalated, ...delta.signals.deescalated].find(s => s.key === 'air_total');
+
+  it('still compares when OpenSky is degraded, using hotspots observed in both sweeps', async () => {
+    const { computeDelta } = await import('../lib/delta/engine.mjs');
+    const previous = run([{ region: 'Europe', total: 200 }, { region: 'Taiwan', total: 100 }, { region: 'Horn', total: 50 }], 'healthy');
+    const current = run([{ region: 'Europe', total: 400 }, { region: 'Taiwan', total: 100 }, { region: 'Horn', total: 0 }], 'degraded');
+    const entry = airSignal(computeDelta(current, previous));
+    assert.ok(entry, 'expected an air_total delta');
+    assert.equal(entry.from, 300);
+    assert.equal(entry.to, 500);
+  });
+
+  it('skips the comparison when OpenSky failed', async () => {
+    const { computeDelta } = await import('../lib/delta/engine.mjs');
+    const previous = run([{ region: 'Europe', total: 200 }], 'healthy');
+    const current = run([{ region: 'Europe', total: 900 }], 'failed');
+    assert.equal(airSignal(computeDelta(current, previous)), undefined);
+  });
+});
+
+describe('European radiation background delta', () => {
+  const run = (anomaly) => ({
+    ...snapshot('2026-09-23T12:00:00Z'),
+    radBackground: { anomaly, medianUSvH: anomaly ? 0.6 : 0.11, networks: [{ network: 'STUK', medianUSvH: anomaly ? 0.6 : 0.1 }] },
+  });
+
+  it('fires a critical signal when the network median rises, and resolves only on a normal reading', async () => {
+    const { computeDelta } = await import('../lib/delta/engine.mjs');
+    const raised = computeDelta(run(true), run(false));
+    const signal = raised.signals.new.find(s => s.key === 'radiation_eu_anomaly');
+    assert.equal(signal.severity, 'critical');
+    assert.match(signal.reason, /STUK 0\.60 µSv\/h/);
+
+    assert.equal(computeDelta(run(null), run(true)).signals.deescalated.some(s => s.key === 'radiation_eu_anomaly'), false);
+    assert.equal(computeDelta(run(false), run(true)).signals.deescalated.some(s => s.key === 'radiation_eu_anomaly'), true);
+  });
+
+  it('survives compaction into stored runs', () => {
+    withMemory({}, (memory) => {
+      memory.addRun(run(false));
+      const delta = memory.addRun({ ...run(true), meta: { timestamp: '2026-09-23T12:15:00Z', sourcesOk: 6 } });
+      assert.ok(delta.signals.new.some(s => s.key === 'radiation_eu_anomaly'));
+    });
+  });
+});

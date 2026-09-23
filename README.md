@@ -12,7 +12,7 @@
 [![Node.js 22+](https://img.shields.io/badge/node-22%2B-brightgreen)](#quick-start)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPLv3-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-2-orange)](#architecture)
-[![Sources](https://img.shields.io/badge/OSINT%20sources-25-cyan)](#data-sources-25)
+[![Sources](https://img.shields.io/badge/OSINT%20sources-26-cyan)](#data-sources-26)
 [![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](#docker)
 
 **Enter The Signal Network**
@@ -40,7 +40,7 @@
 > **Live website:** [https://www.crucix.live/](https://www.crucix.live/)
 > Explore the public demo first, then clone the repo to run Crucix locally.
 
-Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, military aircraft tracking, and social sentiment from 25 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
+Crucix pulls satellite fire detection, flight tracking, radiation monitoring, satellite constellation tracking, economic indicators, live market prices, conflict data, military aircraft tracking, and social sentiment from 26 open-source intelligence feeds — in parallel, every 15 minutes — and renders everything on a single self-contained Jarvis-style dashboard.
 
 Hook it up to an LLM and it becomes a **two-way intelligence assistant** — pushing multi-tier alerts to Discord when something meaningful changes, responding to commands like `/brief` and `/sweep` from your phone, and generating actionable trade ideas grounded in real cross-domain data. Your own analyst that watches the world while you sleep.
 
@@ -310,12 +310,12 @@ crucix/
 │   ├── utils/
 │   │   ├── fetch.mjs          # safeFetch() — timeout, retries, abort, auto-JSON
 │   │   └── env.mjs            # .env loader (no dotenv dependency)
-│   └── sources/               # 25 self-contained source modules
+│   └── sources/               # 26 self-contained source modules
 │       ├── gdelt.mjs          # Each exports briefing() → structured data
 │       ├── fred.mjs           # Can run standalone: node apis/sources/fred.mjs
 │       ├── space.mjs          # CelesTrak satellite tracking
 │       ├── yfinance.mjs       # Yahoo Finance — free live market data
-│       └── ...                # 25 more
+│       └── ...                # 22 more
 │
 ├── dashboard/
 │   ├── inject.mjs             # Data synthesis + standalone HTML injection
@@ -356,7 +356,7 @@ crucix/
 
 ---
 
-## Data Sources (25)
+## Data Sources (26)
 
 ### Tier 1: Core OSINT & Geopolitical (8)
 

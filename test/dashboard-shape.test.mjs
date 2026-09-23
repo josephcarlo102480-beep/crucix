@@ -9,7 +9,14 @@ import { synthesize } from '../dashboard/inject.mjs';
 
 const html = readFileSync(join(process.cwd(), 'dashboard/public/jarvis.html'), 'utf8');
 
-const ISS_LINE1 = '1 25544U 98067A   24001.50000000  .00016717  00000+0  10270-3 0  9004';
+// SGP4 drifts off a sensible orbit months past the element epoch, so the
+// fixture epoch follows the clock instead of a fixed date.
+function tleEpoch(ms = Date.now()) {
+  const date = new Date(ms);
+  const day = 1 + (ms - Date.UTC(date.getUTCFullYear(), 0, 1)) / 86400000;
+  return `${String(date.getUTCFullYear() % 100).padStart(2, '0')}${day.toFixed(8).padStart(12, '0')}`;
+}
+const ISS_LINE1 = `1 25544U 98067A   ${tleEpoch()}  .00016717  00000+0  10270-3 0  9004`;
 const ISS_LINE2 = '2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.72125391563537';
 
 async function build() {

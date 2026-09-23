@@ -25,6 +25,12 @@ describe('isAskRequestAuthorized', () => {
     assert.equal(isAskRequestAuthorized('127.0.0.1', 'secret', 'secret', { remoteAddress: '127.0.0.1', forwarded: true }), true);
     assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { remoteAddress: '127.0.0.1', forwarded: true }), false);
   });
+  it('requires the token when a loopback client names a non-loopback Host (DNS rebinding)', () => {
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: 'evil.example:3118' }), false);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: 'localhost:3118' }), true);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: '[::1]:3118' }), true);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', 'secret', 'secret', { hostHeader: 'evil.example' }), true);
+  });
   it('requires the token when the client is not loopback', () => {
     assert.equal(isAskRequestAuthorized('127.0.0.1', 'secret', '', { remoteAddress: '192.168.1.20' }), false);
     assert.equal(isAskRequestAuthorized('0.0.0.0', 'secret', 'wrong'), false);
