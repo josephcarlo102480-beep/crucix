@@ -231,17 +231,24 @@ function hostHeaderName(hostHeader) {
   return h.replace(/:\d+$/, '');
 }
 
+// Host header names loopback or one of CRUCIX_TRUSTED_HOSTS.
+function isTrustedHostHeader(hostHeader, trustedHosts = []) {
+  const name = hostHeaderName(hostHeader).toLowerCase();
+  return isLoopbackHost(name) || trustedHosts.includes(name);
+}
+
 // True only when the server is bound to loopback AND this particular request
 // came straight from loopback without passing through a proxy or tunnel.
 // A reverse proxy in front of a 127.0.0.1 bind must not inherit the bypass.
-// The Host header must also name loopback: a DNS-rebinding page reaches
-// 127.0.0.1 from the browser but still sends its own hostname.
+// The Host header must also name loopback (or a CRUCIX_TRUSTED_HOSTS entry):
+// a DNS-rebinding page reaches 127.0.0.1 from the browser but still sends
+// its own hostname.
 function isLocalRequest(req) {
   if (!isLoopbackHost(config.host)) return false;
   const forwarded = Boolean(req.get('x-forwarded-for') || req.get('forwarded') || req.get('x-real-ip'));
   return !forwarded
     && isLoopbackHost(req.socket?.remoteAddress)
-    && isLoopbackHost(hostHeaderName(req.get('host')));
+    && isTrustedHostHeader(req.get('host'), config.api.trustedHosts);
 }
 
 // State-changing JSON routes. Requiring application/json forces a CORS
@@ -272,9 +279,9 @@ function getRequestToken(req) {
 }
 
 function isAskRequestAuthorized(host, expectedToken, actualToken, client = {}) {
-  const { remoteAddress = '127.0.0.1', forwarded = false, hostHeader = '127.0.0.1:3117' } = client;
+  const { remoteAddress = '127.0.0.1', forwarded = false, hostHeader = '127.0.0.1:3117', trustedHosts = [] } = client;
   const local = isLoopbackHost(host) && !forwarded && isLoopbackHost(remoteAddress)
-    && isLoopbackHost(hostHeaderName(hostHeader));
+    && isTrustedHostHeader(hostHeader, trustedHosts);
   return local || tokensEqual(actualToken, expectedToken);
 }
 

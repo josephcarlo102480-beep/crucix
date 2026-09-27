@@ -24,6 +24,11 @@ export default {
 
   api: {
     token: process.env.CRUCIX_API_TOKEN || null,
+    // Extra Host names (comma-separated, no port) that count as a direct local
+    // request when the socket is loopback, e.g. a Tailscale Serve TCP forward
+    // that arrives from 127.0.0.1 carrying the tailnet name in Host.
+    trustedHosts: String(process.env.CRUCIX_TRUSTED_HOSTS || '')
+      .split(',').map(h => h.trim().toLowerCase().replace(/^\[|\]$/g, '')).filter(Boolean),
     askRateLimitMax: parseIntegerEnv('ASK_AI_RATE_LIMIT_MAX', 6, { min: 1 }),
     askRateLimitWindowMinutes: parseIntegerEnv('ASK_AI_RATE_LIMIT_WINDOW_MINUTES', 10, { min: 1 }),
     askMaxConcurrent: parseIntegerEnv('ASK_AI_MAX_CONCURRENT', 2, { min: 1 }),

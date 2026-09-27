@@ -31,6 +31,14 @@ describe('isAskRequestAuthorized', () => {
     assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: '[::1]:3118' }), true);
     assert.equal(isAskRequestAuthorized('127.0.0.1', 'secret', 'secret', { hostHeader: 'evil.example' }), true);
   });
+  it('accepts CRUCIX_TRUSTED_HOSTS names (Tailscale Serve) from a loopback socket only', () => {
+    const trustedHosts = ['mypi.tailnet.ts.net', '100.97.205.55'];
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: 'MyPi.tailnet.ts.net:3118', trustedHosts }), true);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: '100.97.205.55:3118', trustedHosts }), true);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: 'evil.example:3118', trustedHosts }), false);
+    assert.equal(isAskRequestAuthorized('127.0.0.1', null, null, { hostHeader: 'mypi.tailnet.ts.net', remoteAddress: '192.168.1.20', trustedHosts }), false);
+    assert.equal(isAskRequestAuthorized('0.0.0.0', null, null, { hostHeader: 'mypi.tailnet.ts.net', trustedHosts }), false);
+  });
   it('requires the token when the client is not loopback', () => {
     assert.equal(isAskRequestAuthorized('127.0.0.1', 'secret', '', { remoteAddress: '192.168.1.20' }), false);
     assert.equal(isAskRequestAuthorized('0.0.0.0', 'secret', 'wrong'), false);
