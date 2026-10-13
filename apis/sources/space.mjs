@@ -12,12 +12,13 @@
 // is fetched here as JSON (OMM fields, no TLE lines) and held for the same
 // 2.5 h window the catalogue uses, so a 15-minute sweep never re-asks.
 
-import { getGroup } from '../../services/space/tleCatalog.mjs';
+import { celestrakGate, getGroup } from '../../services/space/tleCatalog.mjs';
 import { safeFetch } from '../utils/fetch.mjs';
 
 const RECENT_URL = 'https://celestrak.org/NORAD/elements/gp.php?GROUP=last-30-days&FORMAT=json';
 const RECENT_TTL_MS = 2.5 * 60 * 60 * 1000;
 const RECENT_RETRY_MS = 15 * 60 * 1000;
+const RECENT_NOT_MODIFIED_MS = 2 * 60 * 60 * 1000; // CelesTrak regenerates every 2 h
 
 const EARTH_RADIUS_KM = 6371.0;
 const MU_KM3_S2 = 398600.4418;
@@ -144,20 +145,29 @@ let recentNextAttemptAt = 0;
  * refresh keeps serving the previous list (flagged stale) and waits
  * RECENT_RETRY_MS before asking again, so CelesTrak is never hammered.
  */
-async function loadRecent({ signal, fetchImpl = safeFetch } = {}) {
+async function loadRecent({ signal, fetchImpl = safeFetch, gate = null } = {}) {
   const now = Date.now();
   if (recentCache && now - recentCache.fetchedAt < RECENT_TTL_MS) return { sats: recentCache.sats, stale: false };
   if (now < recentNextAttemptAt) return recentCache ? { sats: recentCache.sats, stale: true } : { sats: [], error: 'recent launches: waiting out backoff' };
+  const pausedUntil = gate?.pausedUntil() || 0;
+  if (pausedUntil) {
+    const error = `recent launches: CelesTrak paused until ${new Date(pausedUntil).toISOString()}`;
+    return recentCache ? { sats: recentCache.sats, stale: true, error } : { sats: [], error };
+  }
 
   const res = await fetchImpl(RECENT_URL, { timeout: 20000, retries: 0, signal });
   if (!Array.isArray(res)) {
-    recentNextAttemptAt = now + RECENT_RETRY_MS;
+    const notModified = /has not updated/i.test(res?.error || '');
+    recentNextAttemptAt = now + (notModified ? RECENT_NOT_MODIFIED_MS : RECENT_RETRY_MS);
+    if (notModified) gate?.success();
+    else if (res?.error) gate?.failure(new Error(res.error));
     const error = `recent launches: ${res?.error || (res?.rawText ? `non-JSON body "${String(res.rawText).slice(0, 60)}"` : 'unexpected payload')}`;
     return recentCache ? { sats: recentCache.sats, stale: true, error } : { sats: [], error };
   }
   const sats = res.filter(r => r && r.OBJECT_NAME).map(describeOmm);
   recentCache = { fetchedAt: now, sats };
   recentNextAttemptAt = 0;
+  gate?.success();
   return { sats, stale: false };
 }
 
@@ -212,7 +222,9 @@ export async function briefing(opts = {}) {
   const timestamp = new Date().toISOString();
   try {
     const [recentRes, stationRes, militaryRes, starlinkRes, onewebRes] = await Promise.all([
-      loadRecent({ signal: opts.signal, fetchImpl: opts.fetchImpl }).catch(e => ({ sats: [], error: `recent launches: ${e.message}` })),
+      // An injected fetch (tests) never reaches the real host, so it skips the
+      // shared CelesTrak gate unless the caller passes one.
+      loadRecent({ signal: opts.signal, fetchImpl: opts.fetchImpl, gate: opts.gate ?? (opts.fetchImpl ? null : celestrakGate) }).catch(e => ({ sats: [], error: `recent launches: ${e.message}` })),
       loadAll('stations', loadGroup),
       loadAll('military', loadGroup),
       loadAll('starlink', loadGroup),

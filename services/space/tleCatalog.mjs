@@ -40,8 +40,18 @@ const FETCH_TIMEOUT_MS = 30000;
 // CelesTrak regenerates GP data every 2 h, so anything shorter is guaranteed
 // to come back as a not-modified 403. A stale copy still propagates fine.
 const TTL_MS = 2.5 * 60 * 60 * 1000;
-// How long to sit on a not-modified before asking again.
-const NOT_MODIFIED_BACKOFF_MS = 30 * 60 * 1000;
+// How long to sit on a not-modified before asking again. CelesTrak only
+// regenerates every 2 h, so asking sooner just collects more 403s.
+const NOT_MODIFIED_BACKOFF_MS = 2 * 60 * 60 * 1000;
+// `active` (~16k objects, 3.5 MB) only feeds search and the military name
+// filter, neither of which needs fresh elements. SkyWatch on the Jetson pulls
+// the same group from the same public IP and CelesTrak counts per IP, so a
+// short TTL here just turns the other app's next pull into a 403.
+const SOURCE_TTL_MS = { active: 12 * 60 * 60 * 1000 };
+// CelesTrak blocks by IP, not by group, and turns a run of failed requests
+// into a firewall ban on the whole host. One network or HTTP failure therefore
+// pauses EVERY CelesTrak request from this process, escalating 2 → 4 → 8 → 24 h.
+const GATE_BACKOFF_HOURS = [2, 4, 8, 24];
 const FAILURE_RETRY_MS = 5 * 60 * 1000;
 const DISK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -139,6 +149,64 @@ function ensureCacheDir() {
   if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
 }
 
+function ttlFor(source) {
+  return SOURCE_TTL_MS[source] || TTL_MS;
+}
+
+// Host-wide CelesTrak gate, shared with apis/sources/space.mjs and persisted
+// beside the cache so a restart cannot reset a pause.
+let gateState = null;
+
+function gateFile() {
+  return join(CACHE_DIR, '_celestrak-gate.json');
+}
+
+function gate() {
+  if (!gateState) {
+    try {
+      gateState = JSON.parse(readFileSync(gateFile(), 'utf8'));
+    } catch {
+      gateState = null;
+    }
+    if (!gateState || typeof gateState !== 'object') gateState = { failures: 0, pausedUntil: 0 };
+  }
+  return gateState;
+}
+
+function saveGate() {
+  try {
+    ensureCacheDir();
+    atomicWriteJsonSync(gateFile(), gateState);
+  } catch (err) {
+    console.warn(`[tle] could not persist the CelesTrak gate: ${err.message}`);
+  }
+}
+
+export const celestrakGate = {
+  /** Epoch ms until which CelesTrak must not be asked, or 0. */
+  pausedUntil() {
+    const until = gate().pausedUntil || 0;
+    return Date.now() < until ? until : 0;
+  },
+  failure(err) {
+    const state = gate();
+    // Parallel requests fail together: count one failure per pause, not per request.
+    if (Date.now() < (state.pausedUntil || 0)) return;
+    state.failures = (state.failures || 0) + 1;
+    const hours = GATE_BACKOFF_HOURS[Math.min(state.failures, GATE_BACKOFF_HOURS.length) - 1];
+    state.pausedUntil = Date.now() + hours * 60 * 60 * 1000;
+    state.lastError = String(err?.message || err).slice(0, 200);
+    saveGate();
+    console.warn(`[tle] CelesTrak request failed (${state.lastError}); pausing all CelesTrak requests for ${hours} h`);
+  },
+  success() {
+    const state = gate();
+    if (!state.failures && !state.pausedUntil) return;
+    gateState = { failures: 0, pausedUntil: 0 };
+    saveGate();
+  },
+};
+
 /**
  * TLE line 1 columns 19-32 hold the epoch as YYDDD.DDDDDDDD. Returning ms
  * rather than a Date keeps the per-satellite records small — there are 16k
@@ -208,14 +276,21 @@ function writeDisk(source, entry) {
 const NOT_MODIFIED = Symbol('celestrak-not-modified');
 
 async function fetchSourceText(source) {
-  const res = await fetchWithTimeout(sourceUrl(source), {
-    timeoutMs: FETCH_TIMEOUT_MS,
-    headers: { 'User-Agent': 'Crucix/1.0 (satellite tracker)' },
-  });
-  const text = await res.text();
+  let res;
+  let text;
+  try {
+    res = await fetchWithTimeout(sourceUrl(source), {
+      timeoutMs: FETCH_TIMEOUT_MS,
+      headers: { 'User-Agent': 'Crucix/1.0 (satellite tracker)' },
+    });
+    text = await res.text();
+  } catch (err) {
+    err.celestrakGate = true; // network-level: the host itself is unreachable
+    throw err;
+  }
   if (!res.ok) {
     if (res.status === 403 && /has not updated/i.test(text)) return NOT_MODIFIED;
-    throw new Error(`HTTP ${res.status}: ${text.slice(0, 120).trim()}`);
+    throw Object.assign(new Error(`HTTP ${res.status}: ${text.slice(0, 120).trim()}`), { celestrakGate: true });
   }
   // CelesTrak answers 200 with a plain-text error for a bad group name.
   if (/Invalid query/i.test(text.slice(0, 200))) throw new Error(text.slice(0, 120).trim());
@@ -235,13 +310,23 @@ async function loadGroup(source) {
     return disk;
   })();
 
-  if (cached && Date.now() - (cached.checkedAt || cached.fetchedAt) < TTL_MS) return cached;
+  if (cached && Date.now() - (cached.checkedAt || cached.fetchedAt) < ttlFor(source)) return cached;
   if (inFlight.has(source)) return inFlight.get(source);
+
+  const pausedUntil = celestrakGate.pausedUntil();
+  if (pausedUntil) {
+    if (cached) return cached.stale ? cached : remember(source, { ...cached, stale: true });
+    throw Object.assign(
+      new Error(`CelesTrak paused until ${new Date(pausedUntil).toISOString()} and nothing is cached yet`),
+      { status: 503 },
+    );
+  }
 
   const job = (async () => {
     try {
       const text = await fetchSourceText(source);
       if (text === NOT_MODIFIED) {
+        celestrakGate.success(); // CelesTrak answered: the host is fine
         if (!cached) {
           throw Object.assign(
             new Error('CelesTrak has no new data since our last download and nothing is cached yet'),
@@ -250,7 +335,7 @@ async function loadGroup(source) {
         }
         const held = {
           ...cached,
-          checkedAt: Date.now() - TTL_MS + NOT_MODIFIED_BACKOFF_MS,
+          checkedAt: Date.now() - ttlFor(source) + NOT_MODIFIED_BACKOFF_MS,
           stale: false,
         };
         remember(source, held);
@@ -259,17 +344,19 @@ async function loadGroup(source) {
       const sats = parseTleText(text);
       if (!sats.length) throw new Error('no elements parsed');
       const entry = { fetchedAt: Date.now(), checkedAt: Date.now(), sats, stale: false };
+      celestrakGate.success();
       remember(source, entry);
       writeDisk(source, entry);
       return entry;
     } catch (err) {
+      if (err.celestrakGate) celestrakGate.failure(err);
       // Serving hours-old elements beats serving nothing: SGP4 is still good
       // to a few km a day out. Only a total absence of data is an error.
       if (cached) {
         console.warn(`[tle] ${source} refresh failed (${err.message}), serving cached copy`);
         const stale = {
           ...cached,
-          checkedAt: Date.now() - TTL_MS + FAILURE_RETRY_MS,
+          checkedAt: Date.now() - ttlFor(source) + FAILURE_RETRY_MS,
           stale: true,
         };
         remember(source, stale);
